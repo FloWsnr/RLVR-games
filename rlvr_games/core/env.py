@@ -45,8 +45,8 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         reward_fn : RewardFn[StateT, ActionT]
             Reward function used to score verified transitions.
         config : EpisodeConfig
-            Episode-wide configuration such as default seeding and optional turn
-            limits.
+            Episode-wide configuration such as optional turn limits and
+            metadata.
         """
         self.backend = backend
         self.scenario = scenario
@@ -98,16 +98,13 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             )
         return self._trajectory
 
-    def reset(
-        self, *, seed: int | None = None
-    ) -> tuple[Observation, dict[str, object]]:
+    def reset(self, *, seed: int) -> tuple[Observation, dict[str, object]]:
         """Start a fresh episode from the configured scenario.
 
         Parameters
         ----------
-        seed : int | None
-            Optional seed for the scenario reset. When omitted, the environment
-            falls back to `config.seed`.
+        seed : int
+            Explicit seed forwarded to the scenario reset.
 
         Returns
         -------
@@ -115,10 +112,9 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             A pair containing the initial observation shown to the model and
             the reset metadata returned by the scenario.
         """
-        effective_seed = self.config.seed if seed is None else seed
         self._turn_count = 0
         self._episode_finished = False
-        self._state, info = self.scenario.reset(seed=effective_seed)
+        self._state, info = self.scenario.reset(seed=seed)
         observation = self.renderer.render(self._state)
         self._trajectory = EpisodeTrajectory(
             initial_observation=observation,

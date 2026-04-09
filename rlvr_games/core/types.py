@@ -35,16 +35,12 @@ class EpisodeConfig:
     max_turns : int | None
         Optional upper bound on the number of agent turns before the episode is
         truncated.
-    seed : int | None
-        Optional default seed forwarded to the scenario when `reset()` is
-        called without an explicit seed.
     metadata : dict[str, Any]
         Free-form configuration data for experiment bookkeeping or
         environment-specific options.
     """
 
     max_turns: int | None = None
-    seed: int | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

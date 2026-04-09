@@ -5,9 +5,13 @@ from dataclasses import dataclass
 
 @dataclass(slots=True)
 class ChessAction:
-    """Model-produced chess move string.
+    """Canonical chess action expressed in UCI notation.
 
-    We will likely normalize this to UCI first, then add SAN support if needed.
+    Attributes
+    ----------
+    uci : str
+        Legal move string in UCI format, for example ``"e2e4"`` or
+        ``"a7a8q"`` for promotions.
     """
 
-    move: str
+    uci: str

@@ -92,15 +92,13 @@ class GameBackend(Protocol[StateT, ActionT]):
 class Scenario(Protocol[ScenarioStateT]):
     """Protocol for episode initialization logic."""
 
-    def reset(
-        self, *, seed: int | None = None
-    ) -> tuple[ScenarioStateT, dict[str, Any]]:
+    def reset(self, *, seed: int) -> tuple[ScenarioStateT, dict[str, Any]]:
         """Create a fresh initial state for a new episode.
 
         Parameters
         ----------
-        seed : int | None
-            Optional seed used to make scenario generation reproducible.
+        seed : int
+            Explicit seed used to make scenario generation reproducible.
 
         Returns
         -------
