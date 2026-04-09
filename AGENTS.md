@@ -45,3 +45,4 @@ Each environment should define:
 - Always run pyright after making changes to ensure type safety.
 - Use ruff for linting and formatting.
 - Avoid default or optional values in function signatures, if they are not strictly necessary. We want to be explicit about all parameters and not have any hidden state or behavior.
+- Write docstrings for all functions and classes, explaining their purpose, parameters, and return values. Use the numpy docstring style for consistency.
