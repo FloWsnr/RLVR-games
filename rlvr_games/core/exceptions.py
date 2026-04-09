@@ -2,16 +2,32 @@
 
 
 class RLVRGamesError(Exception):
-    """Base exception for the project."""
+    """Base exception for project-specific runtime errors.
+
+    All framework-defined exceptions inherit from this type so callers can
+    catch RLVR-specific failures without swallowing unrelated exceptions.
+    """
 
 
 class EnvironmentNotResetError(RLVRGamesError):
-    """Raised when `step()` is called before `reset()`."""
+    """Raised when episode state is accessed before initialization.
+
+    This typically indicates that `reset()` has not been called before using
+    `step()`, `state`, or `trajectory`.
+    """
 
 
 class EpisodeFinishedError(RLVRGamesError):
-    """Raised when `step()` is called after the episode has ended."""
+    """Raised when a transition is requested after episode completion.
+
+    Environments use this to enforce the `reset()`/`step()` lifecycle once an
+    episode has terminated or been truncated.
+    """
 
 
 class InvalidActionError(RLVRGamesError):
-    """Raised when an action cannot be parsed or applied."""
+    """Raised when an action is malformed or illegal for the current state.
+
+    Backends should use this exception when model output cannot be mapped onto
+    a valid, rule-compliant environment action.
+    """

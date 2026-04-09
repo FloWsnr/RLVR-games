@@ -30,5 +30,5 @@ class ChessEnv(TurnBasedEnv[ChessState, ChessAction]):
             scenario=scenario or StartingPositionScenario(),
             renderer=renderer or ChessTextRenderer(),
             reward_fn=ZeroReward(),
-            config=config,
+            config=config or EpisodeConfig(),
         )

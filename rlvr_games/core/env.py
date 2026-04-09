@@ -4,7 +4,6 @@ from typing import Generic, TypeVar
 
 from rlvr_games.core.exceptions import EpisodeFinishedError, EnvironmentNotResetError
 from rlvr_games.core.protocol import GameBackend, Renderer, RewardFn, Scenario
-from rlvr_games.core.rewards import ZeroReward
 from rlvr_games.core.trajectory import EpisodeTrajectory, TrajectoryStep
 from rlvr_games.core.types import EpisodeConfig, Observation, StepResult
 
@@ -13,7 +12,13 @@ ActionT = TypeVar("ActionT")
 
 
 class TurnBasedEnv(Generic[StateT, ActionT]):
-    """Minimal stateful environment with reset/step semantics."""
+    """Minimal stateful environment with reset/step semantics.
+
+    The environment coordinates four reusable components: a scenario that
+    creates the initial canonical state, a backend that verifies actions and
+    applies transitions, a renderer that turns state into observations, and a
+    reward function that scores verified transitions.
+    """
 
     def __init__(
         self,
@@ -21,14 +26,33 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         backend: GameBackend[StateT, ActionT],
         scenario: Scenario[StateT],
         renderer: Renderer[StateT],
-        reward_fn: RewardFn[StateT, ActionT] | None = None,
-        config: EpisodeConfig | None = None,
+        reward_fn: RewardFn[StateT, ActionT],
+        config: EpisodeConfig,
     ) -> None:
+        """Initialize a turn-based environment.
+
+        Parameters
+        ----------
+        backend : GameBackend[StateT, ActionT]
+            Rules engine responsible for action parsing, legality checks,
+            transitions, and terminal detection.
+        scenario : Scenario[StateT]
+            Component that creates the starting canonical state for each new
+            episode.
+        renderer : Renderer[StateT]
+            Adapter that converts canonical state into the observation exposed
+            to the model.
+        reward_fn : RewardFn[StateT, ActionT]
+            Reward function used to score verified transitions.
+        config : EpisodeConfig
+            Episode-wide configuration such as default seeding and optional turn
+            limits.
+        """
         self.backend = backend
         self.scenario = scenario
         self.renderer = renderer
-        self.reward_fn = reward_fn or ZeroReward()
-        self.config = config or EpisodeConfig()
+        self.reward_fn = reward_fn
+        self.config = config
 
         self._state: StateT | None = None
         self._trajectory: EpisodeTrajectory[ActionT] | None = None
@@ -37,14 +61,37 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
 
     @property
     def state(self) -> StateT:
-        """Return the current canonical state."""
+        """Return the current canonical state.
+
+        Returns
+        -------
+        StateT
+            The current verifier-backed state for the active episode.
+
+        Raises
+        ------
+        EnvironmentNotResetError
+            If `reset()` has not been called yet.
+        """
         if self._state is None:
             raise EnvironmentNotResetError("Call reset() before accessing env.state.")
         return self._state
 
     @property
     def trajectory(self) -> EpisodeTrajectory[ActionT]:
-        """Return the current episode trajectory."""
+        """Return the recorded trajectory for the active episode.
+
+        Returns
+        -------
+        EpisodeTrajectory[ActionT]
+            The trajectory object containing the initial observation and all
+            subsequent verified transitions.
+
+        Raises
+        ------
+        EnvironmentNotResetError
+            If `reset()` has not been called yet.
+        """
         if self._trajectory is None:
             raise EnvironmentNotResetError(
                 "Call reset() before accessing env.trajectory."
@@ -54,7 +101,20 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
     def reset(
         self, *, seed: int | None = None
     ) -> tuple[Observation, dict[str, object]]:
-        """Start a fresh episode."""
+        """Start a fresh episode from the configured scenario.
+
+        Parameters
+        ----------
+        seed : int | None
+            Optional seed for the scenario reset. When omitted, the environment
+            falls back to `config.seed`.
+
+        Returns
+        -------
+        tuple[Observation, dict[str, object]]
+            A pair containing the initial observation shown to the model and
+            the reset metadata returned by the scenario.
+        """
         effective_seed = self.config.seed if seed is None else seed
         self._turn_count = 0
         self._episode_finished = False
@@ -67,7 +127,29 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         return observation, info
 
     def step(self, raw_action: str) -> StepResult:
-        """Advance the episode by one model action."""
+        """Advance the episode by one verified model action.
+
+        Parameters
+        ----------
+        raw_action : str
+            Raw model output to be parsed and validated by the backend.
+
+        Returns
+        -------
+        StepResult
+            The rendered next observation, reward, terminal flags, and
+            transition metadata for the applied action.
+
+        Raises
+        ------
+        EnvironmentNotResetError
+            If `reset()` has not been called yet.
+        EpisodeFinishedError
+            If the current episode has already terminated or been truncated.
+        InvalidActionError
+            If the backend rejects the action as malformed or illegal for the
+            current state.
+        """
         if self._episode_finished:
             raise EpisodeFinishedError(
                 "The current episode has finished. Call reset() first."

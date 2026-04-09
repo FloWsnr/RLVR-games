@@ -37,7 +37,9 @@ class CounterBackend:
     def legal_actions(self, state: CounterState) -> list[str]:
         return ["1"]
 
-    def apply_action(self, state: CounterState, action: CounterAction) -> tuple[CounterState, dict[str, Any]]:
+    def apply_action(
+        self, state: CounterState, action: CounterAction
+    ) -> tuple[CounterState, dict[str, Any]]:
         next_state = CounterState(value=state.value + action.delta)
         return next_state, {"value": next_state.value}
 
@@ -64,6 +66,7 @@ class TurnBasedEnvTests(unittest.TestCase):
             scenario=CounterScenario(),
             renderer=CounterRenderer(),
             reward_fn=CounterReward(),
+            config=EpisodeConfig(),
         )
         with self.assertRaises(EnvironmentNotResetError):
             env.step("1")
