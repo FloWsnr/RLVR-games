@@ -23,7 +23,9 @@ class GameBackend(Protocol[StateT, ActionT]):
         """Return model-facing legal actions for the current state."""
         ...
 
-    def apply_action(self, state: StateT, action: ActionT) -> tuple[StateT, dict[str, Any]]:
+    def apply_action(
+        self, state: StateT, action: ActionT
+    ) -> tuple[StateT, dict[str, Any]]:
         """Apply an action and return the next state and transition metadata."""
         ...
 
@@ -35,7 +37,9 @@ class GameBackend(Protocol[StateT, ActionT]):
 class Scenario(Protocol[ScenarioStateT]):
     """Episode initializer."""
 
-    def reset(self, *, seed: int | None = None) -> tuple[ScenarioStateT, dict[str, Any]]:
+    def reset(
+        self, *, seed: int | None = None
+    ) -> tuple[ScenarioStateT, dict[str, Any]]:
         """Create a fresh initial state for a new episode."""
         ...
 

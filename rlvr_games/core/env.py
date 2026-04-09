@@ -46,10 +46,14 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
     def trajectory(self) -> EpisodeTrajectory[ActionT]:
         """Return the current episode trajectory."""
         if self._trajectory is None:
-            raise EnvironmentNotResetError("Call reset() before accessing env.trajectory.")
+            raise EnvironmentNotResetError(
+                "Call reset() before accessing env.trajectory."
+            )
         return self._trajectory
 
-    def reset(self, *, seed: int | None = None) -> tuple[Observation, dict[str, object]]:
+    def reset(
+        self, *, seed: int | None = None
+    ) -> tuple[Observation, dict[str, object]]:
         """Start a fresh episode."""
         effective_seed = self.config.seed if seed is None else seed
         self._turn_count = 0
@@ -65,7 +69,9 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
     def step(self, raw_action: str) -> StepResult:
         """Advance the episode by one model action."""
         if self._episode_finished:
-            raise EpisodeFinishedError("The current episode has finished. Call reset() first.")
+            raise EpisodeFinishedError(
+                "The current episode has finished. Call reset() first."
+            )
 
         previous_state = self.state
         action = self.backend.parse_action(previous_state, raw_action)
@@ -82,7 +88,11 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         truncated = False
         info = dict(transition_info)
 
-        if self.config.max_turns is not None and self._turn_count >= self.config.max_turns and not terminated:
+        if (
+            self.config.max_turns is not None
+            and self._turn_count >= self.config.max_turns
+            and not terminated
+        ):
             truncated = True
             info.setdefault("truncated_reason", "max_turns")
 
