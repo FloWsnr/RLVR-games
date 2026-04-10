@@ -93,6 +93,8 @@ def test_records_trajectory_until_terminal() -> None:
     assert first.terminated is False
     assert second.terminated is False
     assert third.terminated is True
+    assert first.accepted is True
+    assert env.trajectory.steps[-1].accepted is True
     assert env.trajectory.total_reward == 3.0
     assert len(env.trajectory.steps) == 3
     assert env.trajectory.steps[-1].observation.metadata["value"] == 3

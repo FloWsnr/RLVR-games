@@ -92,4 +92,6 @@ def test_run_episode_passes_sorted_legal_actions_in_context() -> None:
         sorted(agent.contexts[0].legal_actions)
     )
     assert len(agent.contexts[0].legal_actions) == 20
+    assert result.trajectory.steps[0].accepted is True
+    assert result.trajectory.steps[0].action is not None
     assert result.trajectory.steps[0].action.uci == "e2e4"

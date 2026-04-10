@@ -5,6 +5,11 @@ import sys
 
 from _pytest.monkeypatch import MonkeyPatch
 from rlvr_games.cli.main import run_cli, run_play_session
+from rlvr_games.core import (
+    InvalidActionMode,
+    InvalidActionPolicy,
+    InvalidActionPolicyEnv,
+)
 from rlvr_games.games.chess import (
     ChessEnv,
     ChessImageOrientation,
@@ -74,6 +79,32 @@ def test_run_play_session_reports_invalid_moves_without_state_change() -> None:
     assert len(env.trajectory.steps) == 0
 
 
+def test_run_play_session_reports_penalized_invalid_moves_from_wrapper() -> None:
+    env = InvalidActionPolicyEnv(
+        env=make_env(),
+        policy=InvalidActionPolicy(
+            mode=InvalidActionMode.PENALIZE_CONTINUE,
+            penalty=-1.0,
+        ),
+    )
+    input_stream = StringIO("e2e5\ntrajectory\nquit\n")
+    output_stream = StringIO()
+
+    exit_code = run_play_session(
+        env=env,
+        seed=21,
+        input_stream=input_stream,
+        output_stream=output_stream,
+    )
+
+    output = output_stream.getvalue()
+    assert exit_code == 0
+    assert "Accepted: False" in output
+    assert "Reward: -1.0" in output
+    assert "Trajectory steps: 1" in output
+    assert "accepted=False" in output
+
+
 def test_run_cli_can_start_and_exit_a_chess_play_session(
     monkeypatch: MonkeyPatch,
 ) -> None:
@@ -88,3 +119,30 @@ def test_run_cli_can_start_and_exit_a_chess_play_session(
     assert exit_code == 0
     assert "Chess board:" in output
     assert "Session ended." in output
+
+
+def test_run_cli_can_use_penalize_truncate_invalid_action_policy(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    input_stream = StringIO("e2e5\n")
+    output_stream = StringIO()
+    monkeypatch.setattr(sys, "stdin", input_stream)
+    monkeypatch.setattr(sys, "stdout", output_stream)
+
+    exit_code = run_cli(
+        [
+            "play",
+            "chess",
+            "--seed",
+            "8",
+            "--invalid-action-policy",
+            "penalize-truncate",
+            "--invalid-action-penalty",
+            "-2",
+        ]
+    )
+
+    output = output_stream.getvalue()
+    assert exit_code == 0
+    assert "Accepted: False" in output
+    assert "Episode finished." in output

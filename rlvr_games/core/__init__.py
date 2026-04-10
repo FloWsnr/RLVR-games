@@ -18,6 +18,11 @@ from rlvr_games.core.rollout import (
 )
 from rlvr_games.core.trajectory import EpisodeTrajectory, TrajectoryStep
 from rlvr_games.core.types import EpisodeConfig, Observation, StepResult
+from rlvr_games.core.wrappers import (
+    InvalidActionMode,
+    InvalidActionPolicy,
+    InvalidActionPolicyEnv,
+)
 
 __all__ = [
     "ActionContext",
@@ -28,6 +33,9 @@ __all__ = [
     "EnvironmentNotResetError",
     "ImageRenderer",
     "InvalidActionError",
+    "InvalidActionMode",
+    "InvalidActionPolicy",
+    "InvalidActionPolicyEnv",
     "Observation",
     "RLVRGamesError",
     "RolloutAgent",

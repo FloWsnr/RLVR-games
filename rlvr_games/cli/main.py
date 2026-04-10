@@ -10,6 +10,11 @@ from rlvr_games.core.exceptions import InvalidActionError
 from rlvr_games.core.protocol import Environment
 from rlvr_games.core.rollout import build_action_context
 from rlvr_games.core.types import Observation, StepResult
+from rlvr_games.core.wrappers import (
+    InvalidActionMode,
+    InvalidActionPolicy,
+    InvalidActionPolicyEnv,
+)
 from rlvr_games.games.chess import (
     ChessImageOrientation,
     ChessTextRendererKind,
@@ -47,6 +52,12 @@ def build_parser() -> ArgumentParser:
         choices=tuple(orientation.value for orientation in ChessImageOrientation),
         default=ChessImageOrientation.WHITE.value,
     )
+    play_parser.add_argument(
+        "--invalid-action-policy",
+        choices=tuple(mode.value for mode in InvalidActionMode),
+        default=InvalidActionMode.RAISE.value,
+    )
+    play_parser.add_argument("--invalid-action-penalty", type=float)
 
     return parser
 
@@ -160,8 +171,27 @@ def run_cli(argv: Sequence[str]) -> int:
             image_coordinates=args.image_coordinates,
             image_orientation=ChessImageOrientation(args.image_orientation),
         )
+        invalid_action_mode = InvalidActionMode(args.invalid_action_policy)
+        if invalid_action_mode == InvalidActionMode.RAISE:
+            if args.invalid_action_penalty is not None:
+                parser.error(
+                    "--invalid-action-penalty requires a penalize invalid-action policy."
+                )
+            wrapped_env: Environment[Any, Any] = env
+        else:
+            if args.invalid_action_penalty is None:
+                parser.error(
+                    "--invalid-action-penalty is required for penalize invalid-action policies."
+                )
+            wrapped_env = InvalidActionPolicyEnv(
+                env=env,
+                policy=InvalidActionPolicy(
+                    mode=invalid_action_mode,
+                    penalty=args.invalid_action_penalty,
+                ),
+            )
         return run_play_session(
-            env=env,
+            env=wrapped_env,
             seed=args.seed,
             input_stream=sys.stdin,
             output_stream=sys.stdout,
@@ -207,6 +237,7 @@ def _write_observation(output_stream: TextIO, observation: Observation) -> None:
 
 def _write_step_result(output_stream: TextIO, step_result: StepResult) -> None:
     """Write a step result summary to the output stream."""
+    _write_line(output_stream, f"Accepted: {step_result.accepted}")
     move_uci = step_result.info.get("move_uci")
     move_san = step_result.info.get("move_san")
     if move_uci is not None:
@@ -228,6 +259,7 @@ def _write_trajectory(output_stream: TextIO, env: Environment[Any, Any]) -> None
             output_stream,
             (
                 f"{turn_index}. raw_action={step.raw_action!r} "
+                f"accepted={step.accepted} "
                 f"reward={step.reward} terminated={step.terminated} "
                 f"truncated={step.truncated} info={info_text}"
             ),
