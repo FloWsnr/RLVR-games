@@ -15,7 +15,6 @@ This is an environment-first RLVR framework. The game engine is the source of tr
 
 ## Required Coding Rules
 
-- For large changes, always use git worktrees to isolate different features or bug fixes into separate branches. This keeps the commit history clean and makes it easier to review changes. Remove the worktrees when the feature or fix is merged to avoid clutter.
 - Always! think about the optimal, cleanest way to implement a feature. Is the current code structure the best way to support this, or is there a more elegant design? Refactor if needed.
 - Don't account for backwards compatibility if you are doing code changes. This is a research codebase, not a production library.
 - Use pytest. Add focused tests for action parsing, illegal moves, reward logic, terminal and truncation behavior, renderer output, and trajectory recording. Prefer deterministic scenarios with explicit seeds.
@@ -24,6 +23,7 @@ This is an environment-first RLVR framework. The game engine is the source of tr
 - Avoid default or optional values in function signatures, if they are not strictly necessary. We want to be explicit about all parameters and not have any hidden state or behavior.
 - Do not use `from __future__ import annotations`. This is a Python 3.10+ codebase, and we want to keep type annotations straightforward without string literals.
 - Write numpy-style docstrings for all functions and classes, including parameters, return values, and raised errors when relevant.
+- If you worked in a git worktree, remove the worktree and git branch when the feature or fix is merged to avoid clutter.
 
 ## Build, Test, and Development Commands
 
