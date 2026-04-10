@@ -16,8 +16,12 @@ class TrajectoryStep(Generic[ActionT]):
     ----------
     raw_action : str
         Raw action string produced by the model.
-    action : ActionT
-        Parsed backend action derived from `raw_action`.
+    action : ActionT | None
+        Parsed backend action derived from `raw_action`, or `None` when the
+        verifier rejected the attempt before a canonical action could be
+        constructed.
+    accepted : bool
+        Whether the environment accepted the raw action and applied it.
     observation : Observation
         Observation returned after the transition.
     reward : float
@@ -31,7 +35,8 @@ class TrajectoryStep(Generic[ActionT]):
     """
 
     raw_action: str
-    action: ActionT
+    action: ActionT | None
+    accepted: bool
     observation: Observation
     reward: float
     terminated: bool

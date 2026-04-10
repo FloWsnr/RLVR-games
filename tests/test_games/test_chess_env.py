@@ -113,6 +113,7 @@ def test_checkmate_sequence_terminates_with_winner_metadata() -> None:
 
     assert final_result.terminated is True
     assert final_result.truncated is False
+    assert final_result.accepted is True
     assert final_result.info["move_san"] == "Qh4#"
     assert final_result.info["winner"] == "black"
     assert final_result.info["result"] == "0-1"
@@ -198,7 +199,10 @@ def test_chess_env_records_trajectory_with_real_backend() -> None:
     assert info["seed"] == 123
     assert STANDARD_START_FEN in (observation.text or "")
     assert result.reward == 0.0
+    assert result.accepted is True
     assert len(env.trajectory.steps) == 1
+    assert env.trajectory.steps[0].accepted is True
+    assert env.trajectory.steps[0].action is not None
     assert env.trajectory.steps[0].action.uci == "e2e4"
     assert env.trajectory.steps[0].info["move_san"] == "e4"
 

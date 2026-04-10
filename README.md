@@ -19,6 +19,14 @@ uv run rlvr-games play chess --seed 0 --renderer unicode
 Inside the session, enter raw UCI moves such as `e2e4`. The commands `help`,
 `legal`, `fen`, `trajectory`, and `quit` are also available.
 
+By default, invalid actions raise verifier errors without changing state. You
+can make them explicit rollout events instead:
+
+```bash
+uv run rlvr-games play chess --invalid-action-policy penalize-continue --invalid-action-penalty -1
+uv run rlvr-games play chess --invalid-action-policy penalize-truncate --invalid-action-penalty -1
+```
+
 ## Programmatic Rollouts
 
 Use the library in-process for training and evaluation loops:
@@ -40,6 +48,25 @@ env = make_chess_env(
     image_size=360,
     image_coordinates=True,
     image_orientation=ChessImageOrientation.WHITE,
+)
+```
+
+To make invalid actions explicit in training or evaluation loops, wrap the
+environment:
+
+```python
+from rlvr_games.core.wrappers import (
+    InvalidActionMode,
+    InvalidActionPolicy,
+    InvalidActionPolicyEnv,
+)
+
+wrapped_env = InvalidActionPolicyEnv(
+    env=env,
+    policy=InvalidActionPolicy(
+        mode=InvalidActionMode.PENALIZE_CONTINUE,
+        penalty=-1.0,
+    ),
 )
 ```
 

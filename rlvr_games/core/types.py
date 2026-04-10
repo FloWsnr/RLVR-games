@@ -55,6 +55,9 @@ class StepResult:
         Next model-facing observation after the action has been applied.
     reward : float
         Reward assigned to the transition by the configured reward function.
+    accepted : bool
+        Whether the raw action was accepted by the verifier and applied to the
+        canonical state.
     terminated : bool
         Whether the environment reached a natural terminal state according to
         the game rules.
@@ -67,6 +70,7 @@ class StepResult:
 
     observation: Observation
     reward: float
+    accepted: bool
     terminated: bool
     truncated: bool
     info: dict[str, Any] = field(default_factory=dict)

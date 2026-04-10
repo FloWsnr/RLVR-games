@@ -181,6 +181,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         result = StepResult(
             observation=observation,
             reward=reward,
+            accepted=True,
             terminated=terminated,
             truncated=truncated,
             info=info,
@@ -189,6 +190,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             TrajectoryStep(
                 raw_action=raw_action,
                 action=action,
+                accepted=True,
                 observation=observation,
                 reward=reward,
                 terminated=terminated,
