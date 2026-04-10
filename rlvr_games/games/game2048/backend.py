@@ -5,7 +5,12 @@ from random import Random
 from rlvr_games.core.exceptions import InvalidActionError
 from rlvr_games.core.types import ParseResult
 from rlvr_games.games.game2048.actions import Game2048Action, MoveDirection
-from rlvr_games.games.game2048.engine import MergeSummary, apply_move, spawn_random_tile
+from rlvr_games.games.game2048.engine import (
+    MergeSummary,
+    apply_move,
+    max_tile,
+    spawn_random_tile,
+)
 from rlvr_games.games.game2048.state import Game2048State
 
 _ACTION_ALIASES = {
@@ -125,17 +130,28 @@ class Game2048Backend:
                 f"2048 direction {action.label!r} does not change the current board."
             )
 
-        rng = Random()
-        rng.setstate(state.rng_state)
-        spawned_board, spawned_tile = spawn_random_tile(
-            board=move_summary.board, rng=rng
-        )
+        spawned_tile_metadata: dict[str, int] | None = None
+        next_board = move_summary.board
+        next_rng_state = state.rng_state
+        if max_tile(board=move_summary.board) < state.target_value:
+            rng = Random()
+            rng.setstate(state.rng_state)
+            next_board, spawned_tile = spawn_random_tile(
+                board=move_summary.board, rng=rng
+            )
+            next_rng_state = rng.getstate()
+            spawned_tile_metadata = {
+                "row": spawned_tile.row,
+                "col": spawned_tile.col,
+                "value": spawned_tile.value,
+            }
+
         next_state = Game2048State(
-            board=spawned_board,
+            board=next_board,
             score=state.score + move_summary.score_gain,
             move_count=state.move_count + 1,
             target_value=state.target_value,
-            rng_state=rng.getstate(),
+            rng_state=next_rng_state,
         )
 
         transition_info: dict[str, object] = {
@@ -144,11 +160,7 @@ class Game2048Backend:
             "score": next_state.score,
             "score_gain": move_summary.score_gain,
             "move_count": next_state.move_count,
-            "spawned_tile": {
-                "row": spawned_tile.row,
-                "col": spawned_tile.col,
-                "value": spawned_tile.value,
-            },
+            "spawned_tile": spawned_tile_metadata,
             "merge_count": len(move_summary.merges),
             "merges": tuple(
                 _merge_metadata(merge=merge) for merge in move_summary.merges

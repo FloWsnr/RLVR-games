@@ -145,28 +145,29 @@ class Game2048State:
         if target_value < 2 or not is_power_of_two(target_value):
             raise ValueError("2048 target_value must be a power of two >= 2.")
 
-        current_legal_actions = legal_action_labels(board=normalized_board)
         current_max_tile = max_tile(board=normalized_board)
         current_empty_cell_count = len(empty_positions(board=normalized_board))
-
         if current_max_tile >= target_value:
+            current_legal_actions = ()
             outcome = Game2048Outcome(
                 is_terminal=True,
                 won=True,
                 termination="target_tile",
             )
-        elif not current_legal_actions:
-            outcome = Game2048Outcome(
-                is_terminal=True,
-                won=False,
-                termination="no_moves",
-            )
         else:
-            outcome = Game2048Outcome(
-                is_terminal=False,
-                won=False,
-                termination=None,
-            )
+            current_legal_actions = legal_action_labels(board=normalized_board)
+            if not current_legal_actions:
+                outcome = Game2048Outcome(
+                    is_terminal=True,
+                    won=False,
+                    termination="no_moves",
+                )
+            else:
+                outcome = Game2048Outcome(
+                    is_terminal=False,
+                    won=False,
+                    termination=None,
+                )
 
         object.__setattr__(self, "board", normalized_board)
         object.__setattr__(self, "score", score)

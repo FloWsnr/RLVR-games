@@ -1,6 +1,7 @@
 """Pure board mechanics for 2048."""
 
 from dataclasses import dataclass
+from functools import lru_cache
 from random import Random
 from typing import Sequence
 
@@ -161,6 +162,25 @@ class SpawnSummary:
 
 
 @dataclass(slots=True, frozen=True)
+class SpawnOutcome:
+    """One explicit random-tile outcome for a post-move 2048 board.
+
+    Attributes
+    ----------
+    board : Board
+        Board after inserting the sampled tile.
+    spawned_tile : SpawnSummary
+        Structured description of the inserted tile.
+    probability : float
+        Probability mass of this exact spawn event under standard 2048 rules.
+    """
+
+    board: Board
+    spawned_tile: SpawnSummary
+    probability: float
+
+
+@dataclass(slots=True, frozen=True)
 class MoveSummary:
     """Pure move result before the post-move random tile spawn.
 
@@ -189,6 +209,47 @@ class _CollapsedLine:
     values: tuple[int, ...]
     score_gain: int
     merges: tuple[MergeSummary, ...]
+
+
+@dataclass(slots=True, frozen=True)
+class _IndexedMerge:
+    """Internal merge descriptor keyed by source and destination indices.
+
+    Attributes
+    ----------
+    target_index : int
+        Destination index within the traversal line after collapse.
+    left_index : int
+        Original line index of the first source tile.
+    right_index : int
+        Original line index of the second source tile.
+    value : int
+        Value of the merged destination tile.
+    """
+
+    target_index: int
+    left_index: int
+    right_index: int
+    value: int
+
+
+@dataclass(slots=True, frozen=True)
+class _CollapsedValues:
+    """Internal cached collapse result independent of board coordinates.
+
+    Attributes
+    ----------
+    values : tuple[int, ...]
+        Collapsed line values in traversal order.
+    score_gain : int
+        Score gained by merges in the line.
+    merges : tuple[_IndexedMerge, ...]
+        Merge descriptors keyed by indices into the original line.
+    """
+
+    values: tuple[int, ...]
+    score_gain: int
+    merges: tuple[_IndexedMerge, ...]
 
 
 def apply_move(*, board: Board, direction: MoveDirection) -> MoveSummary:
@@ -279,15 +340,61 @@ def spawn_random_tile(*, board: Board, rng: Random) -> tuple[Board, SpawnSummary
     row_index, column_index = available_positions[
         rng.randrange(len(available_positions))
     ]
-
-    mutable_rows = [list(row) for row in board]
-    mutable_rows[row_index][column_index] = value
-    next_board = tuple(tuple(row) for row in mutable_rows)
+    next_board = _board_with_tile(
+        board=board,
+        row_index=row_index,
+        column_index=column_index,
+        value=value,
+    )
     return next_board, SpawnSummary(
         row=row_index,
         col=column_index,
         value=value,
     )
+
+
+def spawn_outcomes(*, board: Board) -> tuple[SpawnOutcome, ...]:
+    """Enumerate all legal random-tile outcomes for a post-move board.
+
+    Parameters
+    ----------
+    board : Board
+        Board to analyze for the next random tile spawn.
+
+    Returns
+    -------
+    tuple[SpawnOutcome, ...]
+        Explicit spawn outcomes with their exact probabilities. Returns an
+        empty tuple when the board has no empty cells.
+    """
+    available_positions = empty_positions(board=board)
+    if not available_positions:
+        return ()
+
+    empty_cell_count = len(available_positions)
+    outcomes: list[SpawnOutcome] = []
+    for row_index, column_index in available_positions:
+        for value, probability in (
+            (2, 0.9 / empty_cell_count),
+            (4, 0.1 / empty_cell_count),
+        ):
+            outcomes.append(
+                SpawnOutcome(
+                    board=_board_with_tile(
+                        board=board,
+                        row_index=row_index,
+                        column_index=column_index,
+                        value=value,
+                    ),
+                    spawned_tile=SpawnSummary(
+                        row=row_index,
+                        col=column_index,
+                        value=value,
+                    ),
+                    probability=probability,
+                )
+            )
+    return tuple(outcomes)
 
 
 def max_tile(*, board: Board) -> int:
@@ -357,33 +464,94 @@ def _collapse_line(
     _CollapsedLine
         Collapsed line values, score gain, and merge metadata.
     """
-    non_zero_tiles = [
-        (value, position)
-        for value, position in zip(values, positions, strict=True)
-        if value != 0
-    ]
+    collapsed_values = _collapse_values(values=values)
+    merges = tuple(
+        MergeSummary(
+            row=positions[merge.target_index][0],
+            col=positions[merge.target_index][1],
+            value=merge.value,
+            sources=(
+                positions[merge.left_index],
+                positions[merge.right_index],
+            ),
+        )
+        for merge in collapsed_values.merges
+    )
+    return _CollapsedLine(
+        values=collapsed_values.values,
+        score_gain=collapsed_values.score_gain,
+        merges=merges,
+    )
+
+
+def _board_with_tile(
+    *,
+    board: Board,
+    row_index: int,
+    column_index: int,
+    value: int,
+) -> Board:
+    """Return a copy of a board with one tile value written in-place.
+
+    Parameters
+    ----------
+    board : Board
+        Source board to copy.
+    row_index : int
+        Zero-based row index to update.
+    column_index : int
+        Zero-based column index to update.
+    value : int
+        Tile value to write.
+
+    Returns
+    -------
+    Board
+        Copied board with the supplied tile inserted.
+    """
+    mutable_rows = [list(row) for row in board]
+    mutable_rows[row_index][column_index] = value
+    return tuple(tuple(row) for row in mutable_rows)
+
+
+@lru_cache(maxsize=4096)
+def _collapse_values(*, values: tuple[int, ...]) -> _CollapsedValues:
+    """Collapse a traversal line without referring to board coordinates.
+
+    Parameters
+    ----------
+    values : tuple[int, ...]
+        Tile values ordered in the direction of travel.
+
+    Returns
+    -------
+    _CollapsedValues
+        Cached collapsed line values, score gain, and indexed merge metadata.
+    """
+    non_zero_indices = tuple(index for index, value in enumerate(values) if value != 0)
     collapsed_values: list[int] = []
-    merges: list[MergeSummary] = []
+    merges: list[_IndexedMerge] = []
     score_gain = 0
     tile_index = 0
 
-    while tile_index < len(non_zero_tiles):
-        value, position = non_zero_tiles[tile_index]
-        target_position = positions[len(collapsed_values)]
+    while tile_index < len(non_zero_indices):
+        source_index = non_zero_indices[tile_index]
+        value = values[source_index]
+        target_index = len(collapsed_values)
         if (
-            tile_index + 1 < len(non_zero_tiles)
-            and non_zero_tiles[tile_index + 1][0] == value
+            tile_index + 1 < len(non_zero_indices)
+            and values[non_zero_indices[tile_index + 1]] == value
         ):
-            next_position = non_zero_tiles[tile_index + 1][1]
+            next_source_index = non_zero_indices[tile_index + 1]
             merged_value = value * 2
             collapsed_values.append(merged_value)
             score_gain += merged_value
             merges.append(
-                MergeSummary(
-                    row=target_position[0],
-                    col=target_position[1],
+                _IndexedMerge(
+                    target_index=target_index,
+                    left_index=source_index,
+                    right_index=next_source_index,
                     value=merged_value,
-                    sources=(position, next_position),
                 )
             )
             tile_index += 2
@@ -395,7 +563,7 @@ def _collapse_line(
     padded_values = tuple(
         collapsed_values + [0] * (len(values) - len(collapsed_values))
     )
-    return _CollapsedLine(
+    return _CollapsedValues(
         values=padded_values,
         score_gain=score_gain,
         merges=tuple(merges),

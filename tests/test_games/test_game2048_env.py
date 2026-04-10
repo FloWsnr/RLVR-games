@@ -17,7 +17,10 @@ from rlvr_games.games.game2048 import (
     Game2048State,
     RandomStartScenario,
     ScoreDeltaReward,
+    spawn_outcomes,
 )
+from rlvr_games.games.game2048.actions import MoveDirection
+from rlvr_games.games.game2048.engine import apply_move
 
 MERGE_BOARD = (
     (2, 2, 2, 2),
@@ -126,6 +129,20 @@ def test_legal_actions_exclude_noop_directions() -> None:
     assert legal_actions == ["right", "down"]
 
 
+def test_target_tile_terminal_state_has_no_legal_actions() -> None:
+    state = Game2048State(
+        board=((2048, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0)),
+        score=2048,
+        move_count=1,
+        target_value=2048,
+        rng_state=Random(0).getstate(),
+    )
+
+    assert state.is_terminal is True
+    assert state.legal_actions == ()
+    assert state.legal_action_count == 0
+
+
 @pytest.mark.parametrize("raw_action", ["", "north", "up"])
 def test_parse_action_rejects_invalid_or_illegal_directions(raw_action: str) -> None:
     backend = Game2048Backend()
@@ -173,6 +190,42 @@ def test_apply_action_merges_pairs_once_and_records_spawn_metadata() -> None:
     )
 
 
+def test_apply_move_matches_open_spiel_three_tiles_downward_case() -> None:
+    board = (
+        (0, 0, 0, 0),
+        (2, 0, 0, 0),
+        (2, 0, 0, 0),
+        (2, 0, 0, 0),
+    )
+
+    move_summary = apply_move(board=board, direction=MoveDirection.DOWN)
+
+    assert move_summary.board == (
+        (0, 0, 0, 0),
+        (0, 0, 0, 0),
+        (2, 0, 0, 0),
+        (4, 0, 0, 0),
+    )
+
+
+def test_apply_move_matches_open_spiel_one_merge_per_turn_case() -> None:
+    board = (
+        (2, 4, 0, 4),
+        (0, 2, 0, 2),
+        (0, 0, 0, 0),
+        (0, 2, 0, 0),
+    )
+
+    move_summary = apply_move(board=board, direction=MoveDirection.DOWN)
+
+    assert move_summary.board == (
+        (0, 0, 0, 0),
+        (0, 0, 0, 0),
+        (0, 4, 0, 4),
+        (2, 4, 0, 2),
+    )
+
+
 def test_reaching_target_tile_terminates_with_reward_and_metadata() -> None:
     env = Game2048Env(
         backend=Game2048Backend(),
@@ -194,9 +247,18 @@ def test_reaching_target_tile_terminates_with_reward_and_metadata() -> None:
     assert result.reward == 2048.0
     assert result.terminated is True
     assert result.truncated is False
+    assert result.info["spawned_tile"] is None
     assert result.info["termination"] == "target_tile"
     assert result.info["won"] is True
+    assert env.state.board == (
+        (2048, 0, 0, 0),
+        (0, 0, 0, 0),
+        (0, 0, 0, 0),
+        (0, 0, 0, 0),
+    )
+    assert env.state.legal_actions == ()
     assert result.observation.metadata["is_terminal"] is True
+    assert result.observation.metadata["legal_action_count"] == 0
     assert result.observation.metadata["won"] is True
 
 
@@ -306,3 +368,55 @@ def test_image_renderer_is_deterministic_for_the_same_position() -> None:
 
     assert second_render.key == first_render.key
     assert second_render.image.tobytes() == first_render.image.tobytes()
+
+
+def test_spawn_outcomes_cover_all_empty_cells_with_probabilities() -> None:
+    board = (
+        (2, 4, 8, 16),
+        (32, 64, 128, 256),
+        (512, 1024, 0, 4096),
+        (8192, 16384, 0, 32768),
+    )
+
+    outcomes = spawn_outcomes(board=board)
+
+    assert len(outcomes) == 4
+    assert sum(outcome.probability for outcome in outcomes) == pytest.approx(1.0)
+    assert {
+        (outcome.spawned_tile.row, outcome.spawned_tile.col) for outcome in outcomes
+    } == {
+        (2, 2),
+        (3, 2),
+    }
+    probability_by_tile = {
+        (
+            outcome.spawned_tile.row,
+            outcome.spawned_tile.col,
+            outcome.spawned_tile.value,
+        ): outcome.probability
+        for outcome in outcomes
+    }
+    assert probability_by_tile[(2, 2, 2)] == pytest.approx(0.45)
+    assert probability_by_tile[(2, 2, 4)] == pytest.approx(0.05)
+    assert probability_by_tile[(3, 2, 2)] == pytest.approx(0.45)
+    assert probability_by_tile[(3, 2, 4)] == pytest.approx(0.05)
+
+
+def test_image_renderer_supports_large_tile_labels() -> None:
+    renderer = Game2048ObservationRenderer(
+        board_formatter=Game2048AsciiBoardFormatter(),
+        image_renderer=Game2048ImageRenderer(size=360),
+    )
+
+    observation = renderer.render(
+        Game2048State(
+            board=((131072, 0, 0, 0), (0, 65536, 0, 0), (0, 0, 32768, 0), (0, 0, 0, 0)),
+            score=0,
+            move_count=0,
+            target_value=262144,
+            rng_state=Random(0).getstate(),
+        )
+    )
+
+    assert len(observation.images) == 1
+    assert observation.images[0].image.size == (360, 360)

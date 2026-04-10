@@ -10,7 +10,9 @@ from rlvr_games.games.game2048.engine import (
     Board,
     MergeSummary,
     MoveSummary,
+    SpawnOutcome,
     SpawnSummary,
+    spawn_outcomes,
 )
 from rlvr_games.games.game2048.env import Game2048Env
 from rlvr_games.games.game2048.factory import make_game2048_env
@@ -47,10 +49,12 @@ __all__ = [
     "MoveSummary",
     "RandomStartScenario",
     "ScoreDeltaReward",
+    "SpawnOutcome",
     "SpawnSummary",
     "STANDARD_2048_SIZE",
     "STANDARD_2048_TARGET",
     "STANDARD_START_TILE_COUNT",
     "make_game2048_env",
     "normalize_initial_board",
+    "spawn_outcomes",
 ]

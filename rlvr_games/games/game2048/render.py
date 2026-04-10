@@ -146,6 +146,17 @@ class Game2048ImageRenderer:
         """
         return "DejaVuSans-Bold.ttf"
 
+    @cached_property
+    def _font_cache(self) -> dict[tuple[int, str], ImageFont.FreeTypeFont]:
+        """Return the in-memory cache of tile fonts by size and rendered text.
+
+        Returns
+        -------
+        dict[tuple[int, str], ImageFont.FreeTypeFont]
+            Mutable cache populated on demand during rendering.
+        """
+        return {}
+
     def _tile_size(self, *, board_size: int) -> int:
         """Return the pixel size of one tile for a board dimension.
 
@@ -222,8 +233,8 @@ class Game2048ImageRenderer:
         tile_size : int
             Width and height of the tile rectangle.
         """
-        font = self._value_font(value=value, tile_size=tile_size)
         text = str(value)
+        font = self._value_font(draw=draw, text=text, tile_size=tile_size)
         text_bbox = draw.textbbox((0, 0), text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
@@ -236,31 +247,50 @@ class Game2048ImageRenderer:
             fill=self._tile_text_color(value=value),
         )
 
-    def _value_font(self, *, value: int, tile_size: int) -> ImageFont.FreeTypeFont:
-        """Return a value-sized font for one tile.
+    def _value_font(
+        self,
+        *,
+        draw: ImageDraw.ImageDraw,
+        text: str,
+        tile_size: int,
+    ) -> ImageFont.FreeTypeFont:
+        """Return a cached font sized to fit one tile label.
 
         Parameters
         ----------
-        value : int
-            Tile value whose number of digits should drive the font size.
+        draw : ImageDraw.ImageDraw
+            Drawing context used to measure text bounds.
+        text : str
+            Tile label to size.
         tile_size : int
             Pixel width and height of the tile rectangle.
 
         Returns
         -------
         ImageFont.FreeTypeFont
-            Loaded font sized for the tile.
+            Loaded font sized for the tile label.
         """
-        digit_count = len(str(value))
-        scale = 0.5
-        if digit_count >= 4:
-            scale = 0.38
-        if digit_count >= 5:
-            scale = 0.32
-        return ImageFont.truetype(
-            self._dark_text_font,
-            max(14, int(tile_size * scale)),
-        )
+        cache_key = (tile_size, text)
+        cached_font = self._font_cache.get(cache_key)
+        if cached_font is not None:
+            return cached_font
+
+        font_size = max(14, int(tile_size * 0.5))
+        minimum_font_size = 14
+        max_text_span = tile_size - (2 * max(6, tile_size // 12))
+
+        while True:
+            font = ImageFont.truetype(self._dark_text_font, font_size)
+            text_bbox = draw.textbbox((0, 0), text, font=font)
+            text_width = text_bbox[2] - text_bbox[0]
+            text_height = text_bbox[3] - text_bbox[1]
+            if (
+                text_width <= max_text_span and text_height <= max_text_span
+            ) or font_size == minimum_font_size:
+                self._font_cache[cache_key] = font
+                return font
+
+            font_size = max(minimum_font_size, font_size - 2)
 
 
 class Game2048ObservationRenderer:
