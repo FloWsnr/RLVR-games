@@ -3,7 +3,7 @@ name: commit
 description: This skill should be used when the user asks to "commit", "commit changes", "make a commit", "git commit", or wants to save their work to git. Invoked via /commit.
 ---
 
-## Commit/Merge Workflow
+## Commit Workflow
 
 Commit only the changes made during the current session unless the user explicitly asks to commit other changes. Follow these steps:
 
