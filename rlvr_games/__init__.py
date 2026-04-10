@@ -7,6 +7,7 @@ from rlvr_games.core.types import (
     InvalidActionMode,
     InvalidActionPolicy,
     Observation,
+    ParseResult,
     StepResult,
 )
 
@@ -15,6 +16,7 @@ __all__ = [
     "InvalidActionMode",
     "InvalidActionPolicy",
     "Observation",
+    "ParseResult",
     "StepResult",
     "TurnBasedEnv",
     "run_episode",

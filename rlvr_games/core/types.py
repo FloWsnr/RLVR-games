@@ -3,7 +3,53 @@
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Generic, TypeVar
+
+ActionT = TypeVar("ActionT")
+
+
+@dataclass(slots=True)
+class ParseResult(Generic[ActionT]):
+    """Structured outcome of parsing a raw model action.
+
+    Attributes
+    ----------
+    action : ActionT | None
+        Canonical parsed action when parsing succeeds.
+    error : str | None
+        Rejection message when parsing fails for the current state.
+    """
+
+    action: ActionT | None
+    error: str | None
+
+    def __post_init__(self) -> None:
+        """Validate that the parse result is either accepted or rejected.
+
+        Raises
+        ------
+        ValueError
+            If both `action` and `error` are populated or both are missing.
+        """
+        if (self.action is None) == (self.error is None):
+            raise ValueError("ParseResult requires exactly one of action or error.")
+
+    def require_action(self) -> ActionT:
+        """Return the parsed action or fail for rejected results.
+
+        Returns
+        -------
+        ActionT
+            Parsed backend action.
+
+        Raises
+        ------
+        ValueError
+            If called on a rejected parse result.
+        """
+        if self.action is None:
+            raise ValueError("Rejected parse results do not contain an action.")
+        return self.action
 
 
 @dataclass(slots=True)

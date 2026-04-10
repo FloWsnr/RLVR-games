@@ -5,7 +5,6 @@ from pathlib import Path
 import chess
 import pytest
 
-from rlvr_games.core.exceptions import InvalidActionError
 from rlvr_games.core.rewards import ZeroReward
 from rlvr_games.core.types import EpisodeConfig
 from rlvr_games.games.chess import (
@@ -52,7 +51,7 @@ def test_apply_action_updates_state_and_transition_info() -> None:
     backend = ChessBackend()
     state = ChessState(fen=STANDARD_START_FEN)
 
-    action = backend.parse_action(state, "e2e4")
+    action = backend.parse_action(state, "e2e4").require_action()
     next_state, info = backend.apply_action(state, action)
 
     assert action.uci == "e2e4"
@@ -76,18 +75,21 @@ def test_parse_action_rejects_invalid_or_illegal_uci(raw_action: str) -> None:
     backend = ChessBackend()
     state = ChessState(fen=STANDARD_START_FEN)
 
-    with pytest.raises(InvalidActionError):
-        backend.parse_action(state, raw_action)
+    parse_result = backend.parse_action(state, raw_action)
+
+    assert parse_result.action is None
+    assert parse_result.error is not None
 
 
 def test_promotion_requires_suffix_and_applies_correctly() -> None:
     backend = ChessBackend()
     state = ChessState(fen=PROMOTION_FEN)
 
-    with pytest.raises(InvalidActionError):
-        backend.parse_action(state, "e7e8")
+    rejected = backend.parse_action(state, "e7e8")
+    assert rejected.action is None
+    assert rejected.error is not None
 
-    action = backend.parse_action(state, "e7e8q")
+    action = backend.parse_action(state, "e7e8q").require_action()
     next_state, info = backend.apply_action(state, action)
 
     assert next_state.fen == "k3Q3/8/8/8/8/8/8/7K b - - 0 1"

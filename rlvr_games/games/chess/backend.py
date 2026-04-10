@@ -5,6 +5,7 @@ from typing import Any
 import chess
 
 from rlvr_games.core.exceptions import InvalidActionError
+from rlvr_games.core.types import ParseResult
 from rlvr_games.games.chess.actions import ChessAction
 from rlvr_games.games.chess.state import (
     ChessState,
@@ -87,7 +88,9 @@ class ChessBackend:
             "termination": outcome.termination.name.lower(),
         }
 
-    def parse_action(self, state: ChessState, raw_action: str) -> ChessAction:
+    def parse_action(
+        self, state: ChessState, raw_action: str
+    ) -> ParseResult[ChessAction]:
         """Parse and validate a raw model action as a legal chess move.
 
         Parameters
@@ -99,26 +102,28 @@ class ChessBackend:
 
         Returns
         -------
-        ChessAction
-            Canonical action wrapping the normalized legal UCI move.
-
-        Raises
-        ------
-        InvalidActionError
-            If the action is empty, malformed, or illegal in the current
-            position.
+        ParseResult[ChessAction]
+            Structured parse result containing either a normalized legal move
+            or an explicit rejection message for the current position.
         """
         move_text = raw_action.strip().lower()
         if not move_text:
-            raise InvalidActionError("Chess actions must be a non-empty move string.")
+            return ParseResult(
+                action=None,
+                error="Chess actions must be a non-empty move string.",
+            )
         board = self._board_from_state(state)
         try:
             move = board.parse_uci(move_text)
-        except ValueError as exc:
-            raise InvalidActionError(
-                f"Chess actions must be legal UCI moves for the current position: {raw_action!r}."
-            ) from exc
-        return ChessAction(uci=move.uci())
+        except ValueError:
+            return ParseResult(
+                action=None,
+                error=(
+                    "Chess actions must be legal UCI moves for the current "
+                    f"position: {raw_action!r}."
+                ),
+            )
+        return ParseResult(action=ChessAction(uci=move.uci()), error=None)
 
     def legal_actions(self, state: ChessState) -> list[str]:
         """Enumerate legal model-facing actions for the current position.

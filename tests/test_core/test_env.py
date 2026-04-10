@@ -6,12 +6,13 @@ from typing import Any
 import pytest
 
 from rlvr_games.core.env import TurnBasedEnv
-from rlvr_games.core.exceptions import EnvironmentNotResetError, InvalidActionError
+from rlvr_games.core.exceptions import EnvironmentNotResetError
 from rlvr_games.core.types import (
     EpisodeConfig,
     InvalidActionMode,
     InvalidActionPolicy,
     Observation,
+    ParseResult,
 )
 
 
@@ -36,11 +37,13 @@ class CounterRenderer:
 
 
 class CounterBackend:
-    def parse_action(self, state: CounterState, raw_action: str) -> CounterAction:
+    def parse_action(
+        self, state: CounterState, raw_action: str
+    ) -> ParseResult[CounterAction]:
         del state
         if raw_action == "bad":
-            raise InvalidActionError("bad action")
-        return CounterAction(delta=int(raw_action))
+            return ParseResult(action=None, error="bad action")
+        return ParseResult(action=CounterAction(delta=int(raw_action)), error=None)
 
     def legal_actions(self, state: CounterState) -> list[str]:
         return ["1"]

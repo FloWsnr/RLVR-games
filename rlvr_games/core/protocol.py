@@ -4,8 +4,7 @@ from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
 from rlvr_games.core.trajectory import EpisodeTrajectory
-from rlvr_games.core.types import Observation
-from rlvr_games.core.types import StepResult
+from rlvr_games.core.types import Observation, ParseResult, StepResult
 
 StateT = TypeVar("StateT")
 ActionT = TypeVar("ActionT")
@@ -25,8 +24,8 @@ class GameBackend(Protocol[StateT, ActionT]):
     from executable rules.
     """
 
-    def parse_action(self, state: StateT, raw_action: str) -> ActionT:
-        """Parse model output into a backend action object.
+    def parse_action(self, state: StateT, raw_action: str) -> ParseResult[ActionT]:
+        """Parse model output into a backend action result.
 
         Parameters
         ----------
@@ -37,8 +36,9 @@ class GameBackend(Protocol[StateT, ActionT]):
 
         Returns
         -------
-        ActionT
-            Parsed action in the backend's canonical action type.
+        ParseResult[ActionT]
+            Structured parse result containing either a canonical action or an
+            explicit rejection message for the current state.
         """
         ...
 

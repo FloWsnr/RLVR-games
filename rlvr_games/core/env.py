@@ -1,5 +1,6 @@
 """Canonical environment implementation for turn-based RLVR tasks."""
 
+from dataclasses import dataclass
 from typing import Generic, TypeVar
 
 from rlvr_games.core.exceptions import (
@@ -13,11 +14,26 @@ from rlvr_games.core.types import (
     EpisodeConfig,
     InvalidActionMode,
     Observation,
+    ParseResult,
     StepResult,
 )
 
 StateT = TypeVar("StateT")
 ActionT = TypeVar("ActionT")
+
+
+@dataclass(slots=True)
+class _AttemptOutcome(Generic[StateT, ActionT]):
+    """Internal normalized outcome for one attempted environment step."""
+
+    action: ActionT | None
+    next_state: StateT
+    observation: Observation
+    reward: float
+    accepted: bool
+    terminated: bool
+    truncated: bool
+    info: dict[str, object]
 
 
 class TurnBasedEnv(Generic[StateT, ActionT]):
@@ -164,10 +180,14 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             )
 
         previous_state = self.state
-        try:
-            action = self.backend.parse_action(previous_state, raw_action)
-        except InvalidActionError as exc:
-            return self._handle_invalid_action(previous_state, raw_action, exc)
+        parse_result = self.backend.parse_action(previous_state, raw_action)
+        if parse_result.error is not None:
+            return self._handle_invalid_action(
+                previous_state=previous_state,
+                raw_action=raw_action,
+                parse_result=parse_result,
+            )
+        action = parse_result.require_action()
 
         self._attempt_count += 1
         next_state, transition_info = self.backend.apply_action(previous_state, action)
@@ -191,11 +211,10 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             truncated = True
             info.setdefault("truncated_reason", truncated_reason)
 
-        self._episode_finished = terminated or truncated
-        self._state = next_state
         observation = self.renderer.render(next_state)
-
-        result = StepResult(
+        outcome = _AttemptOutcome(
+            action=action,
+            next_state=next_state,
             observation=observation,
             reward=reward,
             accepted=True,
@@ -203,27 +222,25 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             truncated=truncated,
             info=info,
         )
-        self.trajectory.steps.append(
-            TrajectoryStep(
-                raw_action=raw_action,
-                action=action,
-                accepted=True,
-                observation=observation,
-                reward=reward,
-                terminated=terminated,
-                truncated=truncated,
-                info=info,
-            )
-        )
-        return result
+        return self._commit_attempt(raw_action=raw_action, outcome=outcome)
 
     def _handle_invalid_action(
-        self, previous_state: StateT, raw_action: str, error: InvalidActionError
+        self,
+        *,
+        previous_state: StateT,
+        raw_action: str,
+        parse_result: ParseResult[ActionT],
     ) -> StepResult:
         """Handle a verifier-rejected action according to env policy."""
+        error = parse_result.error
+        if error is None:
+            raise ValueError(
+                "_handle_invalid_action() requires a rejected parse result."
+            )
+
         policy = self.config.invalid_action_policy
         if policy.mode == InvalidActionMode.RAISE:
-            raise error
+            raise InvalidActionError(error)
 
         penalty = policy.penalty
         if penalty is None:
@@ -236,7 +253,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         info: dict[str, object] = {
             "accepted": False,
             "attempt_count": self._attempt_count,
-            "error": str(error),
+            "error": error,
             "invalid_action": True,
             "invalid_action_policy": policy.mode.value,
             "raw_action": raw_action,
@@ -250,8 +267,9 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             truncated = True
             info["truncated_reason"] = limit_truncated_reason
 
-        self._episode_finished = truncated
-        result = StepResult(
+        outcome = _AttemptOutcome(
+            action=None,
+            next_state=previous_state,
             observation=observation,
             reward=penalty,
             accepted=False,
@@ -259,19 +277,38 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             truncated=truncated,
             info=info,
         )
+        return self._commit_attempt(raw_action=raw_action, outcome=outcome)
+
+    def _commit_attempt(
+        self,
+        *,
+        raw_action: str,
+        outcome: _AttemptOutcome[StateT, ActionT],
+    ) -> StepResult:
+        """Persist one normalized attempt outcome and return the step result."""
+        self._episode_finished = outcome.terminated or outcome.truncated
+        self._state = outcome.next_state
+
         self.trajectory.steps.append(
             TrajectoryStep(
                 raw_action=raw_action,
-                action=None,
-                accepted=False,
-                observation=observation,
-                reward=penalty,
-                terminated=terminated,
-                truncated=truncated,
-                info=info,
+                action=outcome.action,
+                accepted=outcome.accepted,
+                observation=outcome.observation,
+                reward=outcome.reward,
+                terminated=outcome.terminated,
+                truncated=outcome.truncated,
+                info=outcome.info,
             )
         )
-        return result
+        return StepResult(
+            observation=outcome.observation,
+            reward=outcome.reward,
+            accepted=outcome.accepted,
+            terminated=outcome.terminated,
+            truncated=outcome.truncated,
+            info=outcome.info,
+        )
 
     def _limit_truncated_reason(self, *, terminated: bool) -> str | None:
         """Return the truncation reason implied by configured episode limits."""
