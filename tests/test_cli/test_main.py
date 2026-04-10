@@ -11,8 +11,8 @@ from rlvr_games.core import (
     InvalidActionPolicyEnv,
 )
 from rlvr_games.games.chess import (
+    ChessBoardOrientation,
     ChessEnv,
-    ChessImageOrientation,
     ChessTextRendererKind,
     make_chess_env,
 )
@@ -34,7 +34,7 @@ def make_env() -> ChessEnv:
         image_output_dir=None,
         image_size=360,
         image_coordinates=True,
-        image_orientation=ChessImageOrientation.WHITE,
+        orientation=ChessBoardOrientation.WHITE,
     )
 
 
@@ -119,6 +119,23 @@ def test_run_cli_can_start_and_exit_a_chess_play_session(
     assert exit_code == 0
     assert "Chess board:" in output
     assert "Session ended." in output
+
+
+def test_run_cli_can_use_black_board_orientation(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """CLI orientation controls the rendered text board perspective."""
+    input_stream = StringIO("quit\n")
+    output_stream = StringIO()
+    monkeypatch.setattr(sys, "stdin", input_stream)
+    monkeypatch.setattr(sys, "stdout", output_stream)
+
+    exit_code = run_cli(["play", "chess", "--seed", "5", "--orientation", "black"])
+
+    output = output_stream.getvalue()
+    assert exit_code == 0
+    assert "1 R N B K Q B N R" in output
+    assert "  h g f e d c b a" in output
 
 
 def test_run_cli_can_use_penalize_truncate_invalid_action_policy(

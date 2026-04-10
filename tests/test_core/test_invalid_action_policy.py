@@ -13,7 +13,7 @@ from rlvr_games.core.types import Observation
 from rlvr_games.core.rollout import ActionContext, run_episode
 from rlvr_games.games.chess import (
     ChessAction,
-    ChessImageOrientation,
+    ChessBoardOrientation,
     ChessState,
     ChessTextRendererKind,
     make_chess_env,
@@ -61,7 +61,7 @@ def make_env_with_invalid_action_policy(
         image_output_dir=None,
         image_size=360,
         image_coordinates=True,
-        image_orientation=ChessImageOrientation.WHITE,
+        orientation=ChessBoardOrientation.WHITE,
     )
     return InvalidActionPolicyEnv(
         env=env,

@@ -25,8 +25,8 @@ class ChessTextRendererKind(StrEnum):
     UNICODE = "unicode"
 
 
-class ChessImageOrientation(StrEnum):
-    """Board orientations supported by raster chess image rendering."""
+class ChessBoardOrientation(StrEnum):
+    """Board orientations supported by chess observation rendering."""
 
     WHITE = "white"
     BLACK = "black"
@@ -40,7 +40,7 @@ def make_chess_env(
     image_output_dir: Path | None,
     image_size: int,
     image_coordinates: bool,
-    image_orientation: ChessImageOrientation,
+    orientation: ChessBoardOrientation,
 ) -> ChessEnv:
     """Construct a fully wired chess environment.
 
@@ -62,9 +62,8 @@ def make_chess_env(
     image_coordinates : bool
         Whether raster image renders should include rank/file coordinates.
         Ignored when `image_output_dir` is `None`.
-    image_orientation : ChessImageOrientation
-        Side to place at the bottom of raster image renders. Ignored when
-        `image_output_dir` is `None`.
+    orientation : ChessBoardOrientation
+        Side to place at the bottom of text and raster board renders.
 
     Returns
     -------
@@ -72,22 +71,23 @@ def make_chess_env(
         Chess environment wired with the standard backend, scenario, renderer,
         and zero reward function.
     """
+    chess_orientation: chess.Color = chess.WHITE
+    if orientation == ChessBoardOrientation.BLACK:
+        chess_orientation = chess.BLACK
+
     board_formatter: AsciiBoardFormatter | UnicodeBoardFormatter
-    board_formatter = AsciiBoardFormatter()
+    board_formatter = AsciiBoardFormatter(orientation=chess_orientation)
     if text_renderer_kind == ChessTextRendererKind.UNICODE:
-        board_formatter = UnicodeBoardFormatter()
+        board_formatter = UnicodeBoardFormatter(orientation=chess_orientation)
 
     image_renderer: ChessRasterBoardImageRenderer | None
     image_renderer = None
     if image_output_dir is not None:
-        orientation = chess.WHITE
-        if image_orientation == ChessImageOrientation.BLACK:
-            orientation = chess.BLACK
         image_renderer = ChessRasterBoardImageRenderer(
             output_dir=image_output_dir,
             size=image_size,
             coordinates=image_coordinates,
-            orientation=orientation,
+            orientation=chess_orientation,
         )
 
     return ChessEnv(

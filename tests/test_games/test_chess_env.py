@@ -25,7 +25,7 @@ PROMOTION_FEN = "k7/4P3/8/8/8/8/8/7K w - - 0 1"
 
 def make_renderer() -> ChessObservationRenderer:
     return ChessObservationRenderer(
-        board_formatter=AsciiBoardFormatter(),
+        board_formatter=AsciiBoardFormatter(orientation=chess.WHITE),
         image_renderer=None,
     )
 
@@ -209,7 +209,7 @@ def test_chess_env_records_trajectory_with_real_backend() -> None:
 
 def test_observation_renderer_can_emit_text_and_image_paths() -> None:
     renderer = ChessObservationRenderer(
-        board_formatter=AsciiBoardFormatter(),
+        board_formatter=AsciiBoardFormatter(orientation=chess.WHITE),
         image_renderer=StubChessImageRenderer(),
     )
 
@@ -222,7 +222,7 @@ def test_observation_renderer_can_emit_text_and_image_paths() -> None:
 
 def test_raster_board_image_renderer_writes_png_image_path(tmp_path: Path) -> None:
     renderer = ChessObservationRenderer(
-        board_formatter=AsciiBoardFormatter(),
+        board_formatter=AsciiBoardFormatter(orientation=chess.WHITE),
         image_renderer=ChessRasterBoardImageRenderer(
             output_dir=tmp_path,
             size=360,
@@ -260,7 +260,7 @@ def test_raster_board_image_renderer_reuses_existing_image(tmp_path: Path) -> No
 
 def test_unicode_board_formatter_can_be_used_in_observation_renderer() -> None:
     renderer = ChessObservationRenderer(
-        board_formatter=UnicodeBoardFormatter(),
+        board_formatter=UnicodeBoardFormatter(orientation=chess.WHITE),
         image_renderer=None,
     )
 
@@ -269,3 +269,22 @@ def test_unicode_board_formatter_can_be_used_in_observation_renderer() -> None:
     assert observation.text is not None
     assert "♜" in observation.text
     assert "a b c d e f g h" in observation.text
+
+
+def test_ascii_board_formatter_supports_black_orientation() -> None:
+    formatter = AsciiBoardFormatter(orientation=chess.BLACK)
+
+    board_text = formatter.render_text(chess.Board(STANDARD_START_FEN))
+
+    lines = board_text.splitlines()
+    assert lines[0] == "1 R N B K Q B N R"
+    assert lines[-1] == "  h g f e d c b a"
+
+
+def test_unicode_board_formatter_supports_black_orientation() -> None:
+    formatter = UnicodeBoardFormatter(orientation=chess.BLACK)
+
+    board_text = formatter.render_text(chess.Board(STANDARD_START_FEN))
+
+    assert "1 |♖|♘|♗|♔|♕|♗|♘|♖|" in board_text
+    assert "   h g f e d c b a" in board_text

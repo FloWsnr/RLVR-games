@@ -16,7 +16,7 @@ from rlvr_games.core.wrappers import (
     InvalidActionPolicyEnv,
 )
 from rlvr_games.games.chess import (
-    ChessImageOrientation,
+    ChessBoardOrientation,
     ChessTextRendererKind,
     STANDARD_START_FEN,
     make_chess_env,
@@ -48,9 +48,9 @@ def build_parser() -> ArgumentParser:
     play_parser.add_argument("--image-size", type=int, default=360)
     play_parser.add_argument("--image-coordinates", action="store_true")
     play_parser.add_argument(
-        "--image-orientation",
-        choices=tuple(orientation.value for orientation in ChessImageOrientation),
-        default=ChessImageOrientation.WHITE.value,
+        "--orientation",
+        choices=tuple(orientation.value for orientation in ChessBoardOrientation),
+        default=ChessBoardOrientation.WHITE.value,
     )
     play_parser.add_argument(
         "--invalid-action-policy",
@@ -169,7 +169,7 @@ def run_cli(argv: Sequence[str]) -> int:
             image_output_dir=args.image_output_dir,
             image_size=args.image_size,
             image_coordinates=args.image_coordinates,
-            image_orientation=ChessImageOrientation(args.image_orientation),
+            orientation=ChessBoardOrientation(args.orientation),
         )
         invalid_action_mode = InvalidActionMode(args.invalid_action_policy)
         if invalid_action_mode == InvalidActionMode.RAISE:

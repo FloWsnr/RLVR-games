@@ -9,11 +9,13 @@ Run an interactive chess session with:
 uv run rlvr-games play chess --seed 0
 ```
 
-You can also start from a custom FEN or switch the text renderer:
+You can also start from a custom FEN, switch the text renderer, or flip the
+board orientation for both text and image observations:
 
 ```bash
 uv run rlvr-games play chess --seed 0 --fen "<fen>"
 uv run rlvr-games play chess --seed 0 --renderer unicode
+uv run rlvr-games play chess --seed 0 --orientation black
 ```
 
 Inside the session, enter raw UCI moves such as `e2e4`. The commands `help`,
@@ -34,7 +36,7 @@ Use the library in-process for training and evaluation loops:
 ```python
 from rlvr_games.core.rollout import run_episode
 from rlvr_games.games.chess import (
-    ChessImageOrientation,
+    ChessBoardOrientation,
     ChessTextRendererKind,
     make_chess_env,
 )
@@ -47,7 +49,7 @@ env = make_chess_env(
     image_output_dir=None,
     image_size=360,
     image_coordinates=True,
-    image_orientation=ChessImageOrientation.WHITE,
+    orientation=ChessBoardOrientation.WHITE,
 )
 ```
 

@@ -3,7 +3,7 @@
 from rlvr_games.core import Observation
 from rlvr_games.core.rollout import ActionContext, run_episode
 from rlvr_games.games.chess import (
-    ChessImageOrientation,
+    ChessBoardOrientation,
     ChessTextRendererKind,
     make_chess_env,
 )
@@ -54,7 +54,7 @@ def test_run_episode_records_scripted_checkmate_trajectory() -> None:
         image_output_dir=None,
         image_size=360,
         image_coordinates=True,
-        image_orientation=ChessImageOrientation.WHITE,
+        orientation=ChessBoardOrientation.WHITE,
     )
     agent = ScriptedAgent(["f2f3", "e7e5", "g2g4", "d8h4"])
 
@@ -79,7 +79,7 @@ def test_run_episode_passes_sorted_legal_actions_in_context() -> None:
         image_output_dir=None,
         image_size=360,
         image_coordinates=True,
-        image_orientation=ChessImageOrientation.WHITE,
+        orientation=ChessBoardOrientation.WHITE,
     )
     agent = ScriptedAgent(["e2e4"])
 

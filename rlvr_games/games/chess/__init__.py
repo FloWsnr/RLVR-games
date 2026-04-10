@@ -4,7 +4,7 @@ from rlvr_games.games.chess.actions import ChessAction
 from rlvr_games.games.chess.backend import ChessBackend
 from rlvr_games.games.chess.env import ChessEnv
 from rlvr_games.games.chess.factory import (
-    ChessImageOrientation,
+    ChessBoardOrientation,
     ChessTextRendererKind,
     make_chess_env,
 )
@@ -24,8 +24,8 @@ __all__ = [
     "ChessAction",
     "AsciiBoardFormatter",
     "ChessBackend",
+    "ChessBoardOrientation",
     "ChessEnv",
-    "ChessImageOrientation",
     "ChessObservationRenderer",
     "ChessRasterBoardImageRenderer",
     "ChessState",

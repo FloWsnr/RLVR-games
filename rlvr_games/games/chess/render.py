@@ -19,6 +19,16 @@ from rlvr_games.games.chess.state import (
 class AsciiBoardFormatter:
     """Render a board as ASCII text with coordinate labels."""
 
+    def __init__(self, *, orientation: chess.Color) -> None:
+        """Initialize an ASCII board formatter.
+
+        Parameters
+        ----------
+        orientation : chess.Color
+            Color whose perspective should be shown at the bottom of the board.
+        """
+        self.orientation = orientation
+
     def render_text(self, board: chess.Board) -> str:
         """Return an ASCII board diagram with ranks and files.
 
@@ -30,19 +40,67 @@ class AsciiBoardFormatter:
         Returns
         -------
         str
-            Multi-line string showing piece placement from White's perspective.
+            Multi-line string showing piece placement from the configured
+            perspective.
         """
-        board_rows = str(board).splitlines()
+        if self.orientation == chess.WHITE:
+            rank_indexes = range(7, -1, -1)
+            file_indexes = range(8)
+        else:
+            rank_indexes = range(8)
+            file_indexes = range(7, -1, -1)
+
         labeled_rows = [
-            f"{rank} {row}"
-            for rank, row in zip(range(8, 0, -1), board_rows, strict=True)
+            f"{rank_index + 1} {self._render_rank(board, rank_index, file_indexes)}"
+            for rank_index in rank_indexes
         ]
-        labeled_rows.append("  a b c d e f g h")
+        file_labels = " ".join(
+            chess.FILE_NAMES[file_index] for file_index in file_indexes
+        )
+        labeled_rows.append(f"  {file_labels}")
         return "\n".join(labeled_rows)
+
+    def _render_rank(
+        self,
+        board: chess.Board,
+        rank_index: int,
+        file_indexes: range,
+    ) -> str:
+        """Render one rank in the configured file order.
+
+        Parameters
+        ----------
+        board : chess.Board
+            Board containing the pieces to render.
+        rank_index : int
+            Zero-based rank index to render.
+        file_indexes : range
+            Zero-based file indexes in display order.
+
+        Returns
+        -------
+        str
+            Space-separated piece symbols for the requested rank.
+        """
+        symbols: list[str] = []
+        for file_index in file_indexes:
+            piece = board.piece_at(chess.square(file_index, rank_index))
+            symbols.append("." if piece is None else piece.symbol())
+        return " ".join(symbols)
 
 
 class UnicodeBoardFormatter:
     """Render a board with Unicode glyphs and coordinate labels."""
+
+    def __init__(self, *, orientation: chess.Color) -> None:
+        """Initialize a Unicode board formatter.
+
+        Parameters
+        ----------
+        orientation : chess.Color
+            Color whose perspective should be shown at the bottom of the board.
+        """
+        self.orientation = orientation
 
     def render_text(self, board: chess.Board) -> str:
         """Return a Unicode board diagram with borders and files/ranks.
@@ -55,9 +113,14 @@ class UnicodeBoardFormatter:
         Returns
         -------
         str
-            Multi-line string showing piece placement with Unicode glyphs.
+            Multi-line string showing piece placement with Unicode glyphs from
+            the configured perspective.
         """
-        return board.unicode(borders=True, empty_square=".")
+        return board.unicode(
+            borders=True,
+            empty_square=".",
+            orientation=self.orientation,
+        )
 
 
 class ChessRasterBoardImageRenderer:
