@@ -17,7 +17,7 @@ This is an environment-first RLVR framework. The game engine is the source of tr
 
 - For large changes, always use git worktrees to isolate different features or bug fixes into separate branches. This keeps the commit history clean and makes it easier to review changes. Remove the worktrees when the feature or fix is merged to avoid clutter.
 - Always! think about the optimal, cleanest way to implement a feature. Is the current code structure the best way to support this, or is there a more elegant design? Refactor if needed.
-- Don't account for backwards compatibility if you are planning code changes. This is a research codebase, not a production library.
+- Don't account for backwards compatibility if you are doing code changes. This is a research codebase, not a production library.
 - Use pytest. Add focused tests for action parsing, illegal moves, reward logic, terminal and truncation behavior, renderer output, and trajectory recording. Prefer deterministic scenarios with explicit seeds.
 - Use pyright for static type checking. Ensure all new code is fully typed and run pyright to verify.
 - Use ruff for linting and formatting. Run ruff check and ruff format before submitting code.
