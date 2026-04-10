@@ -5,6 +5,7 @@ from pathlib import Path
 import chess
 import pytest
 
+from rlvr_games.core.exceptions import EpisodeFinishedError
 from rlvr_games.core.rewards import ZeroReward
 from rlvr_games.core.types import EpisodeConfig
 from rlvr_games.games.chess import (
@@ -20,6 +21,7 @@ from rlvr_games.games.chess import (
 from rlvr_games.games.chess.scenarios import STANDARD_START_FEN
 
 PROMOTION_FEN = "k7/4P3/8/8/8/8/8/7K w - - 0 1"
+TERMINAL_FEN = "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1"
 
 
 def make_renderer() -> ChessObservationRenderer:
@@ -171,6 +173,24 @@ def test_custom_valid_fen_reset_is_normalized() -> None:
     assert info["initial_fen"] == PROMOTION_FEN
     assert observation.metadata["fen"] == PROMOTION_FEN
     assert observation.metadata["side_to_move"] == "white"
+
+
+def test_terminal_reset_marks_episode_finished_and_rejects_steps() -> None:
+    env = ChessEnv(
+        backend=ChessBackend(),
+        scenario=StartingPositionScenario(initial_fen=TERMINAL_FEN),
+        renderer=make_renderer(),
+        reward_fn=ZeroReward(),
+        config=EpisodeConfig(),
+    )
+
+    observation, _ = env.reset(seed=23)
+
+    assert env.episode_finished is True
+    assert observation.metadata["is_terminal"] is True
+
+    with pytest.raises(EpisodeFinishedError):
+        env.step("h8g8")
 
 
 def test_invalid_fen_reset_fails_fast() -> None:

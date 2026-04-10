@@ -56,9 +56,10 @@ class StartingPositionScenario:
             scenario_name = "fen_position"
 
         return (
-            ChessState(
-                fen=normalized_fen,
+            ChessState.from_board(
+                board=board,
                 repetition_counts={repetition_key_from_board(board): 1},
+                metadata={},
             ),
             {
                 "scenario": scenario_name,

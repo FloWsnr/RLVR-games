@@ -18,6 +18,8 @@ from rlvr_games.games.chess import (
 )
 from rlvr_games.games.chess.scenarios import STANDARD_START_FEN
 
+TERMINAL_FEN = "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1"
+
 
 def make_env() -> ChessEnv:
     """Construct a chess environment for interactive CLI tests.
@@ -110,6 +112,33 @@ def test_run_play_session_reports_penalized_invalid_moves_from_env_policy() -> N
     assert "Reward: -1.0" in output
     assert "Trajectory steps: 1" in output
     assert "accepted=False" in output
+
+
+def test_run_play_session_finishes_immediately_for_terminal_reset_positions() -> None:
+    env = make_chess_env(
+        initial_fen=TERMINAL_FEN,
+        config=EpisodeConfig(),
+        text_renderer_kind=ChessTextRendererKind.ASCII,
+        image_output_dir=None,
+        image_size=360,
+        image_coordinates=True,
+        orientation=ChessBoardOrientation.WHITE,
+    )
+    input_stream = StringIO("quit\n")
+    output_stream = StringIO()
+
+    exit_code = run_play_session(
+        env=env,
+        seed=2,
+        input_stream=input_stream,
+        output_stream=output_stream,
+    )
+
+    output = output_stream.getvalue()
+    assert exit_code == 0
+    assert "Terminal: yes" in output
+    assert "Episode finished." in output
+    assert "turn[0]>" not in output
 
 
 def test_run_cli_can_start_and_exit_a_chess_play_session(

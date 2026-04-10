@@ -190,3 +190,24 @@ def test_max_transitions_only_counts_accepted_state_changes() -> None:
     assert accepted.accepted is True
     assert accepted.truncated is True
     assert accepted.info["truncated_reason"] == "max_transitions"
+
+
+def test_trajectory_snapshots_do_not_alias_returned_results() -> None:
+    env = TurnBasedEnv(
+        backend=CounterBackend(),
+        scenario=CounterScenario(),
+        renderer=CounterRenderer(),
+        reward_fn=CounterReward(),
+        config=EpisodeConfig(),
+    )
+
+    observation, _ = env.reset(seed=5)
+    step_result = env.step("1")
+
+    observation.metadata["value"] = 99
+    step_result.info["value"] = 42
+    step_result.observation.metadata["value"] = 77
+
+    assert env.trajectory.initial_observation.metadata["value"] == 0
+    assert env.trajectory.steps[0].info["value"] == 1
+    assert env.trajectory.steps[0].observation.metadata["value"] == 1

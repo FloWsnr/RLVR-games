@@ -92,6 +92,9 @@ def run_play_session(
     observation, reset_info = env.reset(seed=seed)
     _write_line(output_stream, f"Reset info: {_format_json(reset_info)}")
     _write_observation(output_stream, observation)
+    if env.episode_finished:
+        _write_line(output_stream, "Episode finished.")
+        return 0
 
     while True:
         context = build_action_context(env=env)

@@ -72,3 +72,14 @@ class EpisodeTrajectory(Generic[ActionT]):
             Sum of the rewards stored in `steps`.
         """
         return sum(step.reward for step in self.steps)
+
+    @property
+    def accepted_step_count(self) -> int:
+        """Return the number of accepted transitions in the episode.
+
+        Returns
+        -------
+        int
+            Count of trajectory steps whose actions were accepted and applied.
+        """
+        return sum(1 for step in self.steps if step.accepted)

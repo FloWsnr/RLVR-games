@@ -134,7 +134,34 @@ def test_run_episode_works_with_penalize_truncate_policy() -> None:
 
     assert result.terminated is False
     assert result.truncated is True
-    assert result.turn_count == 1
+    assert result.turn_count == 0
     assert result.trajectory.steps[0].accepted is False
     assert result.trajectory.steps[0].action is None
     assert result.trajectory.total_reward == -3.0
+
+
+def test_run_episode_turn_count_only_counts_accepted_transitions() -> None:
+    env = make_chess_env(
+        initial_fen=STANDARD_START_FEN,
+        config=EpisodeConfig(
+            max_attempts=2,
+            invalid_action_policy=InvalidActionPolicy(
+                mode=InvalidActionMode.PENALIZE_CONTINUE,
+                penalty=-1.0,
+            ),
+        ),
+        text_renderer_kind=ChessTextRendererKind.ASCII,
+        image_output_dir=None,
+        image_size=360,
+        image_coordinates=True,
+        orientation=ChessBoardOrientation.WHITE,
+    )
+    agent = ScriptedAgent(["e2e5", "e2e4"])
+
+    result = run_episode(env=env, agent=agent, seed=4)
+
+    assert result.terminated is False
+    assert result.truncated is True
+    assert len(result.trajectory.steps) == 2
+    assert result.turn_count == 1
+    assert result.trajectory.accepted_step_count == 1

@@ -10,6 +10,8 @@ from rlvr_games.games.chess import (
 )
 from rlvr_games.games.chess.scenarios import STANDARD_START_FEN
 
+TERMINAL_FEN = "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1"
+
 
 class ScriptedAgent:
     """Deterministic agent used to test rollout execution."""
@@ -96,3 +98,23 @@ def test_run_episode_passes_sorted_legal_actions_in_context() -> None:
     assert result.trajectory.steps[0].accepted is True
     assert result.trajectory.steps[0].action is not None
     assert result.trajectory.steps[0].action.uci == "e2e4"
+
+
+def test_run_episode_finishes_immediately_for_terminal_reset_positions() -> None:
+    env = make_chess_env(
+        initial_fen=TERMINAL_FEN,
+        config=EpisodeConfig(),
+        text_renderer_kind=ChessTextRendererKind.ASCII,
+        image_output_dir=None,
+        image_size=360,
+        image_coordinates=True,
+        orientation=ChessBoardOrientation.WHITE,
+    )
+    agent = ScriptedAgent([])
+
+    result = run_episode(env=env, agent=agent, seed=19)
+
+    assert result.terminated is True
+    assert result.truncated is False
+    assert result.turn_count == 0
+    assert len(result.trajectory.steps) == 0

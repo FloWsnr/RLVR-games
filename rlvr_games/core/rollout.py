@@ -122,7 +122,7 @@ def run_episode(
     """
     observation, _ = env.reset(seed=seed)
 
-    if env.backend.is_terminal(env.state):
+    if env.episode_finished:
         return RolloutResult(
             trajectory=env.trajectory,
             terminated=True,
@@ -141,5 +141,5 @@ def run_episode(
                 trajectory=env.trajectory,
                 terminated=step_result.terminated,
                 truncated=step_result.truncated,
-                turn_count=len(env.trajectory.steps),
+                turn_count=env.trajectory.accepted_step_count,
             )

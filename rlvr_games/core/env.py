@@ -1,5 +1,6 @@
 """Canonical environment implementation for turn-based RLVR tasks."""
 
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
@@ -86,6 +87,18 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         self._episode_finished = False
 
     @property
+    def episode_finished(self) -> bool:
+        """Return whether the active episode can accept more steps.
+
+        Returns
+        -------
+        bool
+            `True` when the active episode has already terminated or been
+            truncated.
+        """
+        return self._episode_finished
+
+    @property
     def state(self) -> StateT:
         """Return the current canonical state.
 
@@ -140,12 +153,12 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         """
         self._attempt_count = 0
         self._transition_count = 0
-        self._episode_finished = False
         self._state, info = self.scenario.reset(seed=seed)
         observation = self.renderer.render(self._state)
+        self._episode_finished = self.backend.is_terminal(self._state)
         self._trajectory = EpisodeTrajectory(
-            initial_observation=observation,
-            reset_info=info,
+            initial_observation=self._snapshot_observation(observation),
+            reset_info=self._snapshot_info(info),
         )
         return observation, info
 
@@ -288,17 +301,19 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         """Persist one normalized attempt outcome and return the step result."""
         self._episode_finished = outcome.terminated or outcome.truncated
         self._state = outcome.next_state
+        trajectory_observation = self._snapshot_observation(outcome.observation)
+        trajectory_info = self._snapshot_info(outcome.info)
 
         self.trajectory.steps.append(
             TrajectoryStep(
                 raw_action=raw_action,
                 action=outcome.action,
                 accepted=outcome.accepted,
-                observation=outcome.observation,
+                observation=trajectory_observation,
                 reward=outcome.reward,
                 terminated=outcome.terminated,
                 truncated=outcome.truncated,
-                info=outcome.info,
+                info=trajectory_info,
             )
         )
         return StepResult(
@@ -308,6 +323,40 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             terminated=outcome.terminated,
             truncated=outcome.truncated,
             info=outcome.info,
+        )
+
+    def _snapshot_info(self, info: dict[str, object]) -> dict[str, object]:
+        """Return a trajectory-safe snapshot of transition metadata.
+
+        Parameters
+        ----------
+        info : dict[str, object]
+            Metadata dictionary to snapshot.
+
+        Returns
+        -------
+        dict[str, object]
+            Deep-copied metadata suitable for trajectory storage.
+        """
+        return deepcopy(info)
+
+    def _snapshot_observation(self, observation: Observation) -> Observation:
+        """Return a trajectory-safe snapshot of an observation.
+
+        Parameters
+        ----------
+        observation : Observation
+            Observation to snapshot.
+
+        Returns
+        -------
+        Observation
+            Observation copy whose metadata does not alias caller-owned state.
+        """
+        return Observation(
+            text=observation.text,
+            image_paths=observation.image_paths,
+            metadata=deepcopy(observation.metadata),
         )
 
     def _limit_truncated_reason(self, *, terminated: bool) -> str | None:

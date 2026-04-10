@@ -9,11 +9,7 @@ import chess.svg
 
 from rlvr_games.core.protocol import ImageRenderer, TextRenderer
 from rlvr_games.core.types import Observation
-from rlvr_games.games.chess.state import (
-    ChessState,
-    repetition_key_from_board,
-    winner_name,
-)
+from rlvr_games.games.chess.state import ChessState
 
 
 class AsciiBoardFormatter:
@@ -221,28 +217,23 @@ class ChessObservationRenderer:
     def _render_text(
         self,
         *,
-        board: chess.Board,
-        side_to_move: str,
-        legal_action_count: int,
-        repetition_count: int,
-        terminal: bool,
-        metadata: dict[str, object],
+        state: ChessState,
     ) -> str:
         """Assemble the text portion of the observation."""
         lines = [
             "Chess board:",
-            self.board_formatter.render_text(board),
-            f"FEN: {board.fen()}",
-            f"Side to move: {side_to_move}",
-            f"Legal move count: {legal_action_count}",
-            f"Repetition count: {repetition_count}",
-            f"In check: {'yes' if board.is_check() else 'no'}",
-            f"Terminal: {'yes' if terminal else 'no'}",
+            self.board_formatter.render_text(state.board),
+            f"FEN: {state.fen}",
+            f"Side to move: {state.side_to_move}",
+            f"Legal move count: {state.legal_action_count}",
+            f"Repetition count: {state.repetition_count}",
+            f"In check: {'yes' if state.is_check else 'no'}",
+            f"Terminal: {'yes' if state.is_terminal else 'no'}",
         ]
-        if "result" in metadata:
-            lines.append(f"Result: {metadata['result']}")
-            lines.append(f"Winner: {metadata['winner'] or 'draw'}")
-            lines.append(f"Termination: {metadata['termination']}")
+        if state.outcome.is_terminal:
+            lines.append(f"Result: {state.outcome.result}")
+            lines.append(f"Winner: {state.outcome.winner or 'draw'}")
+            lines.append(f"Termination: {state.outcome.termination}")
         return "\n".join(lines)
 
     def render(self, state: ChessState) -> Observation:
@@ -259,47 +250,26 @@ class ChessObservationRenderer:
             Observation whose text and image fields are derived from the board,
             and whose metadata mirrors the rendered state summary.
         """
-        board = chess.Board(state.fen)
-        repetition_count = state.repetition_counts.get(
-            repetition_key_from_board(board), 1
-        )
-        outcome = board.outcome(claim_draw=True)
-        side_to_move = "white" if board.turn == chess.WHITE else "black"
-        terminal = repetition_count >= 3 or outcome is not None
-        legal_action_count = board.legal_moves.count()
         metadata: dict[str, object] = {
-            "fen": board.fen(),
-            "turn": side_to_move,
-            "side_to_move": side_to_move,
-            "is_check": board.is_check(),
-            "is_terminal": terminal,
-            "legal_action_count": legal_action_count,
-            "repetition_count": repetition_count,
+            "fen": state.fen,
+            "turn": state.side_to_move,
+            "side_to_move": state.side_to_move,
+            "is_check": state.is_check,
+            "is_terminal": state.is_terminal,
+            "legal_action_count": state.legal_action_count,
+            "repetition_count": state.repetition_count,
         }
-
-        if repetition_count >= 3:
-            metadata["result"] = "1/2-1/2"
-            metadata["termination"] = "threefold_repetition"
-            metadata["winner"] = None
-        elif outcome is not None:
-            metadata["result"] = board.result(claim_draw=True)
-            metadata["termination"] = outcome.termination.name.lower()
-            metadata["winner"] = winner_name(outcome.winner)
+        metadata.update(state.outcome.metadata())
 
         image_paths = (
             ()
             if self.image_renderer is None
-            else self.image_renderer.render_images(board)
+            else self.image_renderer.render_images(state.board)
         )
 
         return Observation(
             text=self._render_text(
-                board=board,
-                side_to_move=side_to_move,
-                legal_action_count=legal_action_count,
-                repetition_count=repetition_count,
-                terminal=terminal,
-                metadata=metadata,
+                state=state,
             ),
             image_paths=image_paths,
             metadata=metadata,

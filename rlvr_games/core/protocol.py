@@ -104,6 +104,17 @@ class Environment(Protocol[StateT, ActionT]):
     backend: GameBackend[StateT, ActionT]
 
     @property
+    def episode_finished(self) -> bool:
+        """Return whether the active episode can accept more steps.
+
+        Returns
+        -------
+        bool
+            `True` when the episode has already terminated or been truncated.
+        """
+        ...
+
+    @property
     def state(self) -> StateT:
         """Return the current canonical state for the active episode.
 
