@@ -3,10 +3,11 @@ Teach LLMs to reason by playing games
 
 ## Interactive Play
 
-Run an interactive chess session with:
+Run an interactive chess or 2048 session with:
 
 ```bash
 uv run rlvr-games play chess --seed 0
+uv run rlvr-games play 2048 --seed 0
 ```
 
 You can also start from a custom FEN, switch the text renderer, or flip the
@@ -21,8 +22,16 @@ uv run rlvr-games play chess --seed 0 --orientation black
 uv run rlvr-games play chess --seed 0 --image-output-dir ./renders
 ```
 
-Inside the session, enter raw UCI moves such as `e2e4`. The commands `help`,
-`legal`, `fen`, `trajectory`, and `quit` are also available.
+For 2048, you can also start from an explicit board:
+
+```bash
+uv run rlvr-games play 2048 --seed 0 --board "2,0,0,0/0,2,0,0/0,0,0,0/0,0,0,0"
+```
+
+Inside chess sessions, enter raw UCI moves such as `e2e4`. Inside 2048
+sessions, enter directions such as `up`, `right`, `down`, or `left`. The
+commands `help`, `legal`, `state`, `fen`, `trajectory`, and `quit` are also
+available; `fen` is only meaningful for chess.
 
 By default, invalid actions raise verifier errors without changing state. You
 can make them explicit rollout events instead:
@@ -60,6 +69,24 @@ env = make_chess_env(
 Rendered observations now carry in-memory images in `observation.images`, which
 is suitable for multimodal training loops without forcing a filesystem round
 trip.
+
+For 2048, the environment returns the move score delta as the reward:
+
+```python
+from rlvr_games.core.types import EpisodeConfig
+from rlvr_games.games.game2048 import make_game2048_env
+
+env = make_game2048_env(
+    size=4,
+    target_value=2048,
+    initial_board=None,
+    initial_score=0,
+    initial_move_count=0,
+    config=EpisodeConfig(),
+    include_images=True,
+    image_size=360,
+)
+```
 
 To make invalid actions explicit in training or evaluation loops, configure the
 base environment directly:

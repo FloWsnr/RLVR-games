@@ -7,7 +7,7 @@ To understand more about the mission and goal of this library, see the SPEC.md f
 
 ## Project Structure & Module Organization
 
-`rlvr_games/core/` contains the shared environment abstractions: reset/step orchestration, protocols, rewards, trajectories, types, and exceptions. `rlvr_games/games/chess/` contains the current verifier-backed game implementation split across actions, backend rules, environment wiring, rendering, scenarios, and state. Add new games under `rlvr_games/games/<game>/` with the same separation. `tests/` holds pytest coverage for core behavior and game behavior. Repository metadata lives in `pyproject.toml`, `pyrightconfig.json`, and `uv.lock`; game fixtures or rendered assets should live near the game that owns them.
+`rlvr_games/core/` contains the shared environment abstractions: reset/step orchestration, protocols, rewards, trajectories, types, and exceptions. `rlvr_games/games/chess/` and `rlvr_games/games/game2048/` contain the current verifier-backed game implementations split across actions, backend rules, environment wiring, rendering, scenarios, and state. Add new games under `rlvr_games/games/<game>/` with the same separation. `tests/` holds pytest coverage for core behavior and game behavior. Repository metadata lives in `pyproject.toml`, `pyrightconfig.json`, and `uv.lock`; game fixtures or rendered assets should live near the game that owns them.
 
 ## Architecture Overview
 
@@ -35,10 +35,13 @@ This is an environment-first RLVR framework. The game engine is the source of tr
 - `uv run ruff format .`: format Python files before submitting.
 - `uv run rlvr-games play chess --seed 0`: manually smoke-test the chess environment through the interactive CLI. Enter UCI moves such as `e2e4`, or use `help`, `legal`, `fen`, `trajectory`, `quit`, and `exit` inside the session.
 - `uv run rlvr-games play chess --seed 0 --fen "<fen>"`: start a manual chess test from an explicit FEN position.
-- `uv run rlvr-games play chess --seed 0 --max-turns 4`: test truncation behavior through the CLI.
+- `uv run rlvr-games play chess --seed 0 --max-transitions 4`: test truncation behavior through the CLI.
 - `uv run rlvr-games play chess --seed 0 --renderer unicode`: test alternate text rendering. Supported text renderers are `ascii` and `unicode`.
-- `uv run rlvr-games play chess --seed 0 --image-output-dir <dir> --image-size 360 --image-coordinates --image-orientation white`: test PNG observation rendering. Supported image orientations are `white` and `black`.
+- `uv run rlvr-games play chess --seed 0 --image-output-dir <dir> --image-size 360 --image-coordinates --orientation white`: test PNG observation rendering. Supported image orientations are `white` and `black`.
 - `printf 'legal\ne2e4\ntrajectory\nquit\n' | uv run rlvr-games play chess --seed 0`: run a deterministic non-interactive CLI smoke test.
+- `uv run rlvr-games play 2048 --seed 0`: manually smoke-test the 2048 environment through the interactive CLI. Enter directions such as `up`, `right`, `down`, and `left`, or use `help`, `legal`, `state`, `trajectory`, `quit`, and `exit` inside the session.
+- `uv run rlvr-games play 2048 --seed 0 --board "2,0,0,0/0,2,0,0/0,0,0,0/0,0,0,0"`: start a manual 2048 test from an explicit board.
+- `printf 'legal\nleft\ndown\ntrajectory\nquit\n' | uv run rlvr-games play 2048 --seed 0`: run a deterministic non-interactive 2048 CLI smoke test.
 
 ## Commit & Pull Request Guidelines
 

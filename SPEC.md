@@ -34,8 +34,14 @@ Each environment should define:
 - a reward function backed by executable verification
 - terminal conditions and trajectory metadata
 
-## Games to Add
+## Games
+
+Implemented games:
 
 - Chess
+- 2048
+
+Possible next additions:
+
 - Checkers
 - Go

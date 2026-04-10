@@ -57,7 +57,7 @@ def test_run_play_session_handles_commands_and_moves() -> None:
     output = output_stream.getvalue()
     assert exit_code == 0
     assert "Reset info:" in output
-    assert "Commands: help legal fen trajectory quit exit" in output
+    assert "Commands: help legal state fen trajectory quit exit" in output
     assert "Legal actions (20):" in output
     assert "Move SAN: e4" in output
     assert "Trajectory steps: 1" in output

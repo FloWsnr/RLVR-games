@@ -1,6 +1,6 @@
 """Command-line entrypoints for interactive RLVR sessions."""
 
-from argparse import ArgumentParser
+from argparse import ArgumentParser, ArgumentTypeError, Namespace
 import json
 from pathlib import Path
 import sys
@@ -23,6 +23,12 @@ from rlvr_games.games.chess import (
     STANDARD_START_FEN,
     make_chess_env,
 )
+from rlvr_games.games.game2048 import (
+    STANDARD_2048_SIZE,
+    STANDARD_2048_TARGET,
+    make_game2048_env,
+    normalize_initial_board,
+)
 
 
 def build_parser() -> ArgumentParser:
@@ -37,32 +43,56 @@ def build_parser() -> ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     play_parser = subparsers.add_parser("play")
-    play_parser.add_argument("game", choices=("chess",))
-    play_parser.add_argument("--seed", type=int, default=0)
-    play_parser.add_argument("--fen", default=STANDARD_START_FEN)
-    play_parser.add_argument("--max-attempts", type=int)
-    play_parser.add_argument("--max-transitions", type=int)
-    play_parser.add_argument(
+    play_subparsers = play_parser.add_subparsers(dest="game", required=True)
+
+    chess_parser = play_subparsers.add_parser("chess")
+    _add_common_play_arguments(chess_parser)
+    chess_parser.add_argument("--fen", default=STANDARD_START_FEN)
+    chess_parser.add_argument(
         "--renderer",
         choices=tuple(kind.value for kind in ChessTextRendererKind),
         default=ChessTextRendererKind.ASCII.value,
     )
-    play_parser.add_argument("--image-output-dir", type=Path)
-    play_parser.add_argument("--image-size", type=int, default=360)
-    play_parser.add_argument("--image-coordinates", action="store_true")
-    play_parser.add_argument(
+    chess_parser.add_argument("--image-coordinates", action="store_true")
+    chess_parser.add_argument(
         "--orientation",
         choices=tuple(orientation.value for orientation in ChessBoardOrientation),
         default=ChessBoardOrientation.WHITE.value,
     )
-    play_parser.add_argument(
+    game_2048_parser = play_subparsers.add_parser("2048")
+    _add_common_play_arguments(game_2048_parser)
+    game_2048_parser.add_argument(
+        "--board",
+        type=_parse_2048_board_argument,
+    )
+    game_2048_parser.add_argument(
+        "--target-value",
+        type=int,
+        default=STANDARD_2048_TARGET,
+    )
+
+    return parser
+
+
+def _add_common_play_arguments(parser: ArgumentParser) -> None:
+    """Attach play-session arguments shared by supported games.
+
+    Parameters
+    ----------
+    parser : ArgumentParser
+        Parser to extend with common play-session arguments.
+    """
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--max-attempts", type=int)
+    parser.add_argument("--max-transitions", type=int)
+    parser.add_argument("--image-output-dir", type=Path)
+    parser.add_argument("--image-size", type=int, default=360)
+    parser.add_argument(
         "--invalid-action-policy",
         choices=tuple(mode.value for mode in InvalidActionMode),
         default=InvalidActionMode.RAISE.value,
     )
-    play_parser.add_argument("--invalid-action-penalty", type=float)
-
-    return parser
+    parser.add_argument("--invalid-action-penalty", type=float)
 
 
 def run_play_session(
@@ -135,9 +165,16 @@ def run_play_session(
             )
             continue
 
+        if command == "state":
+            _write_line(output_stream, f"State: {_format_json(observation.metadata)}")
+            continue
+
         if command == "fen":
             fen = observation.metadata.get("fen")
-            _write_line(output_stream, f"FEN: {fen}")
+            if fen is None:
+                _write_line(output_stream, "FEN unavailable for this game.")
+            else:
+                _write_line(output_stream, f"FEN: {fen}")
             continue
 
         if command == "trajectory":
@@ -180,25 +217,7 @@ def run_cli(argv: Sequence[str]) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "play" and args.game == "chess":
-        invalid_action_mode = InvalidActionMode(args.invalid_action_policy)
-        if invalid_action_mode == InvalidActionMode.RAISE:
-            if args.invalid_action_penalty is not None:
-                parser.error(
-                    "--invalid-action-penalty requires a penalize invalid-action policy."
-                )
-            invalid_action_policy = InvalidActionPolicy(
-                mode=invalid_action_mode,
-                penalty=None,
-            )
-        else:
-            if args.invalid_action_penalty is None:
-                parser.error(
-                    "--invalid-action-penalty is required for penalize invalid-action policies."
-                )
-            invalid_action_policy = InvalidActionPolicy(
-                mode=invalid_action_mode,
-                penalty=args.invalid_action_penalty,
-            )
+        invalid_action_policy = _build_invalid_action_policy(args=args, parser=parser)
         env: Environment[Any, Any] = make_chess_env(
             initial_fen=args.fen,
             config=EpisodeConfig(
@@ -211,6 +230,34 @@ def run_cli(argv: Sequence[str]) -> int:
             image_size=args.image_size,
             image_coordinates=args.image_coordinates,
             orientation=ChessBoardOrientation(args.orientation),
+        )
+        return run_play_session(
+            env=env,
+            seed=args.seed,
+            image_output_dir=args.image_output_dir,
+            input_stream=sys.stdin,
+            output_stream=sys.stdout,
+        )
+
+    if args.command == "play" and args.game == "2048":
+        invalid_action_policy = _build_invalid_action_policy(args=args, parser=parser)
+        initial_board = args.board
+        board_size = STANDARD_2048_SIZE
+        if initial_board is not None:
+            board_size = len(initial_board)
+        env = make_game2048_env(
+            size=board_size,
+            target_value=args.target_value,
+            initial_board=initial_board,
+            initial_score=0,
+            initial_move_count=0,
+            config=EpisodeConfig(
+                max_attempts=args.max_attempts,
+                max_transitions=args.max_transitions,
+                invalid_action_policy=invalid_action_policy,
+            ),
+            include_images=args.image_output_dir is not None,
+            image_size=args.image_size,
         )
         return run_play_session(
             env=env,
@@ -239,9 +286,51 @@ def _format_json(payload: dict[str, object]) -> str:
     return json.dumps(payload, default=str, sort_keys=True)
 
 
+def _build_invalid_action_policy(
+    *,
+    args: Namespace,
+    parser: ArgumentParser,
+) -> InvalidActionPolicy:
+    """Build the invalid-action policy implied by parsed CLI arguments.
+
+    Parameters
+    ----------
+    args : Namespace
+        Parsed CLI arguments.
+    parser : ArgumentParser
+        Parser used to raise argument errors when the configuration is
+        inconsistent.
+
+    Returns
+    -------
+    InvalidActionPolicy
+        Validated invalid-action policy for the environment.
+    """
+    invalid_action_mode = InvalidActionMode(args.invalid_action_policy)
+    if invalid_action_mode == InvalidActionMode.RAISE:
+        if args.invalid_action_penalty is not None:
+            parser.error(
+                "--invalid-action-penalty requires a penalize invalid-action policy."
+            )
+        return InvalidActionPolicy(
+            mode=invalid_action_mode,
+            penalty=None,
+        )
+
+    if args.invalid_action_penalty is None:
+        parser.error(
+            "--invalid-action-penalty is required for penalize invalid-action policies."
+        )
+
+    return InvalidActionPolicy(
+        mode=invalid_action_mode,
+        penalty=args.invalid_action_penalty,
+    )
+
+
 def _write_help(output_stream: TextIO) -> None:
     """Print the supported interactive commands."""
-    _write_line(output_stream, "Commands: help legal fen trajectory quit exit")
+    _write_line(output_stream, "Commands: help legal state fen trajectory quit exit")
 
 
 def _write_line(output_stream: TextIO, line: str) -> None:
@@ -314,10 +403,27 @@ def _write_step_result(output_stream: TextIO, step_result: StepResult) -> None:
     _write_line(output_stream, f"Accepted: {step_result.accepted}")
     move_uci = step_result.info.get("move_uci")
     move_san = step_result.info.get("move_san")
+    direction = step_result.info.get("direction")
+    score_gain = step_result.info.get("score_gain")
+    spawned_tile = step_result.info.get("spawned_tile")
     if move_uci is not None:
         _write_line(output_stream, f"Move UCI: {move_uci}")
     if move_san is not None:
         _write_line(output_stream, f"Move SAN: {move_san}")
+    if direction is not None:
+        _write_line(output_stream, f"Direction: {direction}")
+    if score_gain is not None:
+        _write_line(output_stream, f"Score gain: {score_gain}")
+    if isinstance(spawned_tile, dict):
+        _write_line(
+            output_stream,
+            (
+                "Spawned tile: "
+                f"value={spawned_tile.get('value')} "
+                f"row={spawned_tile.get('row')} "
+                f"col={spawned_tile.get('col')}"
+            ),
+        )
     _write_line(output_stream, f"Reward: {step_result.reward}")
     _write_line(output_stream, f"Terminated: {step_result.terminated}")
     _write_line(output_stream, f"Truncated: {step_result.truncated}")
@@ -338,3 +444,37 @@ def _write_trajectory(output_stream: TextIO, env: Environment[Any, Any]) -> None
                 f"truncated={step.truncated} info={info_text}"
             ),
         )
+
+
+def _parse_2048_board_argument(raw_board: str) -> tuple[tuple[int, ...], ...]:
+    """Parse a CLI 2048 board argument into a canonical nested tuple.
+
+    Parameters
+    ----------
+    raw_board : str
+        Board text in the form ``"2,0,0,0/0,2,0,0/..."``.
+
+    Returns
+    -------
+    tuple[tuple[int, ...], ...]
+        Parsed immutable board.
+
+    Raises
+    ------
+    ArgumentTypeError
+        If the board text cannot be parsed or validated.
+    """
+    try:
+        rows = tuple(
+            tuple(int(value.strip()) for value in row_text.split(","))
+            for row_text in raw_board.split("/")
+        )
+    except ValueError as exc:
+        raise ArgumentTypeError(
+            "2048 boards must use comma-separated integers and '/' row separators."
+        ) from exc
+
+    try:
+        return normalize_initial_board(board=rows)
+    except ValueError as exc:
+        raise ArgumentTypeError(str(exc)) from exc
