@@ -1,5 +1,7 @@
 """Chess backend and environment tests."""
 
+from dataclasses import FrozenInstanceError
+
 import chess
 import pytest
 from PIL import Image
@@ -18,6 +20,7 @@ from rlvr_games.games.chess import (
     UnicodeBoardFormatter,
 )
 from rlvr_games.games.chess.scenarios import STANDARD_START_FEN
+from rlvr_games.games.chess.state import repetition_key_from_board
 
 PROMOTION_FEN = "k7/4P3/8/8/8/8/8/7K w - - 0 1"
 TERMINAL_FEN = "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1"
@@ -51,6 +54,31 @@ def test_legal_actions_from_start_position_are_sorted_uci() -> None:
     assert legal_actions == sorted(legal_actions)
     assert "e2e4" in legal_actions
     assert "g1f3" in legal_actions
+
+
+def test_chess_state_exposes_copies_of_mutable_payloads() -> None:
+    board = chess.Board(STANDARD_START_FEN)
+    repetition_key = repetition_key_from_board(board)
+    state = ChessState.from_board(
+        board=board,
+        repetition_counts={repetition_key: 1},
+        metadata={"scenario": "copy-test"},
+    )
+
+    board_copy = state.board
+    board_copy.push(chess.Move.from_uci("e2e4"))
+    repetition_counts = state.repetition_counts
+    repetition_counts.clear()
+    metadata = state.metadata
+    metadata["scenario"] = "mutated"
+
+    assert state.fen == STANDARD_START_FEN
+    assert state.board.fen() == STANDARD_START_FEN
+    assert state.legal_action_count == 20
+    assert state.repetition_counts
+    assert state.metadata["scenario"] == "copy-test"
+    with pytest.raises(FrozenInstanceError):
+        setattr(state, "fen", "mutated")
 
 
 def test_apply_action_updates_state_and_transition_info() -> None:

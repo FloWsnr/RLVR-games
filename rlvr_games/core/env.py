@@ -202,7 +202,33 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
                 parse_result=parse_result,
             )
         action = parse_result.require_action()
+        outcome = self._accepted_attempt_outcome(
+            previous_state=previous_state,
+            action=action,
+        )
+        return self._commit_attempt(raw_action=raw_action, outcome=outcome)
 
+    def _accepted_attempt_outcome(
+        self,
+        *,
+        previous_state: StateT,
+        action: ActionT,
+    ) -> _AttemptOutcome[StateT, ActionT]:
+        """Apply an accepted action and build a normalized attempt outcome.
+
+        Parameters
+        ----------
+        previous_state : StateT
+            Canonical state before the accepted action.
+        action : ActionT
+            Parsed action accepted by the backend parser.
+
+        Returns
+        -------
+        _AttemptOutcome[StateT, ActionT]
+            Normalized accepted-attempt payload ready to record in the
+            trajectory.
+        """
         self._attempt_count += 1
         next_state, transition_info = self.backend.apply_action(previous_state, action)
         reward = self.reward_fn.evaluate(
@@ -226,7 +252,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             info.setdefault("truncated_reason", truncated_reason)
 
         observation = self.renderer.render(next_state)
-        outcome = _AttemptOutcome(
+        return _AttemptOutcome(
             action=action,
             next_state=next_state,
             observation=observation,
@@ -236,7 +262,6 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             truncated=truncated,
             info=info,
         )
-        return self._commit_attempt(raw_action=raw_action, outcome=outcome)
 
     def _handle_invalid_action(
         self,
@@ -256,6 +281,44 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         if policy.mode == InvalidActionMode.RAISE:
             raise InvalidActionError(error)
 
+        outcome = self._rejected_attempt_outcome(
+            previous_state=previous_state,
+            raw_action=raw_action,
+            error=error,
+        )
+        return self._commit_attempt(raw_action=raw_action, outcome=outcome)
+
+    def _rejected_attempt_outcome(
+        self,
+        *,
+        previous_state: StateT,
+        raw_action: str,
+        error: str,
+    ) -> _AttemptOutcome[StateT, ActionT]:
+        """Build a normalized outcome for a penalized rejected action.
+
+        Parameters
+        ----------
+        previous_state : StateT
+            Canonical state that remains current after the rejection.
+        raw_action : str
+            Raw model output rejected by the backend parser.
+        error : str
+            Backend rejection message.
+
+        Returns
+        -------
+        _AttemptOutcome[StateT, ActionT]
+            Normalized rejected-attempt payload ready to record in the
+            trajectory.
+
+        Raises
+        ------
+        ValueError
+            If the active invalid-action policy is missing the required
+            penalty value.
+        """
+        policy = self.config.invalid_action_policy
         penalty = policy.penalty
         if penalty is None:
             raise ValueError("Penalized invalid-action handling requires a penalty.")
@@ -291,7 +354,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             truncated=truncated,
             info=info,
         )
-        return self._commit_attempt(raw_action=raw_action, outcome=outcome)
+        return outcome
 
     def _commit_attempt(
         self,

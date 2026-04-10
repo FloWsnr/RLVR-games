@@ -39,8 +39,9 @@ class ChessBackend:
                 action=None,
                 error="Chess actions must be a non-empty move string.",
             )
+        board = state.board_copy()
         try:
-            move = state.board.parse_uci(move_text)
+            move = board.parse_uci(move_text)
         except ValueError:
             return ParseResult(
                 action=None,
@@ -49,7 +50,7 @@ class ChessBackend:
                     f"position: {raw_action!r}."
                 ),
             )
-        return ParseResult(action=ChessAction(uci=move.uci()), error=None)
+        return ParseResult(action=ChessAction(move=move), error=None)
 
     def legal_actions(self, state: ChessState) -> list[str]:
         """Enumerate legal model-facing actions for the current position.
@@ -90,13 +91,12 @@ class ChessBackend:
         InvalidActionError
             If `action` is not legal in the supplied state.
         """
-        board = state.board.copy(stack=False)
-        try:
-            move = board.parse_uci(action.uci)
-        except ValueError as exc:
+        board = state.board_copy()
+        move = action.move
+        if not board.is_legal(move):
             raise InvalidActionError(
                 f"Chess actions must be legal UCI moves for the current position: {action.uci!r}."
-            ) from exc
+            )
 
         move_san = board.san(move)
         board.push(move)

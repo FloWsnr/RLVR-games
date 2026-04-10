@@ -159,14 +159,14 @@ def outcome_from_board(board: chess.Board, repetition_count: int) -> ChessOutcom
     return ChessOutcome(is_terminal=False)
 
 
-@dataclass(slots=True)
+@dataclass(init=False, slots=True, frozen=True)
 class ChessState:
     """Canonical chess state.
 
-    The state stores both the replayable FEN string and a cached
-    `python-chess` board plus derived summary fields so the backend and
-    renderer do not need to repeatedly reparse the same position during
-    rollout-heavy workloads.
+    The state stores a replayable FEN string, a private `python-chess` board,
+    and derived summary fields. Public accessors return copies of mutable
+    payloads so callers cannot accidentally desynchronize the cached board,
+    legal actions, repetition data, and terminal outcome.
 
     Attributes
     ----------
@@ -178,8 +178,6 @@ class ChessState:
     metadata : dict[str, Any]
         Free-form game-specific metadata that should travel with the state
         without becoming part of the authoritative chess rules payload.
-    board : chess.Board
-        Cached `python-chess` board representing `fen`.
     repetition_key : str
         Repetition-significant position key for the current board.
     repetition_count : int
@@ -195,9 +193,9 @@ class ChessState:
     """
 
     fen: str
-    repetition_counts: dict[str, int] = field(default_factory=dict)
-    metadata: dict[str, Any] = field(default_factory=dict)
-    board: chess.Board = field(init=False, repr=False)
+    _board: chess.Board = field(init=False, repr=False)
+    _repetition_counts: dict[str, int] = field(init=False, repr=False)
+    _metadata: dict[str, Any] = field(init=False, repr=False)
     repetition_key: str = field(init=False)
     repetition_count: int = field(init=False)
     side_to_move: str = field(init=False)
@@ -205,9 +203,25 @@ class ChessState:
     is_check: bool = field(init=False)
     outcome: ChessOutcome = field(init=False)
 
-    def __post_init__(self) -> None:
-        """Populate cached board and summary fields from `fen`."""
-        self._populate_from_board(chess.Board(self.fen))
+    def __init__(self, *, fen: str) -> None:
+        """Create a chess state from a FEN position.
+
+        Parameters
+        ----------
+        fen : str
+            Full FEN string describing the current board position.
+
+        Raises
+        ------
+        ValueError
+            If `fen` is not accepted by `python-chess`.
+        """
+        board = chess.Board(fen)
+        self._populate_from_board(
+            board=board,
+            repetition_counts={repetition_key_from_board(board): 1},
+            metadata={},
+        )
 
     @classmethod
     def from_board(
@@ -235,10 +249,58 @@ class ChessState:
             supplied board.
         """
         state = object.__new__(cls)
-        state.repetition_counts = repetition_counts
-        state.metadata = metadata
-        state._populate_from_board(board)
+        state._populate_from_board(
+            board=board,
+            repetition_counts=repetition_counts,
+            metadata=metadata,
+        )
         return state
+
+    @property
+    def board(self) -> chess.Board:
+        """Return a copy of the current board.
+
+        Returns
+        -------
+        chess.Board
+            Stackless board copy representing the canonical FEN. Mutating this
+            board does not mutate the state.
+        """
+        return self.board_copy()
+
+    @property
+    def repetition_counts(self) -> dict[str, int]:
+        """Return a copy of the episode repetition counters.
+
+        Returns
+        -------
+        dict[str, int]
+            Copy of the repetition-significant position counts accumulated for
+            this episode.
+        """
+        return dict(self._repetition_counts)
+
+    @property
+    def metadata(self) -> dict[str, Any]:
+        """Return a copy of free-form state metadata.
+
+        Returns
+        -------
+        dict[str, Any]
+            Copy of game-specific metadata carried with the state.
+        """
+        return dict(self._metadata)
+
+    def board_copy(self) -> chess.Board:
+        """Return a stackless copy of the canonical board.
+
+        Returns
+        -------
+        chess.Board
+            Board copy suitable for parsing, rendering, or applying a move
+            without mutating this state.
+        """
+        return self._board.copy(stack=False)
 
     @property
     def legal_action_count(self) -> int:
@@ -262,19 +324,49 @@ class ChessState:
         """
         return self.outcome.is_terminal
 
-    def _populate_from_board(self, board: chess.Board) -> None:
+    def _populate_from_board(
+        self,
+        *,
+        board: chess.Board,
+        repetition_counts: dict[str, int],
+        metadata: dict[str, Any],
+    ) -> None:
         """Populate cached state fields from a `python-chess` board.
 
         Parameters
         ----------
         board : chess.Board
             Board to store and summarize.
+        repetition_counts : dict[str, int]
+            Repetition counters accumulated for the episode.
+        metadata : dict[str, Any]
+            Free-form state metadata to carry forward.
         """
-        self.board = board
-        self.fen = board.fen()
-        self.repetition_key = repetition_key_from_board(board)
-        self.repetition_count = self.repetition_counts.get(self.repetition_key, 1)
-        self.side_to_move = "white" if board.turn == chess.WHITE else "black"
-        self.legal_actions = tuple(sorted(move.uci() for move in board.legal_moves))
-        self.is_check = board.is_check()
-        self.outcome = outcome_from_board(board, self.repetition_count)
+        board_copy = board.copy(stack=False)
+        repetition_key = repetition_key_from_board(board_copy)
+        next_repetition_counts = dict(repetition_counts)
+        next_repetition_counts.setdefault(repetition_key, 1)
+        repetition_count = next_repetition_counts[repetition_key]
+
+        object.__setattr__(self, "_board", board_copy)
+        object.__setattr__(self, "fen", board_copy.fen())
+        object.__setattr__(self, "repetition_key", repetition_key)
+        object.__setattr__(self, "_repetition_counts", next_repetition_counts)
+        object.__setattr__(self, "repetition_count", repetition_count)
+        object.__setattr__(self, "_metadata", dict(metadata))
+        object.__setattr__(
+            self,
+            "side_to_move",
+            "white" if board_copy.turn == chess.WHITE else "black",
+        )
+        object.__setattr__(
+            self,
+            "legal_actions",
+            tuple(sorted(move.uci() for move in board_copy.legal_moves)),
+        )
+        object.__setattr__(self, "is_check", board_copy.is_check())
+        object.__setattr__(
+            self,
+            "outcome",
+            outcome_from_board(board_copy, repetition_count),
+        )

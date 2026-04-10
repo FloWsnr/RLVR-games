@@ -2,16 +2,30 @@
 
 from dataclasses import dataclass
 
+import chess
 
-@dataclass(slots=True)
+
+@dataclass(slots=True, frozen=True)
 class ChessAction:
-    """Canonical chess action expressed in UCI notation.
+    """Canonical chess action expressed as a parsed chess move.
 
     Attributes
     ----------
-    uci : str
-        Legal move string in UCI format, for example ``"e2e4"`` or
-        ``"a7a8q"`` for promotions.
+    move : chess.Move
+        Parsed move accepted by `python-chess` for the position where the
+        action was produced.
     """
 
-    uci: str
+    move: chess.Move
+
+    @property
+    def uci(self) -> str:
+        """Return the normalized UCI representation of the move.
+
+        Returns
+        -------
+        str
+            Move serialized in UCI notation, for example ``"e2e4"`` or
+            ``"a7a8q"`` for promotions.
+        """
+        return self.move.uci()
