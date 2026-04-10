@@ -7,6 +7,7 @@ from rlvr_games.core.exceptions import (
     InvalidActionError,
     RLVRGamesError,
 )
+from rlvr_games.core.protocol import ImageRenderer, TextRenderer
 from rlvr_games.core.rewards import ZeroReward
 from rlvr_games.core.trajectory import EpisodeTrajectory, TrajectoryStep
 from rlvr_games.core.types import EpisodeConfig, Observation, StepResult
@@ -16,10 +17,12 @@ __all__ = [
     "EpisodeFinishedError",
     "EpisodeTrajectory",
     "EnvironmentNotResetError",
+    "ImageRenderer",
     "InvalidActionError",
     "Observation",
     "RLVRGamesError",
     "StepResult",
+    "TextRenderer",
     "TrajectoryStep",
     "TurnBasedEnv",
     "ZeroReward",

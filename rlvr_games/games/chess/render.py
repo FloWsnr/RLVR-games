@@ -1,9 +1,13 @@
 """Observation rendering for chess state."""
 
-from typing import Protocol
+from hashlib import sha256
+from pathlib import Path
 
+import cairosvg
 import chess
+import chess.svg
 
+from rlvr_games.core.protocol import ImageRenderer, TextRenderer
 from rlvr_games.core.types import Observation
 from rlvr_games.games.chess.state import (
     ChessState,
@@ -12,26 +16,10 @@ from rlvr_games.games.chess.state import (
 )
 
 
-class ChessBoardTextFormatter(Protocol):
-    """Protocol for formatting a chess board into observation text."""
-
-    def format_board(self, board: chess.Board) -> str:
-        """Return a text representation of the given board."""
-        ...
-
-
-class ChessBoardImageRenderer(Protocol):
-    """Protocol for rendering chess board images for an observation."""
-
-    def render_images(self, board: chess.Board) -> tuple[str, ...]:
-        """Return zero or more image paths for the given board."""
-        ...
-
-
 class AsciiBoardFormatter:
     """Render a board as ASCII text with coordinate labels."""
 
-    def format_board(self, board: chess.Board) -> str:
+    def render_text(self, board: chess.Board) -> str:
         """Return an ASCII board diagram with ranks and files.
 
         Parameters
@@ -56,17 +44,88 @@ class AsciiBoardFormatter:
 class UnicodeBoardFormatter:
     """Render a board with Unicode glyphs and coordinate labels."""
 
-    def format_board(self, board: chess.Board) -> str:
-        """Return a Unicode board diagram with borders and files/ranks."""
+    def render_text(self, board: chess.Board) -> str:
+        """Return a Unicode board diagram with borders and files/ranks.
+
+        Parameters
+        ----------
+        board : chess.Board
+            Board to render.
+
+        Returns
+        -------
+        str
+            Multi-line string showing piece placement with Unicode glyphs.
+        """
         return board.unicode(borders=True, empty_square=".")
 
 
-class EmptyChessBoardImageRenderer:
-    """Return no images for chess observations."""
+class ChessRasterBoardImageRenderer:
+    """Render chess boards to PNG image files."""
 
-    def render_images(self, board: chess.Board) -> tuple[str, ...]:
-        """Return an empty image set for the observation."""
-        return ()
+    def __init__(
+        self,
+        *,
+        output_dir: Path,
+        size: int,
+        coordinates: bool,
+        orientation: chess.Color,
+    ) -> None:
+        """Initialize a raster board image renderer.
+
+        Parameters
+        ----------
+        output_dir : Path
+            Directory where rendered PNG files should be written.
+        size : int
+            Width and height of the rendered PNG board in pixels.
+        coordinates : bool
+            Whether rank and file coordinates should be shown.
+        orientation : chess.Color
+            Color whose perspective should be shown at the bottom of the board.
+        """
+        self.output_dir = output_dir
+        self.size = size
+        self.coordinates = coordinates
+        self.orientation = orientation
+
+    def render_images(self, board: chess.Board) -> tuple[Path, ...]:
+        """Render the board to a PNG file and return its path.
+
+        Parameters
+        ----------
+        board : chess.Board
+            Board to render.
+
+        Returns
+        -------
+        tuple[Path, ...]
+            Single-item tuple containing the rendered PNG filesystem path.
+        """
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        digest = sha256(
+            (f"{board.fen()}|{self.size}|{self.coordinates}|{self.orientation}").encode(
+                "utf-8",
+            )
+        ).hexdigest()[:16]
+        image_path = self.output_dir / f"chess-board-{digest}.png"
+        if image_path.exists():
+            return (image_path,)
+
+        check_square = board.king(board.turn) if board.is_check() else None
+        svg_text = chess.svg.board(
+            board=board,
+            orientation=self.orientation,
+            check=check_square,
+            size=self.size,
+            coordinates=self.coordinates,
+        )
+        with image_path.open("wb") as image_file:
+            cairosvg.svg2png(
+                bytestring=svg_text.encode("utf-8"),
+                write_to=image_file,
+            )
+        return (image_path,)
 
 
 class ChessObservationRenderer:
@@ -80,17 +139,18 @@ class ChessObservationRenderer:
     def __init__(
         self,
         *,
-        board_formatter: ChessBoardTextFormatter,
-        image_renderer: ChessBoardImageRenderer,
+        board_formatter: TextRenderer[chess.Board],
+        image_renderer: ImageRenderer[chess.Board] | None,
     ) -> None:
         """Initialize the observation renderer with explicit view components.
 
         Parameters
         ----------
-        board_formatter : ChessBoardTextFormatter
-            Formatter used to build the text board view.
-        image_renderer : ChessBoardImageRenderer
-            Renderer used to produce image paths for the observation.
+        board_formatter : TextRenderer[chess.Board]
+            Renderer used to build the text board view.
+        image_renderer : ImageRenderer[chess.Board] | None
+            Renderer used to produce image paths for the observation. When
+            `None`, observations include no image paths.
         """
         self.board_formatter = board_formatter
         self.image_renderer = image_renderer
@@ -108,7 +168,7 @@ class ChessObservationRenderer:
         """Assemble the text portion of the observation."""
         lines = [
             "Chess board:",
-            self.board_formatter.format_board(board),
+            self.board_formatter.render_text(board),
             f"FEN: {board.fen()}",
             f"Side to move: {side_to_move}",
             f"Legal move count: {legal_action_count}",
@@ -163,6 +223,12 @@ class ChessObservationRenderer:
             metadata["termination"] = outcome.termination.name.lower()
             metadata["winner"] = winner_name(outcome.winner)
 
+        image_paths = (
+            ()
+            if self.image_renderer is None
+            else self.image_renderer.render_images(board)
+        )
+
         return Observation(
             text=self._render_text(
                 board=board,
@@ -172,17 +238,6 @@ class ChessObservationRenderer:
                 terminal=terminal,
                 metadata=metadata,
             ),
-            image_paths=self.image_renderer.render_images(board),
+            image_paths=image_paths,
             metadata=metadata,
-        )
-
-
-class ChessTextRenderer(ChessObservationRenderer):
-    """Compatibility wrapper for ASCII-only chess observations."""
-
-    def __init__(self) -> None:
-        """Initialize the legacy text-only renderer."""
-        super().__init__(
-            board_formatter=AsciiBoardFormatter(),
-            image_renderer=EmptyChessBoardImageRenderer(),
         )

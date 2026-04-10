@@ -1,5 +1,7 @@
 """Chess backend and environment tests."""
 
+from pathlib import Path
+
 import chess
 import pytest
 
@@ -11,8 +13,8 @@ from rlvr_games.games.chess import (
     ChessBackend,
     ChessEnv,
     ChessObservationRenderer,
+    ChessRasterBoardImageRenderer,
     ChessState,
-    EmptyChessBoardImageRenderer,
     StartingPositionScenario,
     UnicodeBoardFormatter,
 )
@@ -24,14 +26,14 @@ PROMOTION_FEN = "k7/4P3/8/8/8/8/8/7K w - - 0 1"
 def make_renderer() -> ChessObservationRenderer:
     return ChessObservationRenderer(
         board_formatter=AsciiBoardFormatter(),
-        image_renderer=EmptyChessBoardImageRenderer(),
+        image_renderer=None,
     )
 
 
 class StubChessImageRenderer:
-    def render_images(self, board: chess.Board) -> tuple[str, ...]:
+    def render_images(self, board: chess.Board) -> tuple[Path, ...]:
         del board
-        return ("/tmp/chess-board.png",)
+        return (Path("/tmp/chess-board.png"),)
 
 
 def test_legal_actions_from_start_position_are_sorted_uci() -> None:
@@ -211,13 +213,51 @@ def test_observation_renderer_can_emit_text_and_image_paths() -> None:
 
     assert observation.text is not None
     assert "Chess board:" in observation.text
-    assert observation.image_paths == ("/tmp/chess-board.png",)
+    assert observation.image_paths == (Path("/tmp/chess-board.png"),)
+
+
+def test_raster_board_image_renderer_writes_png_image_path(tmp_path: Path) -> None:
+    renderer = ChessObservationRenderer(
+        board_formatter=AsciiBoardFormatter(),
+        image_renderer=ChessRasterBoardImageRenderer(
+            output_dir=tmp_path,
+            size=360,
+            coordinates=True,
+            orientation=chess.WHITE,
+        ),
+    )
+
+    observation = renderer.render(ChessState(fen=STANDARD_START_FEN))
+
+    assert len(observation.image_paths) == 1
+    image_path = observation.image_paths[0]
+    assert image_path.parent == tmp_path
+    assert image_path.suffix == ".png"
+    assert image_path.exists()
+    assert image_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_raster_board_image_renderer_reuses_existing_image(tmp_path: Path) -> None:
+    image_renderer = ChessRasterBoardImageRenderer(
+        output_dir=tmp_path,
+        size=360,
+        coordinates=True,
+        orientation=chess.WHITE,
+    )
+    board = chess.Board(STANDARD_START_FEN)
+
+    first_image_path = image_renderer.render_images(board)[0]
+    first_image_path.write_bytes(b"cached")
+    second_image_path = image_renderer.render_images(board)[0]
+
+    assert second_image_path == first_image_path
+    assert second_image_path.read_bytes() == b"cached"
 
 
 def test_unicode_board_formatter_can_be_used_in_observation_renderer() -> None:
     renderer = ChessObservationRenderer(
         board_formatter=UnicodeBoardFormatter(),
-        image_renderer=EmptyChessBoardImageRenderer(),
+        image_renderer=None,
     )
 
     observation = renderer.render(ChessState(fen=STANDARD_START_FEN))

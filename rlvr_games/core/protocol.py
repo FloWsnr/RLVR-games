@@ -1,5 +1,6 @@
 """Protocol definitions for reusable environment components."""
 
+from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
 from rlvr_games.core.types import Observation
@@ -10,6 +11,7 @@ ScenarioStateT = TypeVar("ScenarioStateT", covariant=True)
 RendererStateT = TypeVar("RendererStateT", contravariant=True)
 RewardStateT = TypeVar("RewardStateT", contravariant=True)
 RewardActionT = TypeVar("RewardActionT", contravariant=True)
+RenderInputT = TypeVar("RenderInputT", contravariant=True)
 
 
 class GameBackend(Protocol[StateT, ActionT]):
@@ -124,6 +126,45 @@ class Renderer(Protocol[RendererStateT]):
         -------
         Observation
             Model-facing observation derived from the canonical state.
+        """
+        ...
+
+
+class TextRenderer(Protocol[RenderInputT]):
+    """Protocol for rendering text from a canonical or derived value."""
+
+    def render_text(self, value: RenderInputT, /) -> str:
+        """Render a text view of the given value.
+
+        Parameters
+        ----------
+        value : RenderInputT
+            Canonical or derived value to render.
+
+        Returns
+        -------
+        str
+            Text representation derived from the input value.
+        """
+        ...
+
+
+class ImageRenderer(Protocol[RenderInputT]):
+    """Protocol for rendering image paths from a canonical or derived value."""
+
+    def render_images(self, value: RenderInputT, /) -> tuple[Path, ...]:
+        """Render image paths for the given value.
+
+        Parameters
+        ----------
+        value : RenderInputT
+            Canonical or derived value to render.
+
+        Returns
+        -------
+        tuple[Path, ...]
+            Zero or more filesystem paths to images derived from the input
+            value.
         """
         ...
 

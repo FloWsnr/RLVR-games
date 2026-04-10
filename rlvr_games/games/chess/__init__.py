@@ -5,11 +5,8 @@ from rlvr_games.games.chess.backend import ChessBackend
 from rlvr_games.games.chess.env import ChessEnv
 from rlvr_games.games.chess.render import (
     AsciiBoardFormatter,
-    ChessBoardImageRenderer,
-    ChessBoardTextFormatter,
     ChessObservationRenderer,
-    ChessTextRenderer,
-    EmptyChessBoardImageRenderer,
+    ChessRasterBoardImageRenderer,
     UnicodeBoardFormatter,
 )
 from rlvr_games.games.chess.scenarios import (
@@ -22,13 +19,10 @@ __all__ = [
     "ChessAction",
     "AsciiBoardFormatter",
     "ChessBackend",
-    "ChessBoardImageRenderer",
-    "ChessBoardTextFormatter",
     "ChessEnv",
     "ChessObservationRenderer",
+    "ChessRasterBoardImageRenderer",
     "ChessState",
-    "ChessTextRenderer",
-    "EmptyChessBoardImageRenderer",
     "STANDARD_START_FEN",
     "StartingPositionScenario",
     "UnicodeBoardFormatter",

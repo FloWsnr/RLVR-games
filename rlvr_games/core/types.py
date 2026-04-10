@@ -1,6 +1,7 @@
 """Shared data structures for environment interaction."""
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 
@@ -12,7 +13,7 @@ class Observation:
     ----------
     text : str | None
         Optional text channel shown to the model for the current turn.
-    image_paths : tuple[str, ...]
+    image_paths : tuple[Path, ...]
         Zero or more filesystem paths to rendered images associated with the
         observation.
     metadata : dict[str, Any]
@@ -22,7 +23,7 @@ class Observation:
     """
 
     text: str | None = None
-    image_paths: tuple[str, ...] = ()
+    image_paths: tuple[Path, ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

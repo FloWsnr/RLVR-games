@@ -13,7 +13,6 @@ from rlvr_games.games.chess import (
     ChessBackend,
     ChessEnv,
     ChessObservationRenderer,
-    EmptyChessBoardImageRenderer,
     STANDARD_START_FEN,
     StartingPositionScenario,
 )
@@ -112,7 +111,7 @@ class ChessEnvTests(unittest.TestCase):
             scenario=StartingPositionScenario(),
             renderer=ChessObservationRenderer(
                 board_formatter=AsciiBoardFormatter(),
-                image_renderer=EmptyChessBoardImageRenderer(),
+                image_renderer=None,
             ),
             reward_fn=ZeroReward(),
             config=EpisodeConfig(),
