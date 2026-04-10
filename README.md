@@ -10,12 +10,15 @@ uv run rlvr-games play chess --seed 0
 ```
 
 You can also start from a custom FEN, switch the text renderer, or flip the
-board orientation for both text and image observations:
+board orientation for both text and image observations. When
+`--image-output-dir` is set, the CLI saves the in-memory rendered images to
+disk for inspection:
 
 ```bash
 uv run rlvr-games play chess --seed 0 --fen "<fen>"
 uv run rlvr-games play chess --seed 0 --renderer unicode
 uv run rlvr-games play chess --seed 0 --orientation black
+uv run rlvr-games play chess --seed 0 --image-output-dir ./renders
 ```
 
 Inside the session, enter raw UCI moves such as `e2e4`. The commands `help`,
@@ -47,12 +50,16 @@ env = make_chess_env(
     initial_fen=STANDARD_START_FEN,
     config=EpisodeConfig(),
     text_renderer_kind=ChessTextRendererKind.ASCII,
-    image_output_dir=None,
+    include_images=True,
     image_size=360,
     image_coordinates=True,
     orientation=ChessBoardOrientation.WHITE,
 )
 ```
+
+Rendered observations now carry in-memory images in `observation.images`, which
+is suitable for multimodal training loops without forcing a filesystem round
+trip.
 
 To make invalid actions explicit in training or evaluation loops, configure the
 base environment directly:
@@ -73,7 +80,7 @@ env = make_chess_env(
         ),
     ),
     text_renderer_kind=ChessTextRendererKind.ASCII,
-    image_output_dir=None,
+    include_images=False,
     image_size=360,
     image_coordinates=True,
     orientation=ChessBoardOrientation.WHITE,

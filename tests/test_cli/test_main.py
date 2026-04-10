@@ -1,6 +1,7 @@
 """CLI interaction tests."""
 
 from io import StringIO
+from pathlib import Path
 import sys
 
 from _pytest.monkeypatch import MonkeyPatch
@@ -33,7 +34,7 @@ def make_env() -> ChessEnv:
         initial_fen=STANDARD_START_FEN,
         config=EpisodeConfig(),
         text_renderer_kind=ChessTextRendererKind.ASCII,
-        image_output_dir=None,
+        include_images=False,
         image_size=360,
         image_coordinates=True,
         orientation=ChessBoardOrientation.WHITE,
@@ -48,6 +49,7 @@ def test_run_play_session_handles_commands_and_moves() -> None:
     exit_code = run_play_session(
         env=env,
         seed=7,
+        image_output_dir=None,
         input_stream=input_stream,
         output_stream=output_stream,
     )
@@ -70,6 +72,7 @@ def test_run_play_session_reports_invalid_moves_without_state_change() -> None:
     exit_code = run_play_session(
         env=env,
         seed=13,
+        image_output_dir=None,
         input_stream=input_stream,
         output_stream=output_stream,
     )
@@ -91,7 +94,7 @@ def test_run_play_session_reports_penalized_invalid_moves_from_env_policy() -> N
             ),
         ),
         text_renderer_kind=ChessTextRendererKind.ASCII,
-        image_output_dir=None,
+        include_images=False,
         image_size=360,
         image_coordinates=True,
         orientation=ChessBoardOrientation.WHITE,
@@ -102,6 +105,7 @@ def test_run_play_session_reports_penalized_invalid_moves_from_env_policy() -> N
     exit_code = run_play_session(
         env=env,
         seed=21,
+        image_output_dir=None,
         input_stream=input_stream,
         output_stream=output_stream,
     )
@@ -119,7 +123,7 @@ def test_run_play_session_finishes_immediately_for_terminal_reset_positions() ->
         initial_fen=TERMINAL_FEN,
         config=EpisodeConfig(),
         text_renderer_kind=ChessTextRendererKind.ASCII,
-        image_output_dir=None,
+        include_images=False,
         image_size=360,
         image_coordinates=True,
         orientation=ChessBoardOrientation.WHITE,
@@ -130,6 +134,7 @@ def test_run_play_session_finishes_immediately_for_terminal_reset_positions() ->
     exit_code = run_play_session(
         env=env,
         seed=2,
+        image_output_dir=None,
         input_stream=input_stream,
         output_stream=output_stream,
     )
@@ -139,6 +144,39 @@ def test_run_play_session_finishes_immediately_for_terminal_reset_positions() ->
     assert "Terminal: yes" in output
     assert "Episode finished." in output
     assert "turn[0]>" not in output
+
+
+def test_run_play_session_persists_rendered_images_when_requested(
+    tmp_path: Path,
+) -> None:
+    env = make_chess_env(
+        initial_fen=STANDARD_START_FEN,
+        config=EpisodeConfig(max_transitions=1),
+        text_renderer_kind=ChessTextRendererKind.ASCII,
+        include_images=True,
+        image_size=360,
+        image_coordinates=True,
+        orientation=ChessBoardOrientation.WHITE,
+    )
+    input_stream = StringIO("e2e4\n")
+    output_stream = StringIO()
+
+    exit_code = run_play_session(
+        env=env,
+        seed=6,
+        image_output_dir=tmp_path,
+        input_stream=input_stream,
+        output_stream=output_stream,
+    )
+
+    output = output_stream.getvalue()
+    saved_paths = tuple(tmp_path.glob("*.png"))
+    assert exit_code == 0
+    assert "Image paths:" in output
+    assert len(saved_paths) == 2
+    assert all(
+        path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n") for path in saved_paths
+    )
 
 
 def test_run_cli_can_start_and_exit_a_chess_play_session(

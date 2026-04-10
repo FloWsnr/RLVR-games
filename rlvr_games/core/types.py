@@ -2,8 +2,9 @@
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from pathlib import Path
 from typing import Any, Generic, TypeVar
+
+from PIL.Image import Image as PILImage
 
 ActionT = TypeVar("ActionT")
 
@@ -53,6 +54,34 @@ class ParseResult(Generic[ActionT]):
 
 
 @dataclass(slots=True)
+class RenderedImage:
+    """One in-memory image payload attached to an observation.
+
+    Attributes
+    ----------
+    key : str
+        Stable renderer-defined identifier for the image content and render
+        configuration. Callers can use this key for caching or persistence.
+    image : PILImage
+        In-memory raster image payload ready for multimodal training or local
+        persistence.
+    """
+
+    key: str
+    image: PILImage
+
+    def copy(self) -> "RenderedImage":
+        """Return a deep copy of the rendered image payload.
+
+        Returns
+        -------
+        RenderedImage
+            Copy whose underlying raster data does not alias the source image.
+        """
+        return RenderedImage(key=self.key, image=self.image.copy())
+
+
+@dataclass(slots=True)
 class Observation:
     """Model-facing observation emitted by an environment.
 
@@ -60,9 +89,8 @@ class Observation:
     ----------
     text : str | None
         Optional text channel shown to the model for the current turn.
-    image_paths : tuple[Path, ...]
-        Zero or more filesystem paths to rendered images associated with the
-        observation.
+    images : tuple[RenderedImage, ...]
+        Zero or more in-memory images associated with the observation.
     metadata : dict[str, Any]
         Structured auxiliary data derived from canonical state. This is useful
         for evaluation, logging, or debugging, but it is not the authoritative
@@ -70,7 +98,7 @@ class Observation:
     """
 
     text: str | None = None
-    image_paths: tuple[Path, ...] = ()
+    images: tuple[RenderedImage, ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

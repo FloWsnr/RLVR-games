@@ -10,8 +10,8 @@ from rlvr_games.games.chess.factory import (
 )
 from rlvr_games.games.chess.render import (
     AsciiBoardFormatter,
+    ChessFastImageRenderer,
     ChessObservationRenderer,
-    ChessRasterBoardImageRenderer,
     UnicodeBoardFormatter,
 )
 from rlvr_games.games.chess.scenarios import (
@@ -26,8 +26,8 @@ __all__ = [
     "ChessBackend",
     "ChessBoardOrientation",
     "ChessEnv",
+    "ChessFastImageRenderer",
     "ChessObservationRenderer",
-    "ChessRasterBoardImageRenderer",
     "ChessState",
     "ChessTextRendererKind",
     "STANDARD_START_FEN",

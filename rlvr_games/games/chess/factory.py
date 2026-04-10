@@ -1,7 +1,6 @@
 """Factory helpers for constructing chess environments."""
 
 from enum import StrEnum
-from pathlib import Path
 
 import chess
 
@@ -11,8 +10,8 @@ from rlvr_games.games.chess.backend import ChessBackend
 from rlvr_games.games.chess.env import ChessEnv
 from rlvr_games.games.chess.render import (
     AsciiBoardFormatter,
+    ChessFastImageRenderer,
     ChessObservationRenderer,
-    ChessRasterBoardImageRenderer,
     UnicodeBoardFormatter,
 )
 from rlvr_games.games.chess.scenarios import StartingPositionScenario
@@ -37,7 +36,7 @@ def make_chess_env(
     initial_fen: str,
     config: EpisodeConfig,
     text_renderer_kind: ChessTextRendererKind,
-    image_output_dir: Path | None,
+    include_images: bool,
     image_size: int,
     image_coordinates: bool,
     orientation: ChessBoardOrientation,
@@ -53,15 +52,13 @@ def make_chess_env(
         optional attempt/transition limits.
     text_renderer_kind : ChessTextRendererKind
         Text board formatter to expose in observations.
-    image_output_dir : Path | None
-        Directory used for PNG board renders. When `None`, the environment
-        emits no image paths.
+    include_images : bool
+        Whether observations should include rendered board images.
     image_size : int
-        Raster image size in pixels. Ignored when `image_output_dir` is
-        `None`.
+        Raster image size in pixels. Ignored when `include_images` is `False`.
     image_coordinates : bool
         Whether raster image renders should include rank/file coordinates.
-        Ignored when `image_output_dir` is `None`.
+        Ignored when `include_images` is `False`.
     orientation : ChessBoardOrientation
         Side to place at the bottom of text and raster board renders.
 
@@ -80,11 +77,10 @@ def make_chess_env(
     if text_renderer_kind == ChessTextRendererKind.UNICODE:
         board_formatter = UnicodeBoardFormatter(orientation=chess_orientation)
 
-    image_renderer: ChessRasterBoardImageRenderer | None
+    image_renderer: ChessFastImageRenderer | None
     image_renderer = None
-    if image_output_dir is not None:
-        image_renderer = ChessRasterBoardImageRenderer(
-            output_dir=image_output_dir,
+    if include_images:
+        image_renderer = ChessFastImageRenderer(
             size=image_size,
             coordinates=image_coordinates,
             orientation=chess_orientation,

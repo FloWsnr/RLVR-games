@@ -16,6 +16,7 @@ from rlvr_games.core.types import (
     InvalidActionMode,
     Observation,
     ParseResult,
+    RenderedImage,
     StepResult,
 )
 
@@ -355,9 +356,28 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         """
         return Observation(
             text=observation.text,
-            image_paths=observation.image_paths,
+            images=self._snapshot_images(observation.images),
             metadata=deepcopy(observation.metadata),
         )
+
+    def _snapshot_images(
+        self,
+        images: tuple[RenderedImage, ...],
+    ) -> tuple[RenderedImage, ...]:
+        """Return trajectory-safe copies of observation images.
+
+        Parameters
+        ----------
+        images : tuple[RenderedImage, ...]
+            Image payloads to snapshot.
+
+        Returns
+        -------
+        tuple[RenderedImage, ...]
+            Copied images whose raster data does not alias the caller-owned
+            payloads.
+        """
+        return tuple(image.copy() for image in images)
 
     def _limit_truncated_reason(self, *, terminated: bool) -> str | None:
         """Return the truncation reason implied by configured episode limits."""

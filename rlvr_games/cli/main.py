@@ -14,6 +14,7 @@ from rlvr_games.core.types import (
     InvalidActionMode,
     InvalidActionPolicy,
     Observation,
+    RenderedImage,
     StepResult,
 )
 from rlvr_games.games.chess import (
@@ -68,6 +69,7 @@ def run_play_session(
     *,
     env: Environment[Any, Any],
     seed: int,
+    image_output_dir: Path | None,
     input_stream: TextIO,
     output_stream: TextIO,
 ) -> int:
@@ -79,6 +81,9 @@ def run_play_session(
         Environment to reset and step during the session.
     seed : int
         Explicit scenario seed passed into `env.reset(...)`.
+    image_output_dir : Path | None
+        Optional directory where any rendered observation images should be
+        persisted as PNG files for inspection.
     input_stream : TextIO
         Input stream used to read commands or raw actions.
     output_stream : TextIO
@@ -91,7 +96,11 @@ def run_play_session(
     """
     observation, reset_info = env.reset(seed=seed)
     _write_line(output_stream, f"Reset info: {_format_json(reset_info)}")
-    _write_observation(output_stream, observation)
+    _write_observation(
+        output_stream,
+        observation,
+        image_output_dir=image_output_dir,
+    )
     if env.episode_finished:
         _write_line(output_stream, "Episode finished.")
         return 0
@@ -143,7 +152,11 @@ def run_play_session(
 
         observation = step_result.observation
         _write_step_result(output_stream, step_result)
-        _write_observation(output_stream, observation)
+        _write_observation(
+            output_stream,
+            observation,
+            image_output_dir=image_output_dir,
+        )
 
         if step_result.terminated or step_result.truncated:
             _write_line(output_stream, "Episode finished.")
@@ -194,7 +207,7 @@ def run_cli(argv: Sequence[str]) -> int:
                 invalid_action_policy=invalid_action_policy,
             ),
             text_renderer_kind=ChessTextRendererKind(args.renderer),
-            image_output_dir=args.image_output_dir,
+            include_images=args.image_output_dir is not None,
             image_size=args.image_size,
             image_coordinates=args.image_coordinates,
             orientation=ChessBoardOrientation(args.orientation),
@@ -202,6 +215,7 @@ def run_cli(argv: Sequence[str]) -> int:
         return run_play_session(
             env=env,
             seed=args.seed,
+            image_output_dir=args.image_output_dir,
             input_stream=sys.stdin,
             output_stream=sys.stdout,
         )
@@ -235,13 +249,64 @@ def _write_line(output_stream: TextIO, line: str) -> None:
     output_stream.write(f"{line}\n")
 
 
-def _write_observation(output_stream: TextIO, observation: Observation) -> None:
-    """Write an observation's text and image paths to the output stream."""
+def _write_observation(
+    output_stream: TextIO,
+    observation: Observation,
+    *,
+    image_output_dir: Path | None,
+) -> None:
+    """Write an observation's text and any persisted image paths.
+
+    Parameters
+    ----------
+    output_stream : TextIO
+        Stream receiving formatted observation output.
+    observation : Observation
+        Observation to print and optionally persist.
+    image_output_dir : Path | None
+        Optional directory where in-memory images should be saved as PNG files.
+    """
     if observation.text is not None:
         _write_line(output_stream, observation.text)
-    if observation.image_paths:
-        image_paths = ", ".join(str(path) for path in observation.image_paths)
+    if observation.images and image_output_dir is not None:
+        image_paths = ", ".join(
+            str(path)
+            for path in _persist_rendered_images(
+                image_output_dir=image_output_dir,
+                images=observation.images,
+            )
+        )
         _write_line(output_stream, f"Image paths: {image_paths}")
+
+
+def _persist_rendered_images(
+    *,
+    image_output_dir: Path,
+    images: tuple[RenderedImage, ...],
+) -> tuple[Path, ...]:
+    """Persist rendered images to PNG files and return their paths.
+
+    Parameters
+    ----------
+    image_output_dir : Path
+        Directory where PNG files should be written.
+    images : tuple[RenderedImage, ...]
+        In-memory images to persist.
+
+    Returns
+    -------
+    tuple[Path, ...]
+        Persisted PNG paths in the same order as the input images.
+    """
+    image_output_dir.mkdir(parents=True, exist_ok=True)
+    image_paths: list[Path] = []
+    for image_index, rendered_image in enumerate(images):
+        suffix = "" if image_index == 0 else f"-{image_index}"
+        image_path = image_output_dir / f"{rendered_image.key}{suffix}.png"
+        if not image_path.exists():
+            rendered_image.image.save(image_path, format="PNG")
+        image_paths.append(image_path)
+    return tuple(image_paths)
 
 
 def _write_step_result(output_stream: TextIO, step_result: StepResult) -> None:

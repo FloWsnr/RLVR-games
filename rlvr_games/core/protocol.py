@@ -1,10 +1,9 @@
 """Protocol definitions for reusable environment components."""
 
-from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
 from rlvr_games.core.trajectory import EpisodeTrajectory
-from rlvr_games.core.types import Observation, ParseResult, StepResult
+from rlvr_games.core.types import Observation, ParseResult, RenderedImage, StepResult
 
 StateT = TypeVar("StateT")
 ActionT = TypeVar("ActionT")
@@ -227,10 +226,10 @@ class TextRenderer(Protocol[RenderInputT]):
 
 
 class ImageRenderer(Protocol[RenderInputT]):
-    """Protocol for rendering image paths from a canonical or derived value."""
+    """Protocol for rendering in-memory images from a canonical value."""
 
-    def render_images(self, value: RenderInputT, /) -> tuple[Path, ...]:
-        """Render image paths for the given value.
+    def render_images(self, value: RenderInputT, /) -> tuple[RenderedImage, ...]:
+        """Render in-memory images for the given value.
 
         Parameters
         ----------
@@ -239,9 +238,8 @@ class ImageRenderer(Protocol[RenderInputT]):
 
         Returns
         -------
-        tuple[Path, ...]
-            Zero or more filesystem paths to images derived from the input
-            value.
+        tuple[RenderedImage, ...]
+            Zero or more raster image payloads derived from the input value.
         """
         ...
 

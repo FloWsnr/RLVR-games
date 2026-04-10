@@ -1,19 +1,18 @@
 """Chess backend and environment tests."""
 
-from pathlib import Path
-
 import chess
 import pytest
+from PIL import Image
 
 from rlvr_games.core.exceptions import EpisodeFinishedError
 from rlvr_games.core.rewards import ZeroReward
-from rlvr_games.core.types import EpisodeConfig
+from rlvr_games.core.types import EpisodeConfig, RenderedImage
 from rlvr_games.games.chess import (
     AsciiBoardFormatter,
     ChessBackend,
     ChessEnv,
+    ChessFastImageRenderer,
     ChessObservationRenderer,
-    ChessRasterBoardImageRenderer,
     ChessState,
     StartingPositionScenario,
     UnicodeBoardFormatter,
@@ -32,9 +31,14 @@ def make_renderer() -> ChessObservationRenderer:
 
 
 class StubChessImageRenderer:
-    def render_images(self, board: chess.Board) -> tuple[Path, ...]:
+    def render_images(self, board: chess.Board) -> tuple[RenderedImage, ...]:
         del board
-        return (Path("/tmp/chess-board.png"),)
+        return (
+            RenderedImage(
+                key="stub-chess-board",
+                image=Image.new("RGBA", (32, 32), (255, 0, 0, 255)),
+            ),
+        )
 
 
 def test_legal_actions_from_start_position_are_sorted_uci() -> None:
@@ -229,7 +233,7 @@ def test_chess_env_records_trajectory_with_real_backend() -> None:
     assert env.trajectory.steps[0].info["move_san"] == "e4"
 
 
-def test_observation_renderer_can_emit_text_and_image_paths() -> None:
+def test_observation_renderer_can_emit_text_and_images() -> None:
     renderer = ChessObservationRenderer(
         board_formatter=AsciiBoardFormatter(orientation=chess.WHITE),
         image_renderer=StubChessImageRenderer(),
@@ -239,14 +243,15 @@ def test_observation_renderer_can_emit_text_and_image_paths() -> None:
 
     assert observation.text is not None
     assert "Chess board:" in observation.text
-    assert observation.image_paths == (Path("/tmp/chess-board.png"),)
+    assert len(observation.images) == 1
+    assert observation.images[0].key == "stub-chess-board"
+    assert observation.images[0].image.size == (32, 32)
 
 
-def test_raster_board_image_renderer_writes_png_image_path(tmp_path: Path) -> None:
+def test_fast_image_renderer_emits_single_raster_image() -> None:
     renderer = ChessObservationRenderer(
         board_formatter=AsciiBoardFormatter(orientation=chess.WHITE),
-        image_renderer=ChessRasterBoardImageRenderer(
-            output_dir=tmp_path,
+        image_renderer=ChessFastImageRenderer(
             size=360,
             coordinates=True,
             orientation=chess.WHITE,
@@ -255,29 +260,26 @@ def test_raster_board_image_renderer_writes_png_image_path(tmp_path: Path) -> No
 
     observation = renderer.render(ChessState(fen=STANDARD_START_FEN))
 
-    assert len(observation.image_paths) == 1
-    image_path = observation.image_paths[0]
-    assert image_path.parent == tmp_path
-    assert image_path.suffix == ".png"
-    assert image_path.exists()
-    assert image_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+    assert len(observation.images) == 1
+    rendered_image = observation.images[0]
+    assert rendered_image.key.startswith("chess-board-")
+    assert rendered_image.image.size == (360, 360)
+    assert rendered_image.image.mode == "RGBA"
 
 
-def test_raster_board_image_renderer_reuses_existing_image(tmp_path: Path) -> None:
-    image_renderer = ChessRasterBoardImageRenderer(
-        output_dir=tmp_path,
+def test_fast_image_renderer_is_deterministic_for_the_same_position() -> None:
+    image_renderer = ChessFastImageRenderer(
         size=360,
         coordinates=True,
         orientation=chess.WHITE,
     )
     board = chess.Board(STANDARD_START_FEN)
 
-    first_image_path = image_renderer.render_images(board)[0]
-    first_image_path.write_bytes(b"cached")
-    second_image_path = image_renderer.render_images(board)[0]
+    first_render = image_renderer.render_images(board)[0]
+    second_render = image_renderer.render_images(board)[0]
 
-    assert second_image_path == first_image_path
-    assert second_image_path.read_bytes() == b"cached"
+    assert second_render.key == first_render.key
+    assert second_render.image.tobytes() == first_render.image.tobytes()
 
 
 def test_unicode_board_formatter_can_be_used_in_observation_renderer() -> None:
