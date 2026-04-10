@@ -1,6 +1,7 @@
 """Shared data structures for environment interaction."""
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -27,22 +28,88 @@ class Observation:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+class InvalidActionMode(StrEnum):
+    """Policy modes for handling invalid environment actions."""
+
+    RAISE = "raise"
+    PENALIZE_CONTINUE = "penalize-continue"
+    PENALIZE_TRUNCATE = "penalize-truncate"
+
+
+@dataclass(slots=True)
+class InvalidActionPolicy:
+    """Configuration describing how invalid actions should be handled.
+
+    Attributes
+    ----------
+    mode : InvalidActionMode
+        High-level invalid-action handling mode.
+    penalty : float | None
+        Reward assigned to rejected actions when the mode penalizes them. This
+        must be `None` for `raise` mode and a concrete float otherwise.
+    """
+
+    mode: InvalidActionMode
+    penalty: float | None
+
+    def __post_init__(self) -> None:
+        """Validate that the configured mode and penalty are coherent.
+
+        Raises
+        ------
+        ValueError
+            If the policy mode and penalty combination is inconsistent.
+        """
+        if self.mode == InvalidActionMode.RAISE and self.penalty is not None:
+            raise ValueError("Raise mode does not accept an invalid-action penalty.")
+        if self.mode != InvalidActionMode.RAISE and self.penalty is None:
+            raise ValueError("Penalized invalid-action modes require a penalty.")
+
+
+def _default_invalid_action_policy() -> InvalidActionPolicy:
+    """Return the default fail-fast invalid-action policy."""
+    return InvalidActionPolicy(mode=InvalidActionMode.RAISE, penalty=None)
+
+
 @dataclass(slots=True)
 class EpisodeConfig:
     """Runtime configuration controlling episode execution.
 
     Attributes
     ----------
-    max_turns : int | None
-        Optional upper bound on the number of agent turns before the episode is
-        truncated.
+    max_attempts : int | None
+        Optional upper bound on the number of raw action attempts, including
+        penalized invalid attempts, before the episode is truncated.
+    max_transitions : int | None
+        Optional upper bound on the number of accepted state transitions before
+        the episode is truncated.
+    invalid_action_policy : InvalidActionPolicy
+        Policy describing whether invalid actions should raise immediately or
+        produce explicit rejected attempts in the trajectory.
     metadata : dict[str, Any]
         Free-form configuration data for experiment bookkeeping or
         environment-specific options.
     """
 
-    max_turns: int | None = None
+    max_attempts: int | None = None
+    max_transitions: int | None = None
+    invalid_action_policy: InvalidActionPolicy = field(
+        default_factory=_default_invalid_action_policy
+    )
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate episode limit configuration.
+
+        Raises
+        ------
+        ValueError
+            If any configured episode limit is not strictly positive.
+        """
+        if self.max_attempts is not None and self.max_attempts <= 0:
+            raise ValueError("max_attempts must be positive when provided.")
+        if self.max_transitions is not None and self.max_transitions <= 0:
+            raise ValueError("max_transitions must be positive when provided.")
 
 
 @dataclass(slots=True)

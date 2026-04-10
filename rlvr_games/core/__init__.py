@@ -17,11 +17,12 @@ from rlvr_games.core.rollout import (
     run_episode,
 )
 from rlvr_games.core.trajectory import EpisodeTrajectory, TrajectoryStep
-from rlvr_games.core.types import EpisodeConfig, Observation, StepResult
-from rlvr_games.core.wrappers import (
+from rlvr_games.core.types import (
+    EpisodeConfig,
     InvalidActionMode,
     InvalidActionPolicy,
-    InvalidActionPolicyEnv,
+    Observation,
+    StepResult,
 )
 
 __all__ = [
@@ -35,7 +36,6 @@ __all__ = [
     "InvalidActionError",
     "InvalidActionMode",
     "InvalidActionPolicy",
-    "InvalidActionPolicyEnv",
     "Observation",
     "RLVRGamesError",
     "RolloutAgent",
