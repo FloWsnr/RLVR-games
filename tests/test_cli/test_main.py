@@ -6,9 +6,9 @@ import sys
 from _pytest.monkeypatch import MonkeyPatch
 from rlvr_games.cli.main import run_cli, run_play_session
 from rlvr_games.core import (
+    EpisodeConfig,
     InvalidActionMode,
     InvalidActionPolicy,
-    InvalidActionPolicyEnv,
 )
 from rlvr_games.games.chess import (
     ChessBoardOrientation,
@@ -29,7 +29,7 @@ def make_env() -> ChessEnv:
     """
     return make_chess_env(
         initial_fen=STANDARD_START_FEN,
-        max_turns=None,
+        config=EpisodeConfig(),
         text_renderer_kind=ChessTextRendererKind.ASCII,
         image_output_dir=None,
         image_size=360,
@@ -79,13 +79,20 @@ def test_run_play_session_reports_invalid_moves_without_state_change() -> None:
     assert len(env.trajectory.steps) == 0
 
 
-def test_run_play_session_reports_penalized_invalid_moves_from_wrapper() -> None:
-    env = InvalidActionPolicyEnv(
-        env=make_env(),
-        policy=InvalidActionPolicy(
-            mode=InvalidActionMode.PENALIZE_CONTINUE,
-            penalty=-1.0,
+def test_run_play_session_reports_penalized_invalid_moves_from_env_policy() -> None:
+    env = make_chess_env(
+        initial_fen=STANDARD_START_FEN,
+        config=EpisodeConfig(
+            invalid_action_policy=InvalidActionPolicy(
+                mode=InvalidActionMode.PENALIZE_CONTINUE,
+                penalty=-1.0,
+            ),
         ),
+        text_renderer_kind=ChessTextRendererKind.ASCII,
+        image_output_dir=None,
+        image_size=360,
+        image_coordinates=True,
+        orientation=ChessBoardOrientation.WHITE,
     )
     input_stream = StringIO("e2e5\ntrajectory\nquit\n")
     output_stream = StringIO()
@@ -162,4 +169,33 @@ def test_run_cli_can_use_penalize_truncate_invalid_action_policy(
     output = output_stream.getvalue()
     assert exit_code == 0
     assert "Accepted: False" in output
+    assert "Episode finished." in output
+
+
+def test_run_cli_penalize_continue_respects_max_attempts(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    input_stream = StringIO("e2e5\ne2e4\n")
+    output_stream = StringIO()
+    monkeypatch.setattr(sys, "stdin", input_stream)
+    monkeypatch.setattr(sys, "stdout", output_stream)
+
+    exit_code = run_cli(
+        [
+            "play",
+            "chess",
+            "--seed",
+            "8",
+            "--invalid-action-policy",
+            "penalize-continue",
+            "--invalid-action-penalty",
+            "-2",
+            "--max-attempts",
+            "2",
+        ]
+    )
+
+    output = output_stream.getvalue()
+    assert exit_code == 0
+    assert '"truncated_reason": "max_attempts"' in output
     assert "Episode finished." in output

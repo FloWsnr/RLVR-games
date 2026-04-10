@@ -9,11 +9,12 @@ from typing import Any, Sequence, TextIO
 from rlvr_games.core.exceptions import InvalidActionError
 from rlvr_games.core.protocol import Environment
 from rlvr_games.core.rollout import build_action_context
-from rlvr_games.core.types import Observation, StepResult
-from rlvr_games.core.wrappers import (
+from rlvr_games.core.types import (
+    EpisodeConfig,
     InvalidActionMode,
     InvalidActionPolicy,
-    InvalidActionPolicyEnv,
+    Observation,
+    StepResult,
 )
 from rlvr_games.games.chess import (
     ChessBoardOrientation,
@@ -38,7 +39,8 @@ def build_parser() -> ArgumentParser:
     play_parser.add_argument("game", choices=("chess",))
     play_parser.add_argument("--seed", type=int, default=0)
     play_parser.add_argument("--fen", default=STANDARD_START_FEN)
-    play_parser.add_argument("--max-turns", type=int)
+    play_parser.add_argument("--max-attempts", type=int)
+    play_parser.add_argument("--max-transitions", type=int)
     play_parser.add_argument(
         "--renderer",
         choices=tuple(kind.value for kind in ChessTextRendererKind),
@@ -162,36 +164,40 @@ def run_cli(argv: Sequence[str]) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "play" and args.game == "chess":
-        env = make_chess_env(
-            initial_fen=args.fen,
-            max_turns=args.max_turns,
-            text_renderer_kind=ChessTextRendererKind(args.renderer),
-            image_output_dir=args.image_output_dir,
-            image_size=args.image_size,
-            image_coordinates=args.image_coordinates,
-            orientation=ChessBoardOrientation(args.orientation),
-        )
         invalid_action_mode = InvalidActionMode(args.invalid_action_policy)
         if invalid_action_mode == InvalidActionMode.RAISE:
             if args.invalid_action_penalty is not None:
                 parser.error(
                     "--invalid-action-penalty requires a penalize invalid-action policy."
                 )
-            wrapped_env: Environment[Any, Any] = env
+            invalid_action_policy = InvalidActionPolicy(
+                mode=invalid_action_mode,
+                penalty=None,
+            )
         else:
             if args.invalid_action_penalty is None:
                 parser.error(
                     "--invalid-action-penalty is required for penalize invalid-action policies."
                 )
-            wrapped_env = InvalidActionPolicyEnv(
-                env=env,
-                policy=InvalidActionPolicy(
-                    mode=invalid_action_mode,
-                    penalty=args.invalid_action_penalty,
-                ),
+            invalid_action_policy = InvalidActionPolicy(
+                mode=invalid_action_mode,
+                penalty=args.invalid_action_penalty,
             )
+        env: Environment[Any, Any] = make_chess_env(
+            initial_fen=args.fen,
+            config=EpisodeConfig(
+                max_attempts=args.max_attempts,
+                max_transitions=args.max_transitions,
+                invalid_action_policy=invalid_action_policy,
+            ),
+            text_renderer_kind=ChessTextRendererKind(args.renderer),
+            image_output_dir=args.image_output_dir,
+            image_size=args.image_size,
+            image_coordinates=args.image_coordinates,
+            orientation=ChessBoardOrientation(args.orientation),
+        )
         return run_play_session(
-            env=wrapped_env,
+            env=env,
             seed=args.seed,
             input_stream=sys.stdin,
             output_stream=sys.stdout,

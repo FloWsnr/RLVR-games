@@ -35,7 +35,7 @@ class ChessBoardOrientation(StrEnum):
 def make_chess_env(
     *,
     initial_fen: str,
-    max_turns: int | None,
+    config: EpisodeConfig,
     text_renderer_kind: ChessTextRendererKind,
     image_output_dir: Path | None,
     image_size: int,
@@ -48,9 +48,9 @@ def make_chess_env(
     ----------
     initial_fen : str
         Starting position for the episode scenario.
-    max_turns : int | None
-        Optional episode turn limit. When `None`, no truncation limit is
-        applied.
+    config : EpisodeConfig
+        Episode execution configuration controlling invalid-action handling and
+        optional attempt/transition limits.
     text_renderer_kind : ChessTextRendererKind
         Text board formatter to expose in observations.
     image_output_dir : Path | None
@@ -98,5 +98,5 @@ def make_chess_env(
             image_renderer=image_renderer,
         ),
         reward_fn=ZeroReward(),
-        config=EpisodeConfig(max_turns=max_turns),
+        config=config,
     )

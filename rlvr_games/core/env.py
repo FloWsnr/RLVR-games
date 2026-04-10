@@ -2,10 +2,19 @@
 
 from typing import Generic, TypeVar
 
-from rlvr_games.core.exceptions import EpisodeFinishedError, EnvironmentNotResetError
+from rlvr_games.core.exceptions import (
+    EpisodeFinishedError,
+    EnvironmentNotResetError,
+    InvalidActionError,
+)
 from rlvr_games.core.protocol import GameBackend, Renderer, RewardFn, Scenario
 from rlvr_games.core.trajectory import EpisodeTrajectory, TrajectoryStep
-from rlvr_games.core.types import EpisodeConfig, Observation, StepResult
+from rlvr_games.core.types import (
+    EpisodeConfig,
+    InvalidActionMode,
+    Observation,
+    StepResult,
+)
 
 StateT = TypeVar("StateT")
 ActionT = TypeVar("ActionT")
@@ -45,8 +54,8 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         reward_fn : RewardFn[StateT, ActionT]
             Reward function used to score verified transitions.
         config : EpisodeConfig
-            Episode-wide configuration such as optional turn limits and
-            metadata.
+            Episode-wide configuration such as optional attempt/transition
+            limits, invalid-action handling policy, and metadata.
         """
         self.backend = backend
         self.scenario = scenario
@@ -56,7 +65,8 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
 
         self._state: StateT | None = None
         self._trajectory: EpisodeTrajectory[ActionT] | None = None
-        self._turn_count = 0
+        self._attempt_count = 0
+        self._transition_count = 0
         self._episode_finished = False
 
     @property
@@ -112,7 +122,8 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             A pair containing the initial observation shown to the model and
             the reset metadata returned by the scenario.
         """
-        self._turn_count = 0
+        self._attempt_count = 0
+        self._transition_count = 0
         self._episode_finished = False
         self._state, info = self.scenario.reset(seed=seed)
         observation = self.renderer.render(self._state)
@@ -144,7 +155,8 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             If the current episode has already terminated or been truncated.
         InvalidActionError
             If the backend rejects the action as malformed or illegal for the
-            current state.
+            current state and the configured invalid-action policy is
+            `raise`.
         """
         if self._episode_finished:
             raise EpisodeFinishedError(
@@ -152,7 +164,12 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             )
 
         previous_state = self.state
-        action = self.backend.parse_action(previous_state, raw_action)
+        try:
+            action = self.backend.parse_action(previous_state, raw_action)
+        except InvalidActionError as exc:
+            return self._handle_invalid_action(previous_state, raw_action, exc)
+
+        self._attempt_count += 1
         next_state, transition_info = self.backend.apply_action(previous_state, action)
         reward = self.reward_fn.evaluate(
             previous_state=previous_state,
@@ -161,18 +178,18 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             transition_info=transition_info,
         )
 
-        self._turn_count += 1
+        self._transition_count += 1
         terminated = self.backend.is_terminal(next_state)
         truncated = False
         info = dict(transition_info)
+        info["accepted"] = True
+        info["attempt_count"] = self._attempt_count
+        info["transition_count"] = self._transition_count
 
-        if (
-            self.config.max_turns is not None
-            and self._turn_count >= self.config.max_turns
-            and not terminated
-        ):
+        truncated_reason = self._limit_truncated_reason(terminated=terminated)
+        if truncated_reason is not None:
             truncated = True
-            info.setdefault("truncated_reason", "max_turns")
+            info.setdefault("truncated_reason", truncated_reason)
 
         self._episode_finished = terminated or truncated
         self._state = next_state
@@ -199,3 +216,75 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             )
         )
         return result
+
+    def _handle_invalid_action(
+        self, previous_state: StateT, raw_action: str, error: InvalidActionError
+    ) -> StepResult:
+        """Handle a verifier-rejected action according to env policy."""
+        policy = self.config.invalid_action_policy
+        if policy.mode == InvalidActionMode.RAISE:
+            raise error
+
+        penalty = policy.penalty
+        if penalty is None:
+            raise ValueError("Penalized invalid-action handling requires a penalty.")
+
+        self._attempt_count += 1
+        observation = self.renderer.render(previous_state)
+        terminated = False
+        truncated = policy.mode == InvalidActionMode.PENALIZE_TRUNCATE
+        info: dict[str, object] = {
+            "accepted": False,
+            "attempt_count": self._attempt_count,
+            "error": str(error),
+            "invalid_action": True,
+            "invalid_action_policy": policy.mode.value,
+            "raw_action": raw_action,
+            "transition_count": self._transition_count,
+        }
+        if truncated:
+            info["truncated_reason"] = "invalid_action"
+
+        limit_truncated_reason = self._limit_truncated_reason(terminated=False)
+        if limit_truncated_reason is not None and not truncated:
+            truncated = True
+            info["truncated_reason"] = limit_truncated_reason
+
+        self._episode_finished = truncated
+        result = StepResult(
+            observation=observation,
+            reward=penalty,
+            accepted=False,
+            terminated=terminated,
+            truncated=truncated,
+            info=info,
+        )
+        self.trajectory.steps.append(
+            TrajectoryStep(
+                raw_action=raw_action,
+                action=None,
+                accepted=False,
+                observation=observation,
+                reward=penalty,
+                terminated=terminated,
+                truncated=truncated,
+                info=info,
+            )
+        )
+        return result
+
+    def _limit_truncated_reason(self, *, terminated: bool) -> str | None:
+        """Return the truncation reason implied by configured episode limits."""
+        if terminated:
+            return None
+        if (
+            self.config.max_attempts is not None
+            and self._attempt_count >= self.config.max_attempts
+        ):
+            return "max_attempts"
+        if (
+            self.config.max_transitions is not None
+            and self._transition_count >= self.config.max_transitions
+        ):
+            return "max_transitions"
+        return None

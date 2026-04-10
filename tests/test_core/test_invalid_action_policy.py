@@ -1,20 +1,19 @@
-"""Invalid-action policy wrapper tests."""
+"""Invalid-action policy tests."""
 
 import pytest
 
 from rlvr_games.core import (
     EpisodeFinishedError,
+    EpisodeConfig,
     InvalidActionError,
     InvalidActionMode,
     InvalidActionPolicy,
-    InvalidActionPolicyEnv,
 )
-from rlvr_games.core.types import Observation
 from rlvr_games.core.rollout import ActionContext, run_episode
+from rlvr_games.core.types import Observation
 from rlvr_games.games.chess import (
-    ChessAction,
     ChessBoardOrientation,
-    ChessState,
+    ChessEnv,
     ChessTextRendererKind,
     make_chess_env,
 )
@@ -22,7 +21,7 @@ from rlvr_games.games.chess.scenarios import STANDARD_START_FEN
 
 
 class ScriptedAgent:
-    """Deterministic agent used to test wrapper rollout behavior."""
+    """Deterministic agent used to test env-owned policy behavior."""
 
     def __init__(self, actions: list[str]) -> None:
         """Initialize the agent with scripted action strings."""
@@ -39,8 +38,8 @@ class ScriptedAgent:
 
 def make_env_with_invalid_action_policy(
     *, mode: InvalidActionMode, penalty: float | None
-) -> InvalidActionPolicyEnv[ChessState, ChessAction]:
-    """Construct a wrapped chess environment for invalid-action tests.
+) -> ChessEnv:
+    """Construct a chess environment for invalid-action tests.
 
     Parameters
     ----------
@@ -51,21 +50,19 @@ def make_env_with_invalid_action_policy(
 
     Returns
     -------
-    InvalidActionPolicyEnv[ChessState, ChessAction]
-        Wrapped chess environment configured with the requested policy.
+    ChessEnv
+        Chess environment configured with the requested policy.
     """
-    env = make_chess_env(
+    return make_chess_env(
         initial_fen=STANDARD_START_FEN,
-        max_turns=None,
+        config=EpisodeConfig(
+            invalid_action_policy=InvalidActionPolicy(mode=mode, penalty=penalty),
+        ),
         text_renderer_kind=ChessTextRendererKind.ASCII,
         image_output_dir=None,
         image_size=360,
         image_coordinates=True,
         orientation=ChessBoardOrientation.WHITE,
-    )
-    return InvalidActionPolicyEnv(
-        env=env,
-        policy=InvalidActionPolicy(mode=mode, penalty=penalty),
     )
 
 
@@ -126,7 +123,7 @@ def test_penalize_truncate_records_rejected_attempt_and_finishes_episode() -> No
         env.step("e2e4")
 
 
-def test_run_episode_works_with_penalize_truncate_wrapper() -> None:
+def test_run_episode_works_with_penalize_truncate_policy() -> None:
     env = make_env_with_invalid_action_policy(
         mode=InvalidActionMode.PENALIZE_TRUNCATE,
         penalty=-3.0,

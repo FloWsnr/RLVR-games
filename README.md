@@ -35,6 +35,7 @@ Use the library in-process for training and evaluation loops:
 
 ```python
 from rlvr_games.core.rollout import run_episode
+from rlvr_games.core.types import EpisodeConfig
 from rlvr_games.games.chess import (
     ChessBoardOrientation,
     ChessTextRendererKind,
@@ -44,7 +45,7 @@ from rlvr_games.games.chess.scenarios import STANDARD_START_FEN
 
 env = make_chess_env(
     initial_fen=STANDARD_START_FEN,
-    max_turns=None,
+    config=EpisodeConfig(),
     text_renderer_kind=ChessTextRendererKind.ASCII,
     image_output_dir=None,
     image_size=360,
@@ -53,22 +54,29 @@ env = make_chess_env(
 )
 ```
 
-To make invalid actions explicit in training or evaluation loops, wrap the
-environment:
+To make invalid actions explicit in training or evaluation loops, configure the
+base environment directly:
 
 ```python
-from rlvr_games.core.wrappers import (
+from rlvr_games.core.types import (
+    EpisodeConfig,
     InvalidActionMode,
     InvalidActionPolicy,
-    InvalidActionPolicyEnv,
 )
 
-wrapped_env = InvalidActionPolicyEnv(
-    env=env,
-    policy=InvalidActionPolicy(
-        mode=InvalidActionMode.PENALIZE_CONTINUE,
-        penalty=-1.0,
+env = make_chess_env(
+    initial_fen=STANDARD_START_FEN,
+    config=EpisodeConfig(
+        invalid_action_policy=InvalidActionPolicy(
+            mode=InvalidActionMode.PENALIZE_CONTINUE,
+            penalty=-1.0,
+        ),
     ),
+    text_renderer_kind=ChessTextRendererKind.ASCII,
+    image_output_dir=None,
+    image_size=360,
+    image_coordinates=True,
+    orientation=ChessBoardOrientation.WHITE,
 )
 ```
 
