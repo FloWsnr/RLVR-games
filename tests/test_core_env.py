@@ -1,21 +1,13 @@
-"""Standard-library tests for the minimal scaffold."""
+"""Core environment tests."""
 
-import unittest
 from dataclasses import dataclass
 from typing import Any
 
+import pytest
+
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.exceptions import EnvironmentNotResetError
-from rlvr_games.core.rewards import ZeroReward
 from rlvr_games.core.types import EpisodeConfig, Observation
-from rlvr_games.games.chess import (
-    AsciiBoardFormatter,
-    ChessBackend,
-    ChessEnv,
-    ChessObservationRenderer,
-    STANDARD_START_FEN,
-    StartingPositionScenario,
-)
 
 
 @dataclass(slots=True)
@@ -67,61 +59,40 @@ class CounterReward:
         return float(action.delta)
 
 
-class TurnBasedEnvTests(unittest.TestCase):
-    def test_step_requires_reset(self) -> None:
-        env = TurnBasedEnv(
-            backend=CounterBackend(),
-            scenario=CounterScenario(),
-            renderer=CounterRenderer(),
-            reward_fn=CounterReward(),
-            config=EpisodeConfig(),
-        )
-        with self.assertRaises(EnvironmentNotResetError):
-            env.step("1")
+def test_step_requires_reset() -> None:
+    env = TurnBasedEnv(
+        backend=CounterBackend(),
+        scenario=CounterScenario(),
+        renderer=CounterRenderer(),
+        reward_fn=CounterReward(),
+        config=EpisodeConfig(),
+    )
 
-    def test_records_trajectory_until_terminal(self) -> None:
-        env = TurnBasedEnv(
-            backend=CounterBackend(),
-            scenario=CounterScenario(),
-            renderer=CounterRenderer(),
-            reward_fn=CounterReward(),
-            config=EpisodeConfig(max_turns=10),
-        )
-
-        observation, info = env.reset(seed=7)
-        self.assertEqual(observation.text, "value=0")
-        self.assertEqual(info["seed"], 7)
-
-        first = env.step("1")
-        second = env.step("1")
-        third = env.step("1")
-
-        self.assertFalse(first.terminated)
-        self.assertFalse(second.terminated)
-        self.assertTrue(third.terminated)
-        self.assertEqual(env.trajectory.total_reward, 3.0)
-        self.assertEqual(len(env.trajectory.steps), 3)
-        self.assertEqual(env.trajectory.steps[-1].observation.metadata["value"], 3)
+    with pytest.raises(EnvironmentNotResetError):
+        env.step("1")
 
 
-class ChessEnvTests(unittest.TestCase):
-    def test_reset_returns_starting_position(self) -> None:
-        env = ChessEnv(
-            backend=ChessBackend(),
-            scenario=StartingPositionScenario(),
-            renderer=ChessObservationRenderer(
-                board_formatter=AsciiBoardFormatter(),
-                image_renderer=None,
-            ),
-            reward_fn=ZeroReward(),
-            config=EpisodeConfig(),
-        )
-        observation, info = env.reset(seed=123)
+def test_records_trajectory_until_terminal() -> None:
+    env = TurnBasedEnv(
+        backend=CounterBackend(),
+        scenario=CounterScenario(),
+        renderer=CounterRenderer(),
+        reward_fn=CounterReward(),
+        config=EpisodeConfig(max_turns=10),
+    )
 
-        self.assertIn(STANDARD_START_FEN, observation.text or "")
-        self.assertEqual(info["scenario"], "starting_position")
-        self.assertEqual(info["seed"], 123)
+    observation, info = env.reset(seed=7)
 
+    assert observation.text == "value=0"
+    assert info["seed"] == 7
 
-if __name__ == "__main__":
-    unittest.main()
+    first = env.step("1")
+    second = env.step("1")
+    third = env.step("1")
+
+    assert first.terminated is False
+    assert second.terminated is False
+    assert third.terminated is True
+    assert env.trajectory.total_reward == 3.0
+    assert len(env.trajectory.steps) == 3
+    assert env.trajectory.steps[-1].observation.metadata["value"] == 3
