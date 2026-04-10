@@ -3,7 +3,9 @@
 from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
+from rlvr_games.core.trajectory import EpisodeTrajectory
 from rlvr_games.core.types import Observation
+from rlvr_games.core.types import StepResult
 
 StateT = TypeVar("StateT")
 ActionT = TypeVar("ActionT")
@@ -87,6 +89,70 @@ class GameBackend(Protocol[StateT, ActionT]):
         -------
         bool
             `True` when the episode should terminate under the game rules.
+        """
+        ...
+
+
+class Environment(Protocol[StateT, ActionT]):
+    """Protocol for stateful reset/step environments.
+
+    Environments coordinate game-specific backend logic, observation rendering,
+    reward evaluation, and trajectory recording behind the minimal episode
+    lifecycle needed by rollout runners and debugging tools.
+    """
+
+    backend: GameBackend[StateT, ActionT]
+
+    @property
+    def state(self) -> StateT:
+        """Return the current canonical state for the active episode.
+
+        Returns
+        -------
+        StateT
+            The current canonical game state.
+        """
+        ...
+
+    @property
+    def trajectory(self) -> EpisodeTrajectory[ActionT]:
+        """Return the trajectory recorded for the active episode.
+
+        Returns
+        -------
+        EpisodeTrajectory[ActionT]
+            The episode trajectory accumulated so far.
+        """
+        ...
+
+    def reset(self, *, seed: int) -> tuple[Observation, dict[str, object]]:
+        """Start a fresh episode.
+
+        Parameters
+        ----------
+        seed : int
+            Explicit seed used to initialize the scenario.
+
+        Returns
+        -------
+        tuple[Observation, dict[str, object]]
+            Initial observation and reset metadata.
+        """
+        ...
+
+    def step(self, raw_action: str) -> StepResult:
+        """Advance the episode by one raw model action.
+
+        Parameters
+        ----------
+        raw_action : str
+            Serialized action emitted by an agent or human operator.
+
+        Returns
+        -------
+        StepResult
+            Observation, reward, terminal flags, and transition metadata for
+            the attempted step.
         """
         ...
 

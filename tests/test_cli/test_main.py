@@ -1,0 +1,90 @@
+"""CLI interaction tests."""
+
+from io import StringIO
+import sys
+
+from _pytest.monkeypatch import MonkeyPatch
+from rlvr_games.cli.main import run_cli, run_play_session
+from rlvr_games.games.chess import (
+    ChessEnv,
+    ChessImageOrientation,
+    ChessTextRendererKind,
+    make_chess_env,
+)
+from rlvr_games.games.chess.scenarios import STANDARD_START_FEN
+
+
+def make_env() -> ChessEnv:
+    """Construct a chess environment for interactive CLI tests.
+
+    Returns
+    -------
+    ChessEnv
+        Fully wired chess environment instance.
+    """
+    return make_chess_env(
+        initial_fen=STANDARD_START_FEN,
+        max_turns=None,
+        text_renderer_kind=ChessTextRendererKind.ASCII,
+        image_output_dir=None,
+        image_size=360,
+        image_coordinates=True,
+        image_orientation=ChessImageOrientation.WHITE,
+    )
+
+
+def test_run_play_session_handles_commands_and_moves() -> None:
+    env = make_env()
+    input_stream = StringIO("help\nlegal\ne2e4\ntrajectory\nquit\n")
+    output_stream = StringIO()
+
+    exit_code = run_play_session(
+        env=env,
+        seed=7,
+        input_stream=input_stream,
+        output_stream=output_stream,
+    )
+
+    output = output_stream.getvalue()
+    assert exit_code == 0
+    assert "Reset info:" in output
+    assert "Commands: help legal fen trajectory quit exit" in output
+    assert "Legal actions (20):" in output
+    assert "Move SAN: e4" in output
+    assert "Trajectory steps: 1" in output
+    assert "Session ended." in output
+
+
+def test_run_play_session_reports_invalid_moves_without_state_change() -> None:
+    env = make_env()
+    input_stream = StringIO("e2e5\nquit\n")
+    output_stream = StringIO()
+
+    exit_code = run_play_session(
+        env=env,
+        seed=13,
+        input_stream=input_stream,
+        output_stream=output_stream,
+    )
+
+    output = output_stream.getvalue()
+    assert exit_code == 0
+    assert "Invalid action:" in output
+    assert env.state.fen == STANDARD_START_FEN
+    assert len(env.trajectory.steps) == 0
+
+
+def test_run_cli_can_start_and_exit_a_chess_play_session(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    input_stream = StringIO("quit\n")
+    output_stream = StringIO()
+    monkeypatch.setattr(sys, "stdin", input_stream)
+    monkeypatch.setattr(sys, "stdout", output_stream)
+
+    exit_code = run_cli(["play", "chess", "--seed", "5"])
+
+    output = output_stream.getvalue()
+    assert exit_code == 0
+    assert "Chess board:" in output
+    assert "Session ended." in output
