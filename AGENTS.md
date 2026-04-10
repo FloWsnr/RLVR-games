@@ -33,6 +33,12 @@ This is an environment-first RLVR framework. The game engine is the source of tr
 - `uv run pyright`: run static type checking; required after changes.
 - `uv run ruff check .`: lint the repository.
 - `uv run ruff format .`: format Python files before submitting.
+- `uv run rlvr-games play chess --seed 0`: manually smoke-test the chess environment through the interactive CLI. Enter UCI moves such as `e2e4`, or use `help`, `legal`, `fen`, `trajectory`, `quit`, and `exit` inside the session.
+- `uv run rlvr-games play chess --seed 0 --fen "<fen>"`: start a manual chess test from an explicit FEN position.
+- `uv run rlvr-games play chess --seed 0 --max-turns 4`: test truncation behavior through the CLI.
+- `uv run rlvr-games play chess --seed 0 --renderer unicode`: test alternate text rendering. Supported text renderers are `ascii` and `unicode`.
+- `uv run rlvr-games play chess --seed 0 --image-output-dir <dir> --image-size 360 --image-coordinates --image-orientation white`: test PNG observation rendering. Supported image orientations are `white` and `black`.
+- `printf 'legal\ne2e4\ntrajectory\nquit\n' | uv run rlvr-games play chess --seed 0`: run a deterministic non-interactive CLI smoke test.
 
 ## Commit & Pull Request Guidelines
 
