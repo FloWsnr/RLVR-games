@@ -7,6 +7,7 @@ from _pytest.monkeypatch import MonkeyPatch
 
 from rlvr_games.cli.main import run_cli, run_play_session
 from rlvr_games.core import EpisodeConfig
+from rlvr_games.games.game2048.cli import GAME2048_CLI_SPEC
 from rlvr_games.games.game2048 import Game2048Env, make_game2048_env
 
 NOOP_UP_BOARD = (
@@ -45,11 +46,14 @@ def make_env() -> Game2048Env:
 
 def test_run_play_session_handles_2048_commands_and_moves() -> None:
     env = make_env()
-    input_stream = StringIO("help\nlegal\nstate\nleft\ntrajectory\nquit\n")
+    input_stream = StringIO(
+        "help\nlegal\nstate\nshow max_tile\nleft\ntrajectory\nquit\n"
+    )
     output_stream = StringIO()
 
     exit_code = run_play_session(
         env=env,
+        game_spec=GAME2048_CLI_SPEC,
         seed=0,
         image_output_dir=None,
         input_stream=input_stream,
@@ -59,9 +63,10 @@ def test_run_play_session_handles_2048_commands_and_moves() -> None:
     output = output_stream.getvalue()
     assert exit_code == 0
     assert "Reset info:" in output
-    assert "Commands: help legal state fen trajectory quit exit" in output
+    assert "Commands: help legal state show <key> trajectory quit exit" in output
     assert "Legal actions (4): up right down left" in output
     assert "State:" in output
+    assert "max_tile: 2" in output
     assert "Direction: left" in output
     assert "Score gain: 0" in output
     assert "Trajectory steps: 1" in output
@@ -84,6 +89,7 @@ def test_run_play_session_reports_invalid_2048_moves_without_state_change() -> N
 
     exit_code = run_play_session(
         env=env,
+        game_spec=GAME2048_CLI_SPEC,
         seed=13,
         image_output_dir=None,
         input_stream=input_stream,
@@ -113,6 +119,7 @@ def test_run_play_session_finishes_immediately_for_terminal_2048_positions() -> 
 
     exit_code = run_play_session(
         env=env,
+        game_spec=GAME2048_CLI_SPEC,
         seed=2,
         image_output_dir=None,
         input_stream=input_stream,

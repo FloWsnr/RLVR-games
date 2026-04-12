@@ -17,6 +17,7 @@ from rlvr_games.games.chess import (
     ChessTextRendererKind,
     make_chess_env,
 )
+from rlvr_games.games.chess.cli import CHESS_CLI_SPEC
 from rlvr_games.games.chess.scenarios import STANDARD_START_FEN
 
 TERMINAL_FEN = "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1"
@@ -43,11 +44,12 @@ def make_env() -> ChessEnv:
 
 def test_run_play_session_handles_commands_and_moves() -> None:
     env = make_env()
-    input_stream = StringIO("help\nlegal\ne2e4\ntrajectory\nquit\n")
+    input_stream = StringIO("help\nlegal\nshow fen\ne2e4\ntrajectory\nquit\n")
     output_stream = StringIO()
 
     exit_code = run_play_session(
         env=env,
+        game_spec=CHESS_CLI_SPEC,
         seed=7,
         image_output_dir=None,
         input_stream=input_stream,
@@ -57,8 +59,9 @@ def test_run_play_session_handles_commands_and_moves() -> None:
     output = output_stream.getvalue()
     assert exit_code == 0
     assert "Reset info:" in output
-    assert "Commands: help legal state fen trajectory quit exit" in output
+    assert "Commands: help legal state show <key> trajectory quit exit" in output
     assert "Legal actions (20):" in output
+    assert f"fen: {STANDARD_START_FEN}" in output
     assert "Move SAN: e4" in output
     assert "Trajectory steps: 1" in output
     assert "Session ended." in output
@@ -71,6 +74,7 @@ def test_run_play_session_reports_invalid_moves_without_state_change() -> None:
 
     exit_code = run_play_session(
         env=env,
+        game_spec=CHESS_CLI_SPEC,
         seed=13,
         image_output_dir=None,
         input_stream=input_stream,
@@ -104,6 +108,7 @@ def test_run_play_session_reports_penalized_invalid_moves_from_env_policy() -> N
 
     exit_code = run_play_session(
         env=env,
+        game_spec=CHESS_CLI_SPEC,
         seed=21,
         image_output_dir=None,
         input_stream=input_stream,
@@ -133,6 +138,7 @@ def test_run_play_session_finishes_immediately_for_terminal_reset_positions() ->
 
     exit_code = run_play_session(
         env=env,
+        game_spec=CHESS_CLI_SPEC,
         seed=2,
         image_output_dir=None,
         input_stream=input_stream,
@@ -163,6 +169,7 @@ def test_run_play_session_persists_rendered_images_when_requested(
 
     exit_code = run_play_session(
         env=env,
+        game_spec=CHESS_CLI_SPEC,
         seed=6,
         image_output_dir=tmp_path,
         input_stream=input_stream,
