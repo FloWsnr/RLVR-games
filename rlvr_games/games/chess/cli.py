@@ -28,7 +28,7 @@ from rlvr_games.games.chess.scenarios import (
     StartingPositionScenario,
 )
 from rlvr_games.games.chess.state import ChessState
-from rlvr_games.games.chess.stockfish import StockfishEvaluator
+from rlvr_games.games.chess.stockfish_runtime import StockfishEvaluator
 
 
 class ChessScenarioKind(StrEnum):

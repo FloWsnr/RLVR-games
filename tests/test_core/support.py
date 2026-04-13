@@ -1,12 +1,11 @@
 """Shared helpers for core tests."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from rlvr_games.core import ZeroReward
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.exceptions import InvalidActionError
-from rlvr_games.core.rollout import ActionContext
 from rlvr_games.core.types import EpisodeConfig, Observation, ParseResult
 from rlvr_games.games.chess import (
     ChessAction,
@@ -51,12 +50,20 @@ class CounterRenderer:
         return Observation(text=f"value={state.value}", metadata={"value": state.value})
 
 
-class CounterStateInspector:
-    """Expose the counter state for debug inspection."""
+def inspect_counter_state(state: CounterState) -> dict[str, object]:
+    """Return a structured debug view of the counter state.
 
-    def inspect_state(self, state: CounterState) -> dict[str, object]:
-        """Return a structured view of the counter state."""
-        return {"value": state.value}
+    Parameters
+    ----------
+    state : CounterState
+        Canonical counter state to inspect.
+
+    Returns
+    -------
+    dict[str, object]
+        Debug-oriented state summary for inspection tooling.
+    """
+    return {"value": state.value}
 
 
 class CounterBackend:
@@ -126,22 +133,6 @@ class ApplyRejectingCounterBackend(CounterBackend):
         return super().apply_action(state, action)
 
 
-@dataclass(slots=True)
-class ScriptedAgent:
-    """Deterministic rollout agent with optional context capture."""
-
-    actions: list[str]
-    contexts: list[ActionContext] = field(default_factory=list)
-
-    def act(self, observation: Observation, context: ActionContext) -> str:
-        """Return the next scripted action and record the context."""
-        del observation
-        self.contexts.append(context)
-        if not self.actions:
-            raise AssertionError("ScriptedAgent ran out of actions.")
-        return self.actions.pop(0)
-
-
 def make_counter_env(
     *,
     backend: CounterBackend,
@@ -152,7 +143,7 @@ def make_counter_env(
         backend=backend,
         scenario=CounterScenario(),
         renderer=CounterRenderer(),
-        state_inspector=CounterStateInspector(),
+        inspect_state_fn=inspect_counter_state,
         reward_fn=CounterReward(),
         config=config,
     )
@@ -180,7 +171,6 @@ __all__ = [
     "ApplyRejectingCounterBackend",
     "CounterBackend",
     "CounterState",
-    "ScriptedAgent",
     "make_chess_env_for_core_tests",
     "make_counter_env",
     "STANDARD_START_FEN",

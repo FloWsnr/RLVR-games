@@ -18,7 +18,7 @@ from rlvr_games.games.game2048.scenarios import (
     RandomStartScenario,
     normalize_initial_board,
 )
-from rlvr_games.games.game2048.state import Game2048State, Game2048StateInspector
+from rlvr_games.games.game2048.state import Game2048State, inspect_game2048_state
 
 
 def make_game2048_env(
@@ -98,7 +98,7 @@ def make_game2048_env(
             board_formatter=Game2048AsciiBoardFormatter(),
             image_renderer=image_renderer,
         ),
-        state_inspector=Game2048StateInspector(),
+        inspect_state_fn=inspect_game2048_state,
         reward_fn=reward_fn,
         config=config,
     )

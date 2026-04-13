@@ -383,7 +383,7 @@ def _resolve_raw_source_path(
         return destination
     raise FileNotFoundError(
         "No local chess puzzle source file found for preprocessing. Run "
-        "`rlvr-games datasets download chess lichess-puzzles` first or pass "
+        "`rlvr-games-chess-datasets download` first or pass "
         "`--source-file`."
     )
 

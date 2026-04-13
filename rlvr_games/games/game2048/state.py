@@ -3,7 +3,6 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from rlvr_games.core.protocol import StateInspector
 from rlvr_games.games.game2048.engine import (
     Board,
     empty_positions,
@@ -215,7 +214,7 @@ class Game2048State:
         return self.outcome.is_terminal
 
 
-def inspect_game2048_state(*, state: Game2048State) -> dict[str, object]:
+def inspect_game2048_state(state: Game2048State) -> dict[str, object]:
     """Return a structured summary of a 2048 state.
 
     Parameters
@@ -243,22 +242,3 @@ def inspect_game2048_state(*, state: Game2048State) -> dict[str, object]:
     }
     metadata.update(state.outcome.metadata())
     return metadata
-
-
-class Game2048StateInspector(StateInspector[Game2048State]):
-    """Produce structured debug summaries for 2048 states."""
-
-    def inspect_state(self, state: Game2048State) -> dict[str, object]:
-        """Return the structured summary for a 2048 state.
-
-        Parameters
-        ----------
-        state : Game2048State
-            Canonical 2048 state to inspect.
-
-        Returns
-        -------
-        dict[str, object]
-            Debug-oriented state summary derived from cached state fields.
-        """
-        return inspect_game2048_state(state=state)

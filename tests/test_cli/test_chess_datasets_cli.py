@@ -1,4 +1,4 @@
-"""Dataset CLI tests."""
+"""Chess dataset CLI tests."""
 
 from io import StringIO
 from pathlib import Path
@@ -8,8 +8,9 @@ from _pytest.monkeypatch import MonkeyPatch
 import pytest
 import zstandard
 
-from rlvr_games.cli.main import run_cli
+from rlvr_games.cli.main import build_parser as build_play_parser
 from rlvr_games.games.chess.datasets import default_lichess_puzzle_source_path
+from rlvr_games.games.chess.datasets_cli import run_cli
 
 
 def write_sample_lichess_csv(*, path: Path) -> Path:
@@ -35,6 +36,13 @@ def write_sample_lichess_csv(*, path: Path) -> Path:
     return path
 
 
+def test_play_cli_does_not_register_dataset_commands() -> None:
+    parser = build_play_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["datasets", "download"])
+
+
 def test_run_cli_dataset_download_reuses_existing_local_source(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -47,16 +55,7 @@ def test_run_cli_dataset_download_reuses_existing_local_source(
     monkeypatch.setattr(sys, "stdin", input_stream)
     monkeypatch.setattr(sys, "stdout", output_stream)
 
-    exit_code = run_cli(
-        [
-            "datasets",
-            "download",
-            "chess",
-            "lichess-puzzles",
-            "--raw-dir",
-            str(raw_dir),
-        ]
-    )
+    exit_code = run_cli(["download", "--raw-dir", str(raw_dir)])
 
     output = output_stream.getvalue()
     assert exit_code == 0
@@ -82,10 +81,7 @@ def test_run_cli_can_preprocess_a_downloaded_lichess_puzzle_dataset(
 
     exit_code = run_cli(
         [
-            "datasets",
             "preprocess",
-            "chess",
-            "lichess-puzzles",
             "--processed-dir",
             str(tmp_path / "processed"),
             "--raw-dir",
@@ -118,10 +114,7 @@ def test_run_cli_preprocess_requires_a_local_source_file(
     with pytest.raises(SystemExit):
         run_cli(
             [
-                "datasets",
                 "preprocess",
-                "chess",
-                "lichess-puzzles",
                 "--processed-dir",
                 str(tmp_path / "processed"),
                 "--raw-dir",

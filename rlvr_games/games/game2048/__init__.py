@@ -36,7 +36,7 @@ from rlvr_games.games.game2048.scenarios import (
 from rlvr_games.games.game2048.state import (
     Game2048Outcome,
     Game2048State,
-    Game2048StateInspector,
+    inspect_game2048_state,
 )
 
 __all__ = [
@@ -51,7 +51,7 @@ __all__ = [
     "Game2048ObservationRenderer",
     "Game2048Outcome",
     "Game2048State",
-    "Game2048StateInspector",
+    "inspect_game2048_state",
     "MergeSummary",
     "MoveDirection",
     "MoveSummary",

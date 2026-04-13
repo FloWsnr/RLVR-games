@@ -10,16 +10,12 @@ from rlvr_games.core.exceptions import (
 from rlvr_games.core.protocol import (
     Environment,
     ImageRenderer,
-    StateInspector,
     TextRenderer,
 )
 from rlvr_games.core.rewards import ZeroReward
 from rlvr_games.core.rollout import (
     ActionContext,
-    RolloutAgent,
-    RolloutResult,
     build_action_context,
-    run_episode,
 )
 from rlvr_games.core.trajectory import EpisodeTrajectory, TrajectoryStep
 from rlvr_games.core.types import (
@@ -47,14 +43,10 @@ __all__ = [
     "ParseResult",
     "RenderedImage",
     "RLVRGamesError",
-    "RolloutAgent",
-    "RolloutResult",
-    "StateInspector",
     "StepResult",
     "TextRenderer",
     "TrajectoryStep",
     "TurnBasedEnv",
     "ZeroReward",
     "build_action_context",
-    "run_episode",
 ]

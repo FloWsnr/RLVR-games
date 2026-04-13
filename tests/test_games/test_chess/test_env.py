@@ -10,15 +10,14 @@ from rlvr_games.games.chess import (
     AsciiBoardFormatter,
     ChessBackend,
     ChessObservationRenderer,
-    ChessStateInspector,
     StartingPositionScenario,
     TerminalOutcomeReward,
 )
 from rlvr_games.games.chess.scenarios import STANDARD_START_FEN
+from rlvr_games.games.chess.state import inspect_chess_state
 
 PROMOTION_FEN = "k7/4P3/8/8/8/8/8/7K w - - 0 1"
 TERMINAL_FEN = "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1"
-STATE_INSPECTOR = ChessStateInspector()
 
 
 def make_renderer() -> ChessObservationRenderer:
@@ -44,7 +43,7 @@ def test_checkmate_sequence_terminates_with_winner_metadata() -> None:
         backend=ChessBackend(),
         scenario=StartingPositionScenario(),
         renderer=make_renderer(),
-        state_inspector=STATE_INSPECTOR,
+        inspect_state_fn=inspect_chess_state,
         reward_fn=make_reward(),
         config=EpisodeConfig(),
     )
@@ -72,7 +71,7 @@ def test_threefold_repetition_terminates_on_the_third_occurrence() -> None:
         backend=ChessBackend(),
         scenario=StartingPositionScenario(),
         renderer=make_renderer(),
-        state_inspector=STATE_INSPECTOR,
+        inspect_state_fn=inspect_chess_state,
         reward_fn=make_reward(),
         config=EpisodeConfig(),
     )
@@ -105,7 +104,7 @@ def test_custom_valid_fen_reset_is_normalized() -> None:
         backend=ChessBackend(),
         scenario=StartingPositionScenario(initial_fen=PROMOTION_FEN),
         renderer=make_renderer(),
-        state_inspector=STATE_INSPECTOR,
+        inspect_state_fn=inspect_chess_state,
         reward_fn=make_reward(),
         config=EpisodeConfig(),
     )
@@ -123,7 +122,7 @@ def test_terminal_reset_marks_episode_finished_and_rejects_steps() -> None:
         backend=ChessBackend(),
         scenario=StartingPositionScenario(initial_fen=TERMINAL_FEN),
         renderer=make_renderer(),
-        state_inspector=STATE_INSPECTOR,
+        inspect_state_fn=inspect_chess_state,
         reward_fn=make_reward(),
         config=EpisodeConfig(),
     )
@@ -142,7 +141,7 @@ def test_invalid_fen_reset_fails_fast() -> None:
         backend=ChessBackend(),
         scenario=StartingPositionScenario(initial_fen="not-a-fen"),
         renderer=make_renderer(),
-        state_inspector=STATE_INSPECTOR,
+        inspect_state_fn=inspect_chess_state,
         reward_fn=make_reward(),
         config=EpisodeConfig(),
     )
@@ -156,7 +155,7 @@ def test_env_records_trajectory_with_real_backend() -> None:
         backend=ChessBackend(),
         scenario=StartingPositionScenario(),
         renderer=make_renderer(),
-        state_inspector=STATE_INSPECTOR,
+        inspect_state_fn=inspect_chess_state,
         reward_fn=make_reward(),
         config=EpisodeConfig(),
     )

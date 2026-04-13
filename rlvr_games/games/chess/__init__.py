@@ -32,8 +32,8 @@ from rlvr_games.games.chess.scenarios import (
     STANDARD_START_FEN,
     StartingPositionScenario,
 )
-from rlvr_games.games.chess.state import ChessState, ChessStateInspector
-from rlvr_games.games.chess.stockfish import StockfishEvaluator
+from rlvr_games.games.chess.state import ChessState, inspect_chess_state
+from rlvr_games.games.chess.stockfish_runtime import StockfishEvaluator
 
 __all__ = [
     "ChessAction",
@@ -47,10 +47,10 @@ __all__ = [
     "ChessRewardPerspective",
     "ChessStateEvaluator",
     "ChessState",
-    "ChessStateInspector",
     "ChessTextRendererKind",
     "EngineEvalDenseReward",
     "EngineEvalSparseReward",
+    "inspect_chess_state",
     "PuzzleOnlyMoveDenseReward",
     "PuzzleOnlyMoveSparseReward",
     "STANDARD_START_FEN",

@@ -2,7 +2,7 @@
 
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Generic, TypeVar
+from typing import Callable, Generic, TypeVar
 
 from rlvr_games.core.exceptions import (
     EpisodeFinishedError,
@@ -14,7 +14,6 @@ from rlvr_games.core.protocol import (
     Renderer,
     RewardFn,
     Scenario,
-    StateInspector,
 )
 from rlvr_games.core.trajectory import EpisodeTrajectory, TrajectoryStep
 from rlvr_games.core.types import (
@@ -48,9 +47,9 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
 
     The environment coordinates five reusable components: a scenario that
     creates the initial canonical state, a backend that verifies actions and
-    applies transitions, a renderer that turns state into observations, a
-    state inspector that exposes debug-friendly state summaries, and a reward
-    function that scores verified transitions.
+    applies transitions, a renderer that turns state into observations, an
+    inspection function that exposes debug-friendly state summaries, and a
+    reward function that scores verified transitions.
     """
 
     def __init__(
@@ -59,7 +58,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         backend: GameBackend[StateT, ActionT],
         scenario: Scenario[StateT],
         renderer: Renderer[StateT],
-        state_inspector: StateInspector[StateT],
+        inspect_state_fn: Callable[[StateT], dict[str, object]],
         reward_fn: RewardFn[StateT, ActionT],
         config: EpisodeConfig,
     ) -> None:
@@ -76,8 +75,8 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         renderer : Renderer[StateT]
             Adapter that converts canonical state into the observation exposed
             to the model.
-        state_inspector : StateInspector[StateT]
-            Adapter that converts canonical state into a structured debug view
+        inspect_state_fn : Callable[[StateT], dict[str, object]]
+            Function that converts canonical state into a structured debug view
             used by CLI and rollout tooling.
         reward_fn : RewardFn[StateT, ActionT]
             Reward function used to score verified transitions.
@@ -88,7 +87,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         self.backend = backend
         self.scenario = scenario
         self.renderer = renderer
-        self.state_inspector = state_inspector
+        self.inspect_state_fn = inspect_state_fn
         self.reward_fn = reward_fn
         self.config = config
 
@@ -178,7 +177,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         EnvironmentNotResetError
             If `reset()` has not been called yet.
         """
-        return deepcopy(self.state_inspector.inspect_state(self.state))
+        return deepcopy(self.inspect_state_fn(self.state))
 
     def reset(self, *, seed: int) -> tuple[Observation, dict[str, object]]:
         """Start a fresh episode from the configured scenario.
@@ -271,7 +270,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             self.backend,
             self.scenario,
             self.renderer,
-            self.state_inspector,
+            self.inspect_state_fn,
             self.reward_fn,
         ):
             close_method = getattr(component, "close", None)

@@ -14,7 +14,6 @@ RendererStateT = TypeVar("RendererStateT", contravariant=True)
 RewardStateT = TypeVar("RewardStateT", contravariant=True)
 RewardActionT = TypeVar("RewardActionT", contravariant=True)
 RenderInputT = TypeVar("RenderInputT", contravariant=True)
-InspectorStateT = TypeVar("InspectorStateT", contravariant=True)
 
 
 class GameBackend(Protocol[BackendStateT, BackendActionT]):
@@ -236,25 +235,6 @@ class Renderer(Protocol[RendererStateT]):
         -------
         Observation
             Model-facing observation derived from the canonical state.
-        """
-        ...
-
-
-class StateInspector(Protocol[InspectorStateT]):
-    """Protocol for producing debug-friendly state summaries."""
-
-    def inspect_state(self, state: InspectorStateT) -> dict[str, object]:
-        """Return a structured state summary for debugging tools.
-
-        Parameters
-        ----------
-        state : InspectorStateT
-            Canonical state to inspect.
-
-        Returns
-        -------
-        dict[str, object]
-            Structured state summary suitable for CLI inspection or logging.
         """
         ...
 

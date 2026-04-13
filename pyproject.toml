@@ -17,7 +17,8 @@ dependencies = [
 
 [project.scripts]
 rlvr-games = "rlvr_games.cli.main:main"
-rlvr-games-install-stockfish = "rlvr_games.games.chess.stockfish:main"
+rlvr-games-chess-datasets = "rlvr_games.games.chess.datasets_cli:main"
+rlvr-games-install-stockfish = "rlvr_games.games.chess.stockfish_install:main"
 
 [dependency-groups]
 dev = [

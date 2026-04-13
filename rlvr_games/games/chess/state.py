@@ -5,8 +5,6 @@ from typing import Any, Self
 
 import chess
 
-from rlvr_games.core.protocol import StateInspector
-
 
 def repetition_key_from_board(board: chess.Board) -> str:
     """Return the repetition-significant part of a chess position.
@@ -374,7 +372,7 @@ class ChessState:
         )
 
 
-def inspect_chess_state(*, state: ChessState) -> dict[str, object]:
+def inspect_chess_state(state: ChessState) -> dict[str, object]:
     """Return a structured summary of a chess state.
 
     Parameters
@@ -398,22 +396,3 @@ def inspect_chess_state(*, state: ChessState) -> dict[str, object]:
     }
     metadata.update(state.outcome.metadata())
     return metadata
-
-
-class ChessStateInspector(StateInspector[ChessState]):
-    """Produce structured debug summaries for chess states."""
-
-    def inspect_state(self, state: ChessState) -> dict[str, object]:
-        """Return the structured summary for a chess state.
-
-        Parameters
-        ----------
-        state : ChessState
-            Canonical chess state to inspect.
-
-        Returns
-        -------
-        dict[str, object]
-            Debug-oriented state summary derived from cached state fields.
-        """
-        return inspect_chess_state(state=state)

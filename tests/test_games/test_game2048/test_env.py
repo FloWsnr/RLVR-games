@@ -11,10 +11,10 @@ from rlvr_games.games.game2048 import (
     Game2048Backend,
     Game2048ChanceModel,
     Game2048ObservationRenderer,
-    Game2048StateInspector,
     RandomStartScenario,
     TargetTileReward,
 )
+from rlvr_games.games.game2048.state import inspect_game2048_state
 
 WIN_BOARD = (
     (1024, 1024, 0, 0),
@@ -50,7 +50,7 @@ def test_reaching_target_tile_terminates_with_reward_and_metadata() -> None:
             chance_model=chance_model,
         ),
         renderer=make_renderer(),
-        state_inspector=Game2048StateInspector(),
+        inspect_state_fn=inspect_game2048_state,
         reward_fn=TargetTileReward(),
         config=EpisodeConfig(),
     )
@@ -89,7 +89,7 @@ def test_terminal_reset_marks_episode_finished_and_rejects_steps() -> None:
             chance_model=chance_model,
         ),
         renderer=make_renderer(),
-        state_inspector=Game2048StateInspector(),
+        inspect_state_fn=inspect_game2048_state,
         reward_fn=TargetTileReward(),
         config=EpisodeConfig(),
     )
@@ -115,7 +115,7 @@ def test_env_records_trajectory_with_real_backend() -> None:
             chance_model=chance_model,
         ),
         renderer=make_renderer(),
-        state_inspector=Game2048StateInspector(),
+        inspect_state_fn=inspect_game2048_state,
         reward_fn=TargetTileReward(),
         config=EpisodeConfig(),
     )

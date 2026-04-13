@@ -11,7 +11,6 @@ from rlvr_games.games.chess import (
     ChessPerspective,
     ChessObservationRenderer,
     ChessState,
-    ChessStateInspector,
     EngineEvalDenseReward,
     EngineEvalSparseReward,
     PuzzleOnlyMoveDenseReward,
@@ -20,9 +19,7 @@ from rlvr_games.games.chess import (
     TerminalOutcomeReward,
 )
 from rlvr_games.games.chess.scenarios import STANDARD_START_FEN
-from rlvr_games.games.chess.state import repetition_key_from_board
-
-STATE_INSPECTOR = ChessStateInspector()
+from rlvr_games.games.chess.state import inspect_chess_state, repetition_key_from_board
 
 
 def make_renderer() -> ChessObservationRenderer:
@@ -202,7 +199,7 @@ def test_terminal_outcome_reward_returns_draw_reward_for_threefold_repetition() 
         backend=ChessBackend(),
         scenario=StartingPositionScenario(initial_fen=STANDARD_START_FEN),
         renderer=make_renderer(),
-        state_inspector=STATE_INSPECTOR,
+        inspect_state_fn=inspect_chess_state,
         reward_fn=TerminalOutcomeReward(
             perspective="white",
             win_reward=1.0,
