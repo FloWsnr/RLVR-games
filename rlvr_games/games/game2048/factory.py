@@ -2,12 +2,12 @@
 
 from typing import Sequence
 
+from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.protocol import RewardFn
 from rlvr_games.core.types import EpisodeConfig
 from rlvr_games.games.game2048.actions import Game2048Action
 from rlvr_games.games.game2048.backend import Game2048Backend
 from rlvr_games.games.game2048.chance import Game2048ChanceModel
-from rlvr_games.games.game2048.env import Game2048Env
 from rlvr_games.games.game2048.render import (
     Game2048AsciiBoardFormatter,
     Game2048ImageRenderer,
@@ -32,7 +32,7 @@ def make_game2048_env(
     config: EpisodeConfig,
     include_images: bool,
     image_size: int,
-) -> Game2048Env:
+) -> TurnBasedEnv[Game2048State, Game2048Action]:
     """Construct a fully wired 2048 environment.
 
     Parameters
@@ -60,7 +60,7 @@ def make_game2048_env(
 
     Returns
     -------
-    Game2048Env
+    TurnBasedEnv[Game2048State, Game2048Action]
         2048 environment wired with the standard backend, scenario, renderer,
         and supplied reward function.
     """
@@ -91,7 +91,7 @@ def make_game2048_env(
     if include_images:
         image_renderer = Game2048ImageRenderer(size=image_size)
 
-    return Game2048Env(
+    return TurnBasedEnv(
         backend=Game2048Backend(chance_model=chance_model),
         scenario=scenario,
         renderer=Game2048ObservationRenderer(

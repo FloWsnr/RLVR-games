@@ -2,13 +2,13 @@
 
 import chess
 
+from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.types import EpisodeConfig
 from rlvr_games.games.chess import (
     AsciiBoardFormatter,
     ChessAction,
     ChessBackend,
     ChessPerspective,
-    ChessEnv,
     ChessObservationRenderer,
     ChessState,
     ChessStateInspector,
@@ -198,7 +198,7 @@ def test_terminal_outcome_reward_uses_the_configured_perspective() -> None:
 
 
 def test_terminal_outcome_reward_returns_draw_reward_for_threefold_repetition() -> None:
-    env = ChessEnv(
+    env = TurnBasedEnv(
         backend=ChessBackend(),
         scenario=StartingPositionScenario(initial_fen=STANDARD_START_FEN),
         renderer=make_renderer(),

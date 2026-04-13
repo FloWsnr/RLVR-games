@@ -7,7 +7,13 @@ from _pytest.monkeypatch import MonkeyPatch
 
 from rlvr_games.cli.main import run_cli, run_play_session
 from rlvr_games.core import EpisodeConfig
-from rlvr_games.games.game2048 import Game2048Env, TargetTileReward, make_game2048_env
+from rlvr_games.core.env import TurnBasedEnv
+from rlvr_games.games.game2048 import (
+    Game2048Action,
+    Game2048State,
+    TargetTileReward,
+    make_game2048_env,
+)
 from rlvr_games.games.game2048.cli import GAME2048_CLI_SPEC
 
 NOOP_UP_BOARD = (
@@ -24,12 +30,12 @@ NO_MOVES_BOARD = (
 )
 
 
-def make_env() -> Game2048Env:
+def make_env() -> TurnBasedEnv[Game2048State, Game2048Action]:
     """Construct a 2048 environment for interactive CLI tests.
 
     Returns
     -------
-    object
+    TurnBasedEnv[Game2048State, Game2048Action]
         Fully wired 2048 environment instance.
     """
     return make_game2048_env(

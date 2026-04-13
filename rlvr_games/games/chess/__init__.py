@@ -2,7 +2,6 @@
 
 from rlvr_games.games.chess.actions import ChessAction
 from rlvr_games.games.chess.backend import ChessBackend
-from rlvr_games.games.chess.env import ChessEnv
 from rlvr_games.games.chess.factory import (
     ChessBoardOrientation,
     ChessTextRendererKind,
@@ -41,7 +40,6 @@ __all__ = [
     "AsciiBoardFormatter",
     "ChessBackend",
     "ChessBoardOrientation",
-    "ChessEnv",
     "ChessFastImageRenderer",
     "ChessObservationRenderer",
     "ChessPerspective",

@@ -18,7 +18,6 @@ from rlvr_games.games.game2048.engine import (
     SpawnSummary,
     spawn_outcomes,
 )
-from rlvr_games.games.game2048.env import Game2048Env
 from rlvr_games.games.game2048.factory import make_game2048_env
 from rlvr_games.games.game2048.render import (
     Game2048AsciiBoardFormatter,
@@ -48,7 +47,6 @@ __all__ = [
     "Game2048AsciiBoardFormatter",
     "Game2048Backend",
     "Game2048ChanceModel",
-    "Game2048Env",
     "Game2048ImageRenderer",
     "Game2048ObservationRenderer",
     "Game2048Outcome",

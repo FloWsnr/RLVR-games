@@ -4,11 +4,11 @@ from enum import StrEnum
 
 import chess
 
+from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.protocol import RewardFn, Scenario
 from rlvr_games.core.types import EpisodeConfig
 from rlvr_games.games.chess.actions import ChessAction
 from rlvr_games.games.chess.backend import ChessBackend
-from rlvr_games.games.chess.env import ChessEnv
 from rlvr_games.games.chess.render import (
     AsciiBoardFormatter,
     ChessFastImageRenderer,
@@ -42,7 +42,7 @@ def make_chess_env(
     image_size: int,
     image_coordinates: bool,
     orientation: ChessBoardOrientation,
-) -> ChessEnv:
+) -> TurnBasedEnv[ChessState, ChessAction]:
     """Construct a fully wired chess environment.
 
     Parameters
@@ -68,7 +68,7 @@ def make_chess_env(
 
     Returns
     -------
-    ChessEnv
+    TurnBasedEnv[ChessState, ChessAction]
         Chess environment wired with the standard backend, scenario, renderer,
         and supplied reward function.
     """
@@ -90,7 +90,7 @@ def make_chess_env(
             orientation=chess_orientation,
         )
 
-    return ChessEnv(
+    return TurnBasedEnv(
         backend=ChessBackend(),
         scenario=scenario,
         renderer=ChessObservationRenderer(
