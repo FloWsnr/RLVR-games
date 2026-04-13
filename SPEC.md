@@ -45,3 +45,9 @@ Possible next additions:
 
 - Checkers
 - Go
+
+
+## Rewards
+
+- We want to support both sparse and dense rewards.
+- 
