@@ -1,7 +1,13 @@
 """Minimal 2048 environment wiring."""
 
 from rlvr_games.core.env import TurnBasedEnv
-from rlvr_games.core.protocol import GameBackend, Renderer, RewardFn, Scenario
+from rlvr_games.core.protocol import (
+    GameBackend,
+    Renderer,
+    RewardFn,
+    Scenario,
+    StateInspector,
+)
 from rlvr_games.core.types import EpisodeConfig
 from rlvr_games.games.game2048.actions import Game2048Action
 from rlvr_games.games.game2048.state import Game2048State
@@ -16,6 +22,7 @@ class Game2048Env(TurnBasedEnv[Game2048State, Game2048Action]):
         backend: GameBackend[Game2048State, Game2048Action],
         scenario: Scenario[Game2048State],
         renderer: Renderer[Game2048State],
+        state_inspector: StateInspector[Game2048State],
         reward_fn: RewardFn[Game2048State, Game2048Action],
         config: EpisodeConfig,
     ) -> None:
@@ -29,6 +36,8 @@ class Game2048Env(TurnBasedEnv[Game2048State, Game2048Action]):
             Scenario used to generate initial states.
         renderer : Renderer[Game2048State]
             Renderer that converts canonical state into observations.
+        state_inspector : StateInspector[Game2048State]
+            Inspector that converts canonical state into a debug view.
         reward_fn : RewardFn[Game2048State, Game2048Action]
             Reward function used for verified transitions.
         config : EpisodeConfig
@@ -39,6 +48,7 @@ class Game2048Env(TurnBasedEnv[Game2048State, Game2048Action]):
             backend=backend,
             scenario=scenario,
             renderer=renderer,
+            state_inspector=state_inspector,
             reward_fn=reward_fn,
             config=config,
         )

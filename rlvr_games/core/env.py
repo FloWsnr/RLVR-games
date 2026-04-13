@@ -9,13 +9,18 @@ from rlvr_games.core.exceptions import (
     EnvironmentNotResetError,
     InvalidActionError,
 )
-from rlvr_games.core.protocol import GameBackend, Renderer, RewardFn, Scenario
+from rlvr_games.core.protocol import (
+    GameBackend,
+    Renderer,
+    RewardFn,
+    Scenario,
+    StateInspector,
+)
 from rlvr_games.core.trajectory import EpisodeTrajectory, TrajectoryStep
 from rlvr_games.core.types import (
     EpisodeConfig,
     InvalidActionMode,
     Observation,
-    ParseResult,
     RenderedImage,
     StepResult,
 )
@@ -41,10 +46,11 @@ class _AttemptOutcome(Generic[StateT, ActionT]):
 class TurnBasedEnv(Generic[StateT, ActionT]):
     """Minimal stateful environment with reset/step semantics.
 
-    The environment coordinates four reusable components: a scenario that
+    The environment coordinates five reusable components: a scenario that
     creates the initial canonical state, a backend that verifies actions and
-    applies transitions, a renderer that turns state into observations, and a
-    reward function that scores verified transitions.
+    applies transitions, a renderer that turns state into observations, a
+    state inspector that exposes debug-friendly state summaries, and a reward
+    function that scores verified transitions.
     """
 
     def __init__(
@@ -53,6 +59,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         backend: GameBackend[StateT, ActionT],
         scenario: Scenario[StateT],
         renderer: Renderer[StateT],
+        state_inspector: StateInspector[StateT],
         reward_fn: RewardFn[StateT, ActionT],
         config: EpisodeConfig,
     ) -> None:
@@ -69,6 +76,9 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         renderer : Renderer[StateT]
             Adapter that converts canonical state into the observation exposed
             to the model.
+        state_inspector : StateInspector[StateT]
+            Adapter that converts canonical state into a structured debug view
+            used by CLI and rollout tooling.
         reward_fn : RewardFn[StateT, ActionT]
             Reward function used to score verified transitions.
         config : EpisodeConfig
@@ -78,6 +88,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         self.backend = backend
         self.scenario = scenario
         self.renderer = renderer
+        self.state_inspector = state_inspector
         self.reward_fn = reward_fn
         self.config = config
 
@@ -138,6 +149,36 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
                 "Call reset() before accessing env.trajectory."
             )
         return self._trajectory
+
+    def legal_actions(self) -> tuple[str, ...]:
+        """Return the legal serialized actions for the current state.
+
+        Returns
+        -------
+        tuple[str, ...]
+            Legal model-facing actions accepted by the environment.
+
+        Raises
+        ------
+        EnvironmentNotResetError
+            If `reset()` has not been called yet.
+        """
+        return tuple(self.backend.legal_actions(self.state))
+
+    def inspect_state(self) -> dict[str, object]:
+        """Return a debug-oriented snapshot of the current canonical state.
+
+        Returns
+        -------
+        dict[str, object]
+            Deep-copied state summary safe for inspection tooling.
+
+        Raises
+        ------
+        EnvironmentNotResetError
+            If `reset()` has not been called yet.
+        """
+        return deepcopy(self.state_inspector.inspect_state(self.state))
 
     def reset(self, *, seed: int) -> tuple[Observation, dict[str, object]]:
         """Start a fresh episode from the configured scenario.
@@ -200,13 +241,20 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             return self._handle_invalid_action(
                 previous_state=previous_state,
                 raw_action=raw_action,
-                parse_result=parse_result,
+                error=parse_result.error,
             )
         action = parse_result.require_action()
-        outcome = self._accepted_attempt_outcome(
-            previous_state=previous_state,
-            action=action,
-        )
+        try:
+            outcome = self._accepted_attempt_outcome(
+                previous_state=previous_state,
+                action=action,
+            )
+        except InvalidActionError as exc:
+            return self._handle_invalid_action(
+                previous_state=previous_state,
+                raw_action=raw_action,
+                error=str(exc),
+            )
         return self._commit_attempt(raw_action=raw_action, outcome=outcome)
 
     def close(self) -> None:
@@ -223,6 +271,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             self.backend,
             self.scenario,
             self.renderer,
+            self.state_inspector,
             self.reward_fn,
         ):
             close_method = getattr(component, "close", None)
@@ -251,7 +300,6 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             Normalized accepted-attempt payload ready to record in the
             trajectory.
         """
-        self._attempt_count += 1
         next_state, transition_info = self.backend.apply_action(previous_state, action)
         reward = self.reward_fn.evaluate(
             previous_state=previous_state,
@@ -260,6 +308,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             transition_info=transition_info,
         )
 
+        self._attempt_count += 1
         self._transition_count += 1
         terminated = self.backend.is_terminal(next_state)
         truncated = False
@@ -290,14 +339,11 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         *,
         previous_state: StateT,
         raw_action: str,
-        parse_result: ParseResult[ActionT],
+        error: str | None,
     ) -> StepResult:
         """Handle a verifier-rejected action according to env policy."""
-        error = parse_result.error
         if error is None:
-            raise ValueError(
-                "_handle_invalid_action() requires a rejected parse result."
-            )
+            raise ValueError("_handle_invalid_action() requires an error message.")
 
         policy = self.config.invalid_action_policy
         if policy.mode == InvalidActionMode.RAISE:

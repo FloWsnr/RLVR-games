@@ -3,13 +3,14 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+from rlvr_games.core.protocol import StateInspector
 from rlvr_games.games.game2048.engine import (
     Board,
     empty_positions,
+    is_power_of_two,
     legal_action_labels,
     max_tile,
     normalize_board,
-    is_power_of_two,
 )
 
 
@@ -212,3 +213,52 @@ class Game2048State:
             `True` when the outcome marks the board as terminal.
         """
         return self.outcome.is_terminal
+
+
+def inspect_game2048_state(*, state: Game2048State) -> dict[str, object]:
+    """Return a structured summary of a 2048 state.
+
+    Parameters
+    ----------
+    state : Game2048State
+        Canonical 2048 state to inspect.
+
+    Returns
+    -------
+    dict[str, object]
+        Debug-oriented state summary derived from cached state fields.
+    """
+    metadata: dict[str, object] = {
+        "board": state.board,
+        "score": state.score,
+        "move_count": state.move_count,
+        "target_value": state.target_value,
+        "size": state.size,
+        "legal_actions": state.legal_actions,
+        "legal_action_count": state.legal_action_count,
+        "empty_cell_count": state.empty_cell_count,
+        "max_tile": state.max_tile,
+        "is_terminal": state.is_terminal,
+        "won": state.outcome.won if state.is_terminal else False,
+    }
+    metadata.update(state.outcome.metadata())
+    return metadata
+
+
+class Game2048StateInspector(StateInspector[Game2048State]):
+    """Produce structured debug summaries for 2048 states."""
+
+    def inspect_state(self, state: Game2048State) -> dict[str, object]:
+        """Return the structured summary for a 2048 state.
+
+        Parameters
+        ----------
+        state : Game2048State
+            Canonical 2048 state to inspect.
+
+        Returns
+        -------
+        dict[str, object]
+            Debug-oriented state summary derived from cached state fields.
+        """
+        return inspect_game2048_state(state=state)

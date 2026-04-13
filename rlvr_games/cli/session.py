@@ -96,7 +96,7 @@ def run_play_session(
                 continue
 
             if command_name == "legal":
-                legal_actions = " ".join(context.legal_actions)
+                legal_actions = " ".join(env.legal_actions())
                 _write_line(
                     output_stream,
                     f"Legal actions ({len(context.legal_actions)}): {legal_actions}",
@@ -105,14 +105,14 @@ def run_play_session(
 
             if command_name == "state":
                 _write_line(
-                    output_stream, f"State: {_format_json(observation.metadata)}"
+                    output_stream, f"State: {_format_json(env.inspect_state())}"
                 )
                 continue
 
             if command_name == "show":
                 _write_metadata_value(
                     output_stream=output_stream,
-                    observation=observation,
+                    state_view=env.inspect_state(),
                     arguments=command_arguments,
                 )
                 continue
@@ -233,7 +233,7 @@ def _write_help(
 def _write_metadata_value(
     *,
     output_stream: TextIO,
-    observation: Observation,
+    state_view: dict[str, object],
     arguments: tuple[str, ...],
 ) -> None:
     """Print one observation metadata value selected by key.
@@ -242,8 +242,8 @@ def _write_metadata_value(
     ----------
     output_stream : TextIO
         Stream receiving command output.
-    observation : Observation
-        Current observation whose metadata should be queried.
+    state_view : dict[str, object]
+        Debug-oriented state summary to query.
     arguments : tuple[str, ...]
         Command arguments following ``show``.
     """
@@ -252,11 +252,11 @@ def _write_metadata_value(
         return
 
     key = arguments[0]
-    if key not in observation.metadata:
+    if key not in state_view:
         _write_line(output_stream, f"Metadata key unavailable: {key}")
         return
 
-    value = observation.metadata[key]
+    value = state_view[key]
     _write_line(output_stream, f"{key}: {_format_metadata_value(value)}")
 
 

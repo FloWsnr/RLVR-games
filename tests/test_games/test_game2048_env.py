@@ -11,10 +11,12 @@ from rlvr_games.games.game2048 import (
     FixedBoardScenario,
     Game2048AsciiBoardFormatter,
     Game2048Backend,
+    Game2048ChanceModel,
     Game2048Env,
     Game2048ImageRenderer,
     Game2048ObservationRenderer,
     Game2048State,
+    Game2048StateInspector,
     RandomStartScenario,
     ScoreDeltaReward,
     TargetTileReward,
@@ -48,6 +50,8 @@ NOOP_UP_BOARD = (
     (0, 0, 0, 0),
     (0, 0, 0, 0),
 )
+CHANCE_MODEL = Game2048ChanceModel()
+STATE_INSPECTOR = Game2048StateInspector()
 
 
 def make_renderer() -> Game2048ObservationRenderer:
@@ -97,6 +101,7 @@ def test_random_start_scenario_is_seeded_and_spawns_two_tiles() -> None:
         size=4,
         target_value=2048,
         start_tile_count=2,
+        chance_model=CHANCE_MODEL,
     )
 
     state, info = scenario.reset(seed=0)
@@ -117,7 +122,7 @@ def test_random_start_scenario_is_seeded_and_spawns_two_tiles() -> None:
 
 
 def test_legal_actions_exclude_noop_directions() -> None:
-    backend = Game2048Backend()
+    backend = Game2048Backend(chance_model=CHANCE_MODEL)
     state = Game2048State(
         board=NOOP_UP_BOARD,
         score=0,
@@ -147,7 +152,7 @@ def test_target_tile_terminal_state_has_no_legal_actions() -> None:
 
 @pytest.mark.parametrize("raw_action", ["", "north", "up"])
 def test_parse_action_rejects_invalid_or_illegal_directions(raw_action: str) -> None:
-    backend = Game2048Backend()
+    backend = Game2048Backend(chance_model=CHANCE_MODEL)
     state = Game2048State(
         board=NOOP_UP_BOARD,
         score=0,
@@ -163,7 +168,7 @@ def test_parse_action_rejects_invalid_or_illegal_directions(raw_action: str) -> 
 
 
 def test_apply_action_merges_pairs_once_and_records_spawn_metadata() -> None:
-    backend = Game2048Backend()
+    backend = Game2048Backend(chance_model=CHANCE_MODEL)
     state = Game2048State(
         board=MERGE_BOARD,
         score=0,
@@ -229,7 +234,7 @@ def test_apply_move_matches_open_spiel_one_merge_per_turn_case() -> None:
 
 
 def test_score_delta_reward_returns_merge_score_gain_for_non_terminal_move() -> None:
-    backend = Game2048Backend()
+    backend = Game2048Backend(chance_model=CHANCE_MODEL)
     state = Game2048State(
         board=MERGE_BOARD,
         score=0,
@@ -274,14 +279,16 @@ def test_target_tile_reward_ignores_non_terminal_score_gain() -> None:
 
 def test_reaching_target_tile_terminates_with_reward_and_metadata() -> None:
     env = Game2048Env(
-        backend=Game2048Backend(),
+        backend=Game2048Backend(chance_model=CHANCE_MODEL),
         scenario=FixedBoardScenario(
             initial_board=WIN_BOARD,
             initial_score=0,
             initial_move_count=0,
             target_value=2048,
+            chance_model=CHANCE_MODEL,
         ),
         renderer=make_renderer(),
+        state_inspector=STATE_INSPECTOR,
         reward_fn=TargetTileReward(),
         config=EpisodeConfig(),
     )
@@ -310,14 +317,16 @@ def test_reaching_target_tile_terminates_with_reward_and_metadata() -> None:
 
 def test_terminal_reset_marks_episode_finished_and_rejects_steps() -> None:
     env = Game2048Env(
-        backend=Game2048Backend(),
+        backend=Game2048Backend(chance_model=CHANCE_MODEL),
         scenario=FixedBoardScenario(
             initial_board=NO_MOVES_BOARD,
             initial_score=0,
             initial_move_count=0,
             target_value=2048,
+            chance_model=CHANCE_MODEL,
         ),
         renderer=make_renderer(),
+        state_inspector=STATE_INSPECTOR,
         reward_fn=TargetTileReward(),
         config=EpisodeConfig(),
     )
@@ -334,13 +343,15 @@ def test_terminal_reset_marks_episode_finished_and_rejects_steps() -> None:
 
 def test_game2048_env_records_trajectory_with_real_backend() -> None:
     env = Game2048Env(
-        backend=Game2048Backend(),
+        backend=Game2048Backend(chance_model=CHANCE_MODEL),
         scenario=RandomStartScenario(
             size=4,
             target_value=2048,
             start_tile_count=2,
+            chance_model=CHANCE_MODEL,
         ),
         renderer=make_renderer(),
+        state_inspector=STATE_INSPECTOR,
         reward_fn=TargetTileReward(),
         config=EpisodeConfig(),
     )

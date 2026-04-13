@@ -5,16 +5,19 @@ from typing import Any, Protocol, TypeVar
 from rlvr_games.core.trajectory import EpisodeTrajectory
 from rlvr_games.core.types import Observation, ParseResult, RenderedImage, StepResult
 
-StateT = TypeVar("StateT")
-ActionT = TypeVar("ActionT")
+BackendStateT = TypeVar("BackendStateT")
+BackendActionT = TypeVar("BackendActionT")
+EnvStateT = TypeVar("EnvStateT", covariant=True)
+EnvActionT = TypeVar("EnvActionT")
 ScenarioStateT = TypeVar("ScenarioStateT", covariant=True)
 RendererStateT = TypeVar("RendererStateT", contravariant=True)
 RewardStateT = TypeVar("RewardStateT", contravariant=True)
 RewardActionT = TypeVar("RewardActionT", contravariant=True)
 RenderInputT = TypeVar("RenderInputT", contravariant=True)
+InspectorStateT = TypeVar("InspectorStateT", contravariant=True)
 
 
-class GameBackend(Protocol[StateT, ActionT]):
+class GameBackend(Protocol[BackendStateT, BackendActionT]):
     """Protocol for rule-backed game logic.
 
     A backend is the authoritative verifier for how model actions map onto the
@@ -23,30 +26,32 @@ class GameBackend(Protocol[StateT, ActionT]):
     from executable rules.
     """
 
-    def parse_action(self, state: StateT, raw_action: str) -> ParseResult[ActionT]:
+    def parse_action(
+        self, state: BackendStateT, raw_action: str
+    ) -> ParseResult[BackendActionT]:
         """Parse model output into a backend action result.
 
         Parameters
         ----------
-        state : StateT
+        state : BackendStateT
             Current canonical state used to interpret the raw action.
         raw_action : str
             Model-produced action string.
 
         Returns
         -------
-        ParseResult[ActionT]
+        ParseResult[BackendActionT]
             Structured parse result containing either a canonical action or an
             explicit rejection message for the current state.
         """
         ...
 
-    def legal_actions(self, state: StateT) -> list[str]:
+    def legal_actions(self, state: BackendStateT) -> list[str]:
         """Return model-facing legal actions for the current state.
 
         Parameters
         ----------
-        state : StateT
+        state : BackendStateT
             Canonical state for which legal actions should be enumerated.
 
         Returns
@@ -57,31 +62,31 @@ class GameBackend(Protocol[StateT, ActionT]):
         ...
 
     def apply_action(
-        self, state: StateT, action: ActionT
-    ) -> tuple[StateT, dict[str, Any]]:
+        self, state: BackendStateT, action: BackendActionT
+    ) -> tuple[BackendStateT, dict[str, Any]]:
         """Apply an action and return the next state and transition metadata.
 
         Parameters
         ----------
-        state : StateT
+        state : BackendStateT
             Canonical state before the transition.
-        action : ActionT
+        action : BackendActionT
             Parsed action to apply.
 
         Returns
         -------
-        tuple[StateT, dict[str, Any]]
+        tuple[BackendStateT, dict[str, Any]]
             The next canonical state and verifier-produced metadata describing
             the transition.
         """
         ...
 
-    def is_terminal(self, state: StateT) -> bool:
+    def is_terminal(self, state: BackendStateT) -> bool:
         """Return whether the state is terminal.
 
         Parameters
         ----------
-        state : StateT
+        state : BackendStateT
             Canonical state to inspect.
 
         Returns
@@ -92,15 +97,13 @@ class GameBackend(Protocol[StateT, ActionT]):
         ...
 
 
-class Environment(Protocol[StateT, ActionT]):
+class Environment(Protocol[EnvStateT, EnvActionT]):
     """Protocol for stateful reset/step environments.
 
     Environments coordinate game-specific backend logic, observation rendering,
     reward evaluation, and trajectory recording behind the minimal episode
     lifecycle needed by rollout runners and debugging tools.
     """
-
-    backend: GameBackend[StateT, ActionT]
 
     @property
     def episode_finished(self) -> bool:
@@ -114,23 +117,44 @@ class Environment(Protocol[StateT, ActionT]):
         ...
 
     @property
-    def state(self) -> StateT:
+    def state(self) -> EnvStateT:
         """Return the current canonical state for the active episode.
 
         Returns
         -------
-        StateT
+        EnvStateT
             The current canonical game state.
         """
         ...
 
+    def legal_actions(self) -> tuple[str, ...]:
+        """Return the legal serialized actions for the current state.
+
+        Returns
+        -------
+        tuple[str, ...]
+            Legal model-facing actions accepted by the environment.
+        """
+        ...
+
+    def inspect_state(self) -> dict[str, object]:
+        """Return a debug-oriented snapshot of the current canonical state.
+
+        Returns
+        -------
+        dict[str, object]
+            Structured state summary intended for debugging and inspection
+            tools rather than as the primary model observation.
+        """
+        ...
+
     @property
-    def trajectory(self) -> EpisodeTrajectory[ActionT]:
+    def trajectory(self) -> EpisodeTrajectory[EnvActionT]:
         """Return the trajectory recorded for the active episode.
 
         Returns
         -------
-        EpisodeTrajectory[ActionT]
+        EpisodeTrajectory[EnvActionT]
             The episode trajectory accumulated so far.
         """
         ...
@@ -212,6 +236,25 @@ class Renderer(Protocol[RendererStateT]):
         -------
         Observation
             Model-facing observation derived from the canonical state.
+        """
+        ...
+
+
+class StateInspector(Protocol[InspectorStateT]):
+    """Protocol for producing debug-friendly state summaries."""
+
+    def inspect_state(self, state: InspectorStateT) -> dict[str, object]:
+        """Return a structured state summary for debugging tools.
+
+        Parameters
+        ----------
+        state : InspectorStateT
+            Canonical state to inspect.
+
+        Returns
+        -------
+        dict[str, object]
+            Structured state summary suitable for CLI inspection or logging.
         """
         ...
 

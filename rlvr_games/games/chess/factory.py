@@ -15,7 +15,7 @@ from rlvr_games.games.chess.render import (
     ChessObservationRenderer,
     UnicodeBoardFormatter,
 )
-from rlvr_games.games.chess.state import ChessState
+from rlvr_games.games.chess.state import ChessState, ChessStateInspector
 
 
 class ChessTextRendererKind(StrEnum):
@@ -97,6 +97,7 @@ def make_chess_env(
             board_formatter=board_formatter,
             image_renderer=image_renderer,
         ),
+        state_inspector=ChessStateInspector(),
         reward_fn=reward_fn,
         config=config,
     )

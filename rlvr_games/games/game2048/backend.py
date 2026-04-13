@@ -1,15 +1,13 @@
 """Rule-verified backend for 2048."""
 
-from random import Random
-
 from rlvr_games.core.exceptions import InvalidActionError
 from rlvr_games.core.types import ParseResult
 from rlvr_games.games.game2048.actions import Game2048Action, MoveDirection
+from rlvr_games.games.game2048.chance import Game2048ChanceModel
 from rlvr_games.games.game2048.engine import (
     MergeSummary,
     apply_move,
     max_tile,
-    spawn_random_tile,
 )
 from rlvr_games.games.game2048.state import Game2048State
 
@@ -27,6 +25,17 @@ _ACTION_ALIASES = {
 
 class Game2048Backend:
     """Authoritative verifier for 2048 action parsing and transitions."""
+
+    def __init__(self, *, chance_model: Game2048ChanceModel) -> None:
+        """Initialize the backend with an explicit chance-model collaborator.
+
+        Parameters
+        ----------
+        chance_model : Game2048ChanceModel
+            Chance-model helper responsible for deterministic random tile
+            spawning from the canonical RNG state.
+        """
+        self.chance_model = chance_model
 
     def parse_action(
         self,
@@ -134,12 +143,13 @@ class Game2048Backend:
         next_board = move_summary.board
         next_rng_state = state.rng_state
         if max_tile(board=move_summary.board) < state.target_value:
-            rng = Random()
-            rng.setstate(state.rng_state)
-            next_board, spawned_tile = spawn_random_tile(
-                board=move_summary.board, rng=rng
+            spawn_transition = self.chance_model.spawn_tile(
+                board=move_summary.board,
+                rng_state=state.rng_state,
             )
-            next_rng_state = rng.getstate()
+            next_board = spawn_transition.board
+            next_rng_state = spawn_transition.rng_state
+            spawned_tile = spawn_transition.spawned_tile
             spawned_tile_metadata = {
                 "row": spawned_tile.row,
                 "col": spawned_tile.col,

@@ -8,7 +8,7 @@ from PIL import Image, ImageDraw, ImageFont
 from rlvr_games.core.protocol import ImageRenderer, TextRenderer
 from rlvr_games.core.types import Observation, RenderedImage
 from rlvr_games.games.game2048.engine import Board
-from rlvr_games.games.game2048.state import Game2048State
+from rlvr_games.games.game2048.state import Game2048State, inspect_game2048_state
 
 
 class Game2048AsciiBoardFormatter:
@@ -344,21 +344,6 @@ class Game2048ObservationRenderer:
         if state.is_terminal:
             lines.append(f"Termination: {state.outcome.termination}")
 
-        metadata: dict[str, object] = {
-            "board": state.board,
-            "score": state.score,
-            "move_count": state.move_count,
-            "target_value": state.target_value,
-            "size": state.size,
-            "legal_actions": state.legal_actions,
-            "legal_action_count": state.legal_action_count,
-            "empty_cell_count": state.empty_cell_count,
-            "max_tile": state.max_tile,
-            "is_terminal": state.is_terminal,
-            "won": state.outcome.won if state.is_terminal else False,
-        }
-        metadata.update(state.outcome.metadata())
-
         images: tuple[RenderedImage, ...] = ()
         if self.image_renderer is not None:
             images = self.image_renderer.render_images(state.board)
@@ -366,5 +351,5 @@ class Game2048ObservationRenderer:
         return Observation(
             text="\n".join(lines),
             images=images,
-            metadata=metadata,
+            metadata=inspect_game2048_state(state=state),
         )

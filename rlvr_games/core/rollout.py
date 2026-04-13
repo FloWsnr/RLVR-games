@@ -87,7 +87,7 @@ def build_action_context(*, env: Environment[StateT, ActionT]) -> ActionContext:
     """
     return ActionContext(
         turn_index=len(env.trajectory.steps),
-        legal_actions=tuple(env.backend.legal_actions(env.state)),
+        legal_actions=env.legal_actions(),
     )
 
 

@@ -9,7 +9,7 @@ from PIL.Image import Image as PILImage
 
 from rlvr_games.core.protocol import ImageRenderer, TextRenderer
 from rlvr_games.core.types import Observation, RenderedImage
-from rlvr_games.games.chess.state import ChessState
+from rlvr_games.games.chess.state import ChessState, inspect_chess_state
 
 
 class AsciiBoardFormatter:
@@ -517,17 +517,6 @@ class ChessObservationRenderer:
             Observation whose text and image fields are derived from the board,
             and whose metadata mirrors the rendered state summary.
         """
-        metadata: dict[str, object] = {
-            "fen": state.fen,
-            "turn": state.side_to_move,
-            "side_to_move": state.side_to_move,
-            "is_check": state.is_check,
-            "is_terminal": state.is_terminal,
-            "legal_action_count": state.legal_action_count,
-            "repetition_count": state.repetition_count,
-        }
-        metadata.update(state.outcome.metadata())
-
         images = (
             ()
             if self.image_renderer is None
@@ -539,5 +528,5 @@ class ChessObservationRenderer:
                 state=state,
             ),
             images=images,
-            metadata=metadata,
+            metadata=inspect_chess_state(state=state),
         )

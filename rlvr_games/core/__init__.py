@@ -7,7 +7,12 @@ from rlvr_games.core.exceptions import (
     InvalidActionError,
     RLVRGamesError,
 )
-from rlvr_games.core.protocol import Environment, ImageRenderer, TextRenderer
+from rlvr_games.core.protocol import (
+    Environment,
+    ImageRenderer,
+    StateInspector,
+    TextRenderer,
+)
 from rlvr_games.core.rewards import ZeroReward
 from rlvr_games.core.rollout import (
     ActionContext,
@@ -44,6 +49,7 @@ __all__ = [
     "RLVRGamesError",
     "RolloutAgent",
     "RolloutResult",
+    "StateInspector",
     "StepResult",
     "TextRenderer",
     "TrajectoryStep",

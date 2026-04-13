@@ -6,6 +6,10 @@ from rlvr_games.games.game2048.actions import (
     MoveDirection,
 )
 from rlvr_games.games.game2048.backend import Game2048Backend
+from rlvr_games.games.game2048.chance import (
+    Game2048ChanceModel,
+    SpawnTransition,
+)
 from rlvr_games.games.game2048.engine import (
     Board,
     MergeSummary,
@@ -30,7 +34,11 @@ from rlvr_games.games.game2048.scenarios import (
     STANDARD_START_TILE_COUNT,
     normalize_initial_board,
 )
-from rlvr_games.games.game2048.state import Game2048Outcome, Game2048State
+from rlvr_games.games.game2048.state import (
+    Game2048Outcome,
+    Game2048State,
+    Game2048StateInspector,
+)
 
 __all__ = [
     "ACTION_ORDER",
@@ -39,11 +47,13 @@ __all__ = [
     "Game2048Action",
     "Game2048AsciiBoardFormatter",
     "Game2048Backend",
+    "Game2048ChanceModel",
     "Game2048Env",
     "Game2048ImageRenderer",
     "Game2048ObservationRenderer",
     "Game2048Outcome",
     "Game2048State",
+    "Game2048StateInspector",
     "MergeSummary",
     "MoveDirection",
     "MoveSummary",
@@ -51,6 +61,7 @@ __all__ = [
     "ScoreDeltaReward",
     "SpawnOutcome",
     "SpawnSummary",
+    "SpawnTransition",
     "STANDARD_2048_SIZE",
     "STANDARD_2048_TARGET",
     "STANDARD_START_TILE_COUNT",

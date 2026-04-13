@@ -1,14 +1,13 @@
 """2048 scenario initializers."""
 
 from dataclasses import dataclass
-from random import Random
 from typing import Sequence
 
+from rlvr_games.games.game2048.chance import Game2048ChanceModel
 from rlvr_games.games.game2048.engine import (
     Board,
-    normalize_board,
     make_empty_board,
-    spawn_random_tile,
+    normalize_board,
 )
 from rlvr_games.games.game2048.state import Game2048State
 
@@ -29,11 +28,14 @@ class RandomStartScenario:
         Tile value that counts as a win.
     start_tile_count : int
         Number of random tiles to spawn at reset time.
+    chance_model : Game2048ChanceModel
+        Chance-model helper responsible for deterministic random tile spawns.
     """
 
     size: int
     target_value: int
     start_tile_count: int
+    chance_model: Game2048ChanceModel
 
     def __post_init__(self) -> None:
         """Validate scenario configuration.
@@ -64,11 +66,17 @@ class RandomStartScenario:
             Canonical initial state and reset metadata describing the random
             seed, initial board, and spawned starting tiles.
         """
-        rng = Random(seed)
         board = make_empty_board(size=self.size)
+        rng_state = self.chance_model.initial_rng_state(seed=seed)
         spawned_tiles: list[dict[str, int]] = []
         for _ in range(self.start_tile_count):
-            board, spawned_tile = spawn_random_tile(board=board, rng=rng)
+            spawn_transition = self.chance_model.spawn_tile(
+                board=board,
+                rng_state=rng_state,
+            )
+            board = spawn_transition.board
+            rng_state = spawn_transition.rng_state
+            spawned_tile = spawn_transition.spawned_tile
             spawned_tiles.append(
                 {
                     "row": spawned_tile.row,
@@ -82,7 +90,7 @@ class RandomStartScenario:
             score=0,
             move_count=0,
             target_value=self.target_value,
-            rng_state=rng.getstate(),
+            rng_state=rng_state,
         )
         return state, {
             "scenario": "random_start",
@@ -109,12 +117,15 @@ class FixedBoardScenario:
         Accepted move count already accumulated before the scenario starts.
     target_value : int
         Tile value that counts as a win.
+    chance_model : Game2048ChanceModel
+        Chance-model helper responsible for deterministic future tile spawns.
     """
 
     initial_board: Board
     initial_score: int
     initial_move_count: int
     target_value: int
+    chance_model: Game2048ChanceModel
 
     def __post_init__(self) -> None:
         """Normalize and validate the configured starting board."""
@@ -138,13 +149,12 @@ class FixedBoardScenario:
             Canonical initial state and metadata describing the configured
             board, score, move count, and RNG seed.
         """
-        rng = Random(seed)
         state = Game2048State(
             board=self.initial_board,
             score=self.initial_score,
             move_count=self.initial_move_count,
             target_value=self.target_value,
-            rng_state=rng.getstate(),
+            rng_state=self.chance_model.initial_rng_state(seed=seed),
         )
         return state, {
             "scenario": "fixed_board",

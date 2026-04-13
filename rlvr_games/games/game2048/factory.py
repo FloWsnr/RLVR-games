@@ -6,6 +6,7 @@ from rlvr_games.core.protocol import RewardFn
 from rlvr_games.core.types import EpisodeConfig
 from rlvr_games.games.game2048.actions import Game2048Action
 from rlvr_games.games.game2048.backend import Game2048Backend
+from rlvr_games.games.game2048.chance import Game2048ChanceModel
 from rlvr_games.games.game2048.env import Game2048Env
 from rlvr_games.games.game2048.render import (
     Game2048AsciiBoardFormatter,
@@ -17,7 +18,7 @@ from rlvr_games.games.game2048.scenarios import (
     RandomStartScenario,
     normalize_initial_board,
 )
-from rlvr_games.games.game2048.state import Game2048State
+from rlvr_games.games.game2048.state import Game2048State, Game2048StateInspector
 
 
 def make_game2048_env(
@@ -63,11 +64,13 @@ def make_game2048_env(
         2048 environment wired with the standard backend, scenario, renderer,
         and supplied reward function.
     """
+    chance_model = Game2048ChanceModel()
     if initial_board is None:
         scenario = RandomStartScenario(
             size=size,
             target_value=target_value,
             start_tile_count=2,
+            chance_model=chance_model,
         )
     else:
         normalized_board = normalize_initial_board(board=initial_board)
@@ -81,6 +84,7 @@ def make_game2048_env(
             initial_score=initial_score,
             initial_move_count=initial_move_count,
             target_value=target_value,
+            chance_model=chance_model,
         )
 
     image_renderer: Game2048ImageRenderer | None = None
@@ -88,12 +92,13 @@ def make_game2048_env(
         image_renderer = Game2048ImageRenderer(size=image_size)
 
     return Game2048Env(
-        backend=Game2048Backend(),
+        backend=Game2048Backend(chance_model=chance_model),
         scenario=scenario,
         renderer=Game2048ObservationRenderer(
             board_formatter=Game2048AsciiBoardFormatter(),
             image_renderer=image_renderer,
         ),
+        state_inspector=Game2048StateInspector(),
         reward_fn=reward_fn,
         config=config,
     )
