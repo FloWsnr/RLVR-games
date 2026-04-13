@@ -7,7 +7,6 @@ import pytest
 from PIL import Image
 
 from rlvr_games.core.exceptions import EpisodeFinishedError
-from rlvr_games.core.rewards import ZeroReward
 from rlvr_games.core.types import EpisodeConfig, RenderedImage
 from rlvr_games.games.chess import (
     AsciiBoardFormatter,
@@ -17,6 +16,7 @@ from rlvr_games.games.chess import (
     ChessObservationRenderer,
     ChessState,
     StartingPositionScenario,
+    TerminalOutcomeReward,
     UnicodeBoardFormatter,
 )
 from rlvr_games.games.chess.scenarios import STANDARD_START_FEN
@@ -30,6 +30,22 @@ def make_renderer() -> ChessObservationRenderer:
     return ChessObservationRenderer(
         board_formatter=AsciiBoardFormatter(orientation=chess.WHITE),
         image_renderer=None,
+    )
+
+
+def make_reward() -> TerminalOutcomeReward:
+    """Construct a simple sparse reward for chess integration tests.
+
+    Returns
+    -------
+    TerminalOutcomeReward
+        Reward with zero value for draws and non-terminal moves.
+    """
+    return TerminalOutcomeReward(
+        perspective="white",
+        win_reward=1.0,
+        draw_reward=0.0,
+        loss_reward=-1.0,
     )
 
 
@@ -136,7 +152,7 @@ def test_checkmate_sequence_terminates_with_winner_metadata() -> None:
         backend=ChessBackend(),
         scenario=StartingPositionScenario(),
         renderer=make_renderer(),
-        reward_fn=ZeroReward(),
+        reward_fn=make_reward(),
         config=EpisodeConfig(),
     )
     env.reset(seed=11)
@@ -163,7 +179,7 @@ def test_threefold_repetition_terminates_on_the_third_occurrence() -> None:
         backend=ChessBackend(),
         scenario=StartingPositionScenario(),
         renderer=make_renderer(),
-        reward_fn=ZeroReward(),
+        reward_fn=make_reward(),
         config=EpisodeConfig(),
     )
     env.reset(seed=5)
@@ -195,7 +211,7 @@ def test_custom_valid_fen_reset_is_normalized() -> None:
         backend=ChessBackend(),
         scenario=StartingPositionScenario(initial_fen=PROMOTION_FEN),
         renderer=make_renderer(),
-        reward_fn=ZeroReward(),
+        reward_fn=make_reward(),
         config=EpisodeConfig(),
     )
 
@@ -212,7 +228,7 @@ def test_terminal_reset_marks_episode_finished_and_rejects_steps() -> None:
         backend=ChessBackend(),
         scenario=StartingPositionScenario(initial_fen=TERMINAL_FEN),
         renderer=make_renderer(),
-        reward_fn=ZeroReward(),
+        reward_fn=make_reward(),
         config=EpisodeConfig(),
     )
 
@@ -230,7 +246,7 @@ def test_invalid_fen_reset_fails_fast() -> None:
         backend=ChessBackend(),
         scenario=StartingPositionScenario(initial_fen="not-a-fen"),
         renderer=make_renderer(),
-        reward_fn=ZeroReward(),
+        reward_fn=make_reward(),
         config=EpisodeConfig(),
     )
 
@@ -243,7 +259,7 @@ def test_chess_env_records_trajectory_with_real_backend() -> None:
         backend=ChessBackend(),
         scenario=StartingPositionScenario(),
         renderer=make_renderer(),
-        reward_fn=ZeroReward(),
+        reward_fn=make_reward(),
         config=EpisodeConfig(),
     )
     observation, info = env.reset(seed=123)

@@ -86,6 +86,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         self._attempt_count = 0
         self._transition_count = 0
         self._episode_finished = False
+        self._closed = False
 
     @property
     def episode_finished(self) -> bool:
@@ -207,6 +208,27 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             action=action,
         )
         return self._commit_attempt(raw_action=raw_action, outcome=outcome)
+
+    def close(self) -> None:
+        """Release any closeable collaborators owned by the environment.
+
+        Returns
+        -------
+        None
+            This method is idempotent.
+        """
+        if self._closed:
+            return
+        for component in (
+            self.backend,
+            self.scenario,
+            self.renderer,
+            self.reward_fn,
+        ):
+            close_method = getattr(component, "close", None)
+            if callable(close_method):
+                close_method()
+        self._closed = True
 
     def _accepted_attempt_outcome(
         self,

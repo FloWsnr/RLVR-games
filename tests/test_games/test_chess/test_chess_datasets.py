@@ -116,5 +116,6 @@ def test_chess_puzzle_dataset_scenario_samples_deterministically(
     assert info_a == info_b
     assert info_a["scenario"] == "dataset_puzzle"
     assert state_a.metadata["task_type"] == "puzzle"
+    assert state_a.metadata["presented_fen"] == state_a.fen
     assert state_a.metadata["record_id"] == info_a["record_id"]
     assert isinstance(state_a.metadata["solution_moves_uci"], tuple)

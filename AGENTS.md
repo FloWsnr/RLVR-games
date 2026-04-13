@@ -29,19 +29,21 @@ This is an environment-first RLVR framework. The game engine is the source of tr
 
 - Make sure the uv environment is activated before running any commands.
 - `uv sync`: install Python 3.13 dependencies and dev tools from the lockfile.
+- `uv run rlvr-games-install-stockfish`: download the latest official Stockfish release into `rlvr_games/games/chess/.stockfish/current/` for engine-backed chess rewards.
 - `uv run pytest`: run the test suite configured under `tests/`.
 - `uv run pyright`: run static type checking; required after changes.
 - `uv run ruff check .`: lint the repository.
 - `uv run ruff format .`: format Python files before submitting.
-- `uv run rlvr-games play chess --seed 0`: manually smoke-test the chess environment through the interactive CLI. Enter UCI moves such as `e2e4`, or use `help`, `legal`, `state`, `show fen`, `trajectory`, `quit`, and `exit` inside the session.
-- `uv run rlvr-games play chess --seed 0 --fen "<fen>"`: start a manual chess test from an explicit FEN position.
+- `uv run rlvr-games play chess --seed 0 --reward engine-eval-dense --engine-depth 12 --engine-mate-score 100000`: manually smoke-test the chess environment through the interactive CLI. Enter UCI moves such as `e2e4`, or use `help`, `legal`, `state`, `show fen`, `trajectory`, `quit`, and `exit` inside the session.
+- `uv run rlvr-games play chess --seed 0 --reward engine-eval-sparse --engine-depth 12 --engine-mate-score 100000`: smoke-test sparse Stockfish-backed chess rewards.
+- `uv run rlvr-games play chess --seed 0 --reward engine-eval-dense --engine-depth 12 --engine-mate-score 100000 --fen "<fen>"`: start a manual chess test from an explicit FEN position.
 - `uv run rlvr-games datasets download chess lichess-puzzles`: download the raw Lichess puzzle dump into `data/raw/` and skip the download when the file already exists.
 - `uv run rlvr-games datasets preprocess chess lichess-puzzles`: preprocess the local Lichess puzzle dump into Parquet shards plus a manifest under `data/processed/`.
-- `uv run rlvr-games play chess --scenario lichess-puzzles --dataset-manifest <manifest>`: manually smoke-test chess puzzle sampling from a processed dataset manifest.
-- `uv run rlvr-games play chess --seed 0 --max-transitions 4`: test truncation behavior through the CLI.
-- `uv run rlvr-games play chess --seed 0 --renderer unicode`: test alternate text rendering. Supported text renderers are `ascii` and `unicode`.
-- `uv run rlvr-games play chess --seed 0 --image-output-dir <dir> --image-size 360 --image-coordinates --orientation white`: test PNG observation rendering. Supported image orientations are `white` and `black`.
-- `printf 'legal\nshow fen\ne2e4\ntrajectory\nquit\n' | uv run rlvr-games play chess --seed 0`: run a deterministic non-interactive CLI smoke test.
+- `uv run rlvr-games play chess --scenario lichess-puzzles --dataset-manifest <manifest> --reward puzzle-sparse`: manually smoke-test chess puzzle sampling from a processed dataset manifest.
+- `uv run rlvr-games play chess --seed 0 --reward engine-eval-dense --engine-depth 12 --engine-mate-score 100000 --max-transitions 4`: test truncation behavior through the CLI.
+- `uv run rlvr-games play chess --seed 0 --reward engine-eval-dense --engine-depth 12 --engine-mate-score 100000 --renderer unicode`: test alternate text rendering. Supported text renderers are `ascii` and `unicode`.
+- `uv run rlvr-games play chess --seed 0 --reward engine-eval-dense --engine-depth 12 --engine-mate-score 100000 --image-output-dir <dir> --image-size 360 --image-coordinates --orientation white`: test PNG observation rendering. Supported image orientations are `white` and `black`.
+- `printf 'legal\nshow fen\ne2e4\ntrajectory\nquit\n' | uv run rlvr-games play chess --seed 0 --reward engine-eval-dense --engine-depth 12 --engine-mate-score 100000`: run a deterministic non-interactive CLI smoke test.
 - `uv run rlvr-games play 2048 --seed 0`: manually smoke-test the 2048 environment through the interactive CLI. Enter directions such as `up`, `right`, `down`, and `left`, or use `help`, `legal`, `state`, `show <key>`, `trajectory`, `quit`, and `exit` inside the session.
 - `uv run rlvr-games play 2048 --seed 0 --board "2,0,0,0/0,2,0,0/0,0,0,0/0,0,0,0"`: start a manual 2048 test from an explicit board.
 - `printf 'legal\nleft\ndown\ntrajectory\nquit\n' | uv run rlvr-games play 2048 --seed 0`: run a deterministic non-interactive 2048 CLI smoke test.

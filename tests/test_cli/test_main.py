@@ -7,20 +7,21 @@ import sys
 from _pytest.monkeypatch import MonkeyPatch
 import pytest
 import zstandard
-from rlvr_games.cli.main import run_cli, run_play_session
+from rlvr_games.cli.main import build_parser, run_cli, run_play_session
 from rlvr_games.core import (
     EpisodeConfig,
     InvalidActionMode,
     InvalidActionPolicy,
-    ZeroReward,
 )
 from rlvr_games.games.chess import (
     ChessBoardOrientation,
     ChessEnv,
     ChessTextRendererKind,
+    EngineEvalDenseReward,
+    TerminalOutcomeReward,
     make_chess_env,
 )
-from rlvr_games.games.chess.cli import CHESS_CLI_SPEC
+from rlvr_games.games.chess.cli import CHESS_CLI_SPEC, build_chess_environment
 from rlvr_games.games.chess.datasets import default_lichess_puzzle_source_path
 from rlvr_games.games.chess.scenarios import (
     STANDARD_START_FEN,
@@ -28,6 +29,70 @@ from rlvr_games.games.chess.scenarios import (
 )
 
 TERMINAL_FEN = "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1"
+ENGINE_REWARD_ARGS = (
+    "--reward",
+    "engine-eval-dense",
+    "--engine-depth",
+    "12",
+    "--engine-mate-score",
+    "100000",
+)
+
+
+class StubEvaluator:
+    """Minimal evaluator stub for CLI reward construction tests."""
+
+    def evaluate(self, *, state: object, perspective: str) -> float:
+        """Return a constant dummy evaluation.
+
+        Parameters
+        ----------
+        state : object
+            State to evaluate. It is ignored by this stub.
+        perspective : str
+            Evaluation perspective. It is ignored by this stub.
+
+        Returns
+        -------
+        float
+            Constant dummy evaluation.
+        """
+        del state
+        del perspective
+        return 0.0
+
+    def close(self) -> None:
+        """Provide a no-op close hook for reward cleanup tests."""
+
+
+def patch_stockfish_evaluator(monkeypatch: MonkeyPatch) -> None:
+    """Replace Stockfish construction with a pure in-memory stub.
+
+    Parameters
+    ----------
+    monkeypatch : MonkeyPatch
+        Pytest monkeypatch fixture used to override evaluator construction.
+    """
+    monkeypatch.setattr(
+        "rlvr_games.games.chess.cli._build_stockfish_evaluator",
+        lambda *, args: StubEvaluator(),
+    )
+
+
+def make_reward() -> TerminalOutcomeReward:
+    """Construct a simple sparse chess reward for CLI session tests.
+
+    Returns
+    -------
+    TerminalOutcomeReward
+        Sparse terminal reward with zero value for draws.
+    """
+    return TerminalOutcomeReward(
+        perspective="white",
+        win_reward=1.0,
+        draw_reward=0.0,
+        loss_reward=-1.0,
+    )
 
 
 def make_env() -> ChessEnv:
@@ -40,7 +105,7 @@ def make_env() -> ChessEnv:
     """
     return make_chess_env(
         scenario=StartingPositionScenario(initial_fen=STANDARD_START_FEN),
-        reward_fn=ZeroReward(),
+        reward_fn=make_reward(),
         config=EpisodeConfig(),
         text_renderer_kind=ChessTextRendererKind.ASCII,
         include_images=False,
@@ -151,7 +216,7 @@ def test_run_play_session_reports_invalid_moves_without_state_change() -> None:
 def test_run_play_session_reports_penalized_invalid_moves_from_env_policy() -> None:
     env = make_chess_env(
         scenario=StartingPositionScenario(initial_fen=STANDARD_START_FEN),
-        reward_fn=ZeroReward(),
+        reward_fn=make_reward(),
         config=EpisodeConfig(
             invalid_action_policy=InvalidActionPolicy(
                 mode=InvalidActionMode.PENALIZE_CONTINUE,
@@ -187,7 +252,7 @@ def test_run_play_session_reports_penalized_invalid_moves_from_env_policy() -> N
 def test_run_play_session_finishes_immediately_for_terminal_reset_positions() -> None:
     env = make_chess_env(
         scenario=StartingPositionScenario(initial_fen=TERMINAL_FEN),
-        reward_fn=ZeroReward(),
+        reward_fn=make_reward(),
         config=EpisodeConfig(),
         text_renderer_kind=ChessTextRendererKind.ASCII,
         include_images=False,
@@ -219,7 +284,7 @@ def test_run_play_session_persists_rendered_images_when_requested(
 ) -> None:
     env = make_chess_env(
         scenario=StartingPositionScenario(initial_fen=STANDARD_START_FEN),
-        reward_fn=ZeroReward(),
+        reward_fn=make_reward(),
         config=EpisodeConfig(max_transitions=1),
         text_renderer_kind=ChessTextRendererKind.ASCII,
         include_images=True,
@@ -256,8 +321,9 @@ def test_run_cli_can_start_and_exit_a_chess_play_session(
     output_stream = StringIO()
     monkeypatch.setattr(sys, "stdin", input_stream)
     monkeypatch.setattr(sys, "stdout", output_stream)
+    patch_stockfish_evaluator(monkeypatch)
 
-    exit_code = run_cli(["play", "chess", "--seed", "5"])
+    exit_code = run_cli(["play", "chess", "--seed", "5", *ENGINE_REWARD_ARGS])
 
     output = output_stream.getvalue()
     assert exit_code == 0
@@ -273,8 +339,19 @@ def test_run_cli_can_use_black_board_orientation(
     output_stream = StringIO()
     monkeypatch.setattr(sys, "stdin", input_stream)
     monkeypatch.setattr(sys, "stdout", output_stream)
+    patch_stockfish_evaluator(monkeypatch)
 
-    exit_code = run_cli(["play", "chess", "--seed", "5", "--orientation", "black"])
+    exit_code = run_cli(
+        [
+            "play",
+            "chess",
+            "--seed",
+            "5",
+            "--orientation",
+            "black",
+            *ENGINE_REWARD_ARGS,
+        ]
+    )
 
     output = output_stream.getvalue()
     assert exit_code == 0
@@ -289,6 +366,7 @@ def test_run_cli_can_use_penalize_truncate_invalid_action_policy(
     output_stream = StringIO()
     monkeypatch.setattr(sys, "stdin", input_stream)
     monkeypatch.setattr(sys, "stdout", output_stream)
+    patch_stockfish_evaluator(monkeypatch)
 
     exit_code = run_cli(
         [
@@ -300,6 +378,7 @@ def test_run_cli_can_use_penalize_truncate_invalid_action_policy(
             "penalize-truncate",
             "--invalid-action-penalty",
             "-2",
+            *ENGINE_REWARD_ARGS,
         ]
     )
 
@@ -316,6 +395,7 @@ def test_run_cli_penalize_continue_respects_max_attempts(
     output_stream = StringIO()
     monkeypatch.setattr(sys, "stdin", input_stream)
     monkeypatch.setattr(sys, "stdout", output_stream)
+    patch_stockfish_evaluator(monkeypatch)
 
     exit_code = run_cli(
         [
@@ -329,6 +409,7 @@ def test_run_cli_penalize_continue_respects_max_attempts(
             "-2",
             "--max-attempts",
             "2",
+            *ENGINE_REWARD_ARGS,
         ]
     )
 
@@ -450,6 +531,8 @@ def test_run_cli_can_start_a_chess_puzzle_session(
             "lichess-puzzles",
             "--dataset-manifest",
             str(manifest_path),
+            "--reward",
+            "puzzle-sparse",
             "--seed",
             "0",
         ]
@@ -460,3 +543,66 @@ def test_run_cli_can_start_a_chess_puzzle_session(
     assert '"scenario": "dataset_puzzle"' in output
     assert "Chess board:" in output
     assert "Session ended." in output
+
+
+def test_build_chess_environment_can_use_engine_eval_dense_reward(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    patch_stockfish_evaluator(monkeypatch)
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "play",
+            "chess",
+            "--reward",
+            "engine-eval-dense",
+            "--engine-depth",
+            "12",
+            "--engine-mate-score",
+            "100000",
+        ]
+    )
+
+    env = build_chess_environment(args, parser)
+
+    assert isinstance(env, ChessEnv)
+    assert isinstance(env.reward_fn, EngineEvalDenseReward)
+    assert env.reward_fn.perspective == "mover"
+
+
+def test_build_chess_environment_rejects_puzzle_rewards_for_real_games() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "play",
+            "chess",
+            "--reward",
+            "puzzle-sparse",
+        ]
+    )
+
+    with pytest.raises(SystemExit):
+        build_chess_environment(args, parser)
+
+
+def test_build_chess_environment_rejects_engine_rewards_for_puzzles() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "play",
+            "chess",
+            "--scenario",
+            "lichess-puzzles",
+            "--dataset-manifest",
+            str(fixture_puzzle_manifest_path()),
+            "--reward",
+            "engine-eval-dense",
+            "--engine-depth",
+            "12",
+            "--engine-mate-score",
+            "100000",
+        ]
+    )
+
+    with pytest.raises(SystemExit):
+        build_chess_environment(args, parser)

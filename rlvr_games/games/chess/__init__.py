@@ -8,6 +8,20 @@ from rlvr_games.games.chess.factory import (
     ChessTextRendererKind,
     make_chess_env,
 )
+from rlvr_games.games.chess.rewards import (
+    ChessPerspective,
+    ChessRewardPerspective,
+    ChessStateEvaluator,
+    EngineEvalDenseReward,
+    EngineEvalSparseReward,
+    PuzzleOnlyMoveDenseReward,
+    PuzzleOnlyMoveSparseReward,
+    TerminalOutcomeReward,
+    UciEngineEvaluator,
+    puzzle_solution_moves_uci,
+    puzzle_solution_progress_index,
+    resolve_reward_perspective,
+)
 from rlvr_games.games.chess.render import (
     AsciiBoardFormatter,
     ChessFastImageRenderer,
@@ -20,6 +34,7 @@ from rlvr_games.games.chess.scenarios import (
     StartingPositionScenario,
 )
 from rlvr_games.games.chess.state import ChessState
+from rlvr_games.games.chess.stockfish import StockfishEvaluator
 
 __all__ = [
     "ChessAction",
@@ -29,11 +44,24 @@ __all__ = [
     "ChessEnv",
     "ChessFastImageRenderer",
     "ChessObservationRenderer",
+    "ChessPerspective",
     "ChessPuzzleDatasetScenario",
+    "ChessRewardPerspective",
+    "ChessStateEvaluator",
     "ChessState",
     "ChessTextRendererKind",
+    "EngineEvalDenseReward",
+    "EngineEvalSparseReward",
+    "PuzzleOnlyMoveDenseReward",
+    "PuzzleOnlyMoveSparseReward",
     "STANDARD_START_FEN",
+    "StockfishEvaluator",
     "StartingPositionScenario",
+    "TerminalOutcomeReward",
+    "UciEngineEvaluator",
     "UnicodeBoardFormatter",
     "make_chess_env",
+    "puzzle_solution_moves_uci",
+    "puzzle_solution_progress_index",
+    "resolve_reward_perspective",
 ]

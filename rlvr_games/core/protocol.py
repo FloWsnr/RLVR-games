@@ -166,6 +166,16 @@ class Environment(Protocol[StateT, ActionT]):
         """
         ...
 
+    def close(self) -> None:
+        """Release any environment-owned external resources.
+
+        Returns
+        -------
+        None
+            This method is a no-op for environments without external resources.
+        """
+        ...
+
 
 class Scenario(Protocol[ScenarioStateT]):
     """Protocol for episode initialization logic."""

@@ -130,6 +130,7 @@ class ChessPuzzleDatasetScenario:
             "task_type": "puzzle",
             "dataset": record.dataset,
             "record_id": record.record_id,
+            "presented_fen": record.presented_fen,
             "solution_moves_uci": record.solution_moves_uci,
             "rating": record.rating,
             "rating_deviation": record.rating_deviation,

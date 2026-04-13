@@ -57,99 +57,104 @@ def run_play_session(
         Process-style exit code, where ``0`` denotes a clean session exit.
     """
     extra_command_map = _build_extra_command_map(game_spec=game_spec)
-    observation, reset_info = env.reset(seed=seed)
-    _write_line(output_stream, f"Reset info: {_format_json(reset_info)}")
-    _write_observation(
-        output_stream,
-        observation,
-        image_output_dir=image_output_dir,
-    )
-    if env.episode_finished:
-        _write_line(output_stream, "Episode finished.")
-        return 0
-
-    while True:
-        context = build_action_context(env=env)
-        output_stream.write(f"turn[{context.turn_index}]> ")
-        output_stream.flush()
-
-        raw_input = input_stream.readline()
-        if raw_input == "":
-            _write_line(output_stream, "")
-            return 0
-
-        command_text = raw_input.strip()
-        if not command_text:
-            continue
-
-        command_tokens = tuple(command_text.split())
-        command_name = command_tokens[0]
-        command_arguments = command_tokens[1:]
-
-        if command_name in {"quit", "exit"}:
-            _write_line(output_stream, "Session ended.")
-            return 0
-
-        if command_name == "help":
-            _write_help(output_stream=output_stream, game_spec=game_spec)
-            continue
-
-        if command_name == "legal":
-            legal_actions = " ".join(context.legal_actions)
-            _write_line(
-                output_stream,
-                f"Legal actions ({len(context.legal_actions)}): {legal_actions}",
-            )
-            continue
-
-        if command_name == "state":
-            _write_line(output_stream, f"State: {_format_json(observation.metadata)}")
-            continue
-
-        if command_name == "show":
-            _write_metadata_value(
-                output_stream=output_stream,
-                observation=observation,
-                arguments=command_arguments,
-            )
-            continue
-
-        if command_name == "trajectory":
-            _write_trajectory(output_stream, env)
-            continue
-
-        extra_command = extra_command_map.get(command_name)
-        if extra_command is not None:
-            extra_command.handler(
-                env=env,
-                observation=observation,
-                context=context,
-                arguments=command_arguments,
-                output_stream=output_stream,
-            )
-            continue
-
-        try:
-            step_result = env.step(command_text)
-        except InvalidActionError as exc:
-            _write_line(output_stream, f"Invalid action: {exc}")
-            continue
-
-        observation = step_result.observation
-        _write_step_result(
-            output_stream=output_stream,
-            step_result=step_result,
-            game_spec=game_spec,
-        )
+    try:
+        observation, reset_info = env.reset(seed=seed)
+        _write_line(output_stream, f"Reset info: {_format_json(reset_info)}")
         _write_observation(
             output_stream,
             observation,
             image_output_dir=image_output_dir,
         )
-
-        if step_result.terminated or step_result.truncated:
+        if env.episode_finished:
             _write_line(output_stream, "Episode finished.")
             return 0
+
+        while True:
+            context = build_action_context(env=env)
+            output_stream.write(f"turn[{context.turn_index}]> ")
+            output_stream.flush()
+
+            raw_input = input_stream.readline()
+            if raw_input == "":
+                _write_line(output_stream, "")
+                return 0
+
+            command_text = raw_input.strip()
+            if not command_text:
+                continue
+
+            command_tokens = tuple(command_text.split())
+            command_name = command_tokens[0]
+            command_arguments = command_tokens[1:]
+
+            if command_name in {"quit", "exit"}:
+                _write_line(output_stream, "Session ended.")
+                return 0
+
+            if command_name == "help":
+                _write_help(output_stream=output_stream, game_spec=game_spec)
+                continue
+
+            if command_name == "legal":
+                legal_actions = " ".join(context.legal_actions)
+                _write_line(
+                    output_stream,
+                    f"Legal actions ({len(context.legal_actions)}): {legal_actions}",
+                )
+                continue
+
+            if command_name == "state":
+                _write_line(
+                    output_stream, f"State: {_format_json(observation.metadata)}"
+                )
+                continue
+
+            if command_name == "show":
+                _write_metadata_value(
+                    output_stream=output_stream,
+                    observation=observation,
+                    arguments=command_arguments,
+                )
+                continue
+
+            if command_name == "trajectory":
+                _write_trajectory(output_stream, env)
+                continue
+
+            extra_command = extra_command_map.get(command_name)
+            if extra_command is not None:
+                extra_command.handler(
+                    env=env,
+                    observation=observation,
+                    context=context,
+                    arguments=command_arguments,
+                    output_stream=output_stream,
+                )
+                continue
+
+            try:
+                step_result = env.step(command_text)
+            except InvalidActionError as exc:
+                _write_line(output_stream, f"Invalid action: {exc}")
+                continue
+
+            observation = step_result.observation
+            _write_step_result(
+                output_stream=output_stream,
+                step_result=step_result,
+                game_spec=game_spec,
+            )
+            _write_observation(
+                output_stream,
+                observation,
+                image_output_dir=image_output_dir,
+            )
+
+            if step_result.terminated or step_result.truncated:
+                _write_line(output_stream, "Episode finished.")
+                return 0
+    finally:
+        env.close()
 
 
 def _build_extra_command_map(
