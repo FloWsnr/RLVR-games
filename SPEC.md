@@ -40,6 +40,7 @@ Implemented games:
 
 - Chess
 - 2048
+- Connect 4
 
 Possible next additions:
 

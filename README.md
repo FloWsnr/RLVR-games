@@ -89,6 +89,7 @@ now, the README only keeps minimal smoke-test examples:
 
 ```bash
 uv run rlvr-games play chess --seed 0 --reward engine-eval-dense --engine-depth 12 --engine-mate-score 100000
+uv run rlvr-games play connect4 --seed 0
 uv run rlvr-games play 2048 --seed 0
 ```
 
