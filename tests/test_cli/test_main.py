@@ -5,6 +5,8 @@ from pathlib import Path
 import sys
 
 from _pytest.monkeypatch import MonkeyPatch
+import pytest
+import zstandard
 from rlvr_games.cli.main import run_cli, run_play_session
 from rlvr_games.core import (
     EpisodeConfig,
@@ -19,7 +21,11 @@ from rlvr_games.games.chess import (
     make_chess_env,
 )
 from rlvr_games.games.chess.cli import CHESS_CLI_SPEC
-from rlvr_games.games.chess.scenarios import STANDARD_START_FEN
+from rlvr_games.games.chess.datasets import default_lichess_puzzle_source_path
+from rlvr_games.games.chess.scenarios import (
+    STANDARD_START_FEN,
+    StartingPositionScenario,
+)
 
 TERMINAL_FEN = "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1"
 
@@ -33,7 +39,7 @@ def make_env() -> ChessEnv:
         Fully wired chess environment instance.
     """
     return make_chess_env(
-        initial_fen=STANDARD_START_FEN,
+        scenario=StartingPositionScenario(initial_fen=STANDARD_START_FEN),
         reward_fn=ZeroReward(),
         config=EpisodeConfig(),
         text_renderer_kind=ChessTextRendererKind.ASCII,
@@ -41,6 +47,58 @@ def make_env() -> ChessEnv:
         image_size=360,
         image_coordinates=True,
         orientation=ChessBoardOrientation.WHITE,
+    )
+
+
+def write_sample_lichess_csv(*, path: Path) -> Path:
+    """Write a tiny Lichess-like puzzle CSV fixture.
+
+    Parameters
+    ----------
+    path : Path
+        Destination path receiving the fixture CSV.
+
+    Returns
+    -------
+    Path
+        The written fixture path.
+    """
+    content = (
+        "PuzzleId,FEN,Moves,Rating,RatingDeviation,Popularity,NbPlays,"
+        "Themes,GameUrl,OpeningTags\n"
+        "00sHx,q3k1nr/1pp1nQpp/3p4/1P2p3/4P3/B1PP1b2/B5PP/5K2 b k - 0 17,"
+        "e8d7 a2e6 d7d8 f7f8,1760,80,83,72,"
+        "mate mateIn2 middlegame short,"
+        "https://lichess.org/yyznGmXs/black#34,"
+        "Italian_Game Italian_Game_Classical_Variation\n"
+        "00sJb,Q1b2r1k/p2np2p/5bp1/q7/5P2/4B3/PPP3PP/2KR1B1R w - - 1 17,"
+        "d1d7 a5e1 d7d1 e1e3 c1b1 e3b6,2235,76,97,64,"
+        "advantage fork long,https://lichess.org/kiuvTFoE#33,"
+        "Sicilian_Defense Sicilian_Defense_Dragon_Variation\n"
+    )
+    if path.suffix == ".zst":
+        with zstandard.open(path, mode="wt", encoding="utf-8") as handle:
+            handle.write(content)
+        return path
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+def fixture_puzzle_manifest_path() -> Path:
+    """Return the checked-in processed Lichess puzzle subset manifest.
+
+    Returns
+    -------
+    Path
+        Path to the fixture manifest.
+    """
+    return (
+        Path(__file__).resolve().parents[1]
+        / "test_games"
+        / "test_chess"
+        / "fixtures"
+        / "lichess_puzzles_subset"
+        / "manifest.json"
     )
 
 
@@ -92,7 +150,7 @@ def test_run_play_session_reports_invalid_moves_without_state_change() -> None:
 
 def test_run_play_session_reports_penalized_invalid_moves_from_env_policy() -> None:
     env = make_chess_env(
-        initial_fen=STANDARD_START_FEN,
+        scenario=StartingPositionScenario(initial_fen=STANDARD_START_FEN),
         reward_fn=ZeroReward(),
         config=EpisodeConfig(
             invalid_action_policy=InvalidActionPolicy(
@@ -128,7 +186,7 @@ def test_run_play_session_reports_penalized_invalid_moves_from_env_policy() -> N
 
 def test_run_play_session_finishes_immediately_for_terminal_reset_positions() -> None:
     env = make_chess_env(
-        initial_fen=TERMINAL_FEN,
+        scenario=StartingPositionScenario(initial_fen=TERMINAL_FEN),
         reward_fn=ZeroReward(),
         config=EpisodeConfig(),
         text_renderer_kind=ChessTextRendererKind.ASCII,
@@ -160,7 +218,7 @@ def test_run_play_session_persists_rendered_images_when_requested(
     tmp_path: Path,
 ) -> None:
     env = make_chess_env(
-        initial_fen=STANDARD_START_FEN,
+        scenario=StartingPositionScenario(initial_fen=STANDARD_START_FEN),
         reward_fn=ZeroReward(),
         config=EpisodeConfig(max_transitions=1),
         text_renderer_kind=ChessTextRendererKind.ASCII,
@@ -278,3 +336,127 @@ def test_run_cli_penalize_continue_respects_max_attempts(
     assert exit_code == 0
     assert '"truncated_reason": "max_attempts"' in output
     assert "Episode finished." in output
+
+
+def test_run_cli_dataset_download_reuses_existing_local_source(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    input_stream = StringIO()
+    output_stream = StringIO()
+    raw_dir = tmp_path / "raw"
+    source_path = default_lichess_puzzle_source_path(raw_root_dir=raw_dir)
+    write_sample_lichess_csv(path=source_path)
+    monkeypatch.setattr(sys, "stdin", input_stream)
+    monkeypatch.setattr(sys, "stdout", output_stream)
+
+    exit_code = run_cli(
+        [
+            "datasets",
+            "download",
+            "chess",
+            "lichess-puzzles",
+            "--raw-dir",
+            str(raw_dir),
+        ]
+    )
+
+    output = output_stream.getvalue()
+    assert exit_code == 0
+    assert "Downloaded dataset source:" in output
+    downloaded_path = Path(
+        output.strip().split("Downloaded dataset source: ", maxsplit=1)[1]
+    )
+    assert downloaded_path == source_path
+    assert downloaded_path.exists()
+
+
+def test_run_cli_can_preprocess_a_downloaded_lichess_puzzle_dataset(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    input_stream = StringIO()
+    output_stream = StringIO()
+    raw_dir = tmp_path / "raw"
+    source_path = default_lichess_puzzle_source_path(raw_root_dir=raw_dir)
+    write_sample_lichess_csv(path=source_path)
+    monkeypatch.setattr(sys, "stdin", input_stream)
+    monkeypatch.setattr(sys, "stdout", output_stream)
+
+    exit_code = run_cli(
+        [
+            "datasets",
+            "preprocess",
+            "chess",
+            "lichess-puzzles",
+            "--processed-dir",
+            str(tmp_path / "processed"),
+            "--raw-dir",
+            str(raw_dir),
+            "--train-percentage",
+            "100",
+            "--val-percentage",
+            "0",
+            "--test-percentage",
+            "0",
+        ]
+    )
+
+    output = output_stream.getvalue()
+    assert exit_code == 0
+    assert "Dataset manifest:" in output
+    manifest_path = Path(output.strip().split("Dataset manifest: ", maxsplit=1)[1])
+    assert manifest_path.exists()
+
+
+def test_run_cli_preprocess_requires_a_local_source_file(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    input_stream = StringIO()
+    output_stream = StringIO()
+    monkeypatch.setattr(sys, "stdin", input_stream)
+    monkeypatch.setattr(sys, "stdout", output_stream)
+
+    with pytest.raises(SystemExit):
+        run_cli(
+            [
+                "datasets",
+                "preprocess",
+                "chess",
+                "lichess-puzzles",
+                "--processed-dir",
+                str(tmp_path / "processed"),
+                "--raw-dir",
+                str(tmp_path / "raw"),
+            ]
+        )
+
+
+def test_run_cli_can_start_a_chess_puzzle_session(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    manifest_path = fixture_puzzle_manifest_path()
+    input_stream = StringIO("quit\n")
+    output_stream = StringIO()
+    monkeypatch.setattr(sys, "stdin", input_stream)
+    monkeypatch.setattr(sys, "stdout", output_stream)
+
+    exit_code = run_cli(
+        [
+            "play",
+            "chess",
+            "--scenario",
+            "lichess-puzzles",
+            "--dataset-manifest",
+            str(manifest_path),
+            "--seed",
+            "0",
+        ]
+    )
+
+    output = output_stream.getvalue()
+    assert exit_code == 0
+    assert '"scenario": "dataset_puzzle"' in output
+    assert "Chess board:" in output
+    assert "Session ended." in output

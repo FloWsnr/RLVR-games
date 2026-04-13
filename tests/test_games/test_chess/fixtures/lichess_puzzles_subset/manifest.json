@@ -1,0 +1,37 @@
+{
+  "dataset": "lichess-puzzles",
+  "game": "chess",
+  "license": "CC0",
+  "metadata": {
+    "builder": "lichess",
+    "chunk_size": 3,
+    "fixture": true,
+    "max_records": 3,
+    "processed_record_count": 3,
+    "record_ids": [
+      "00008",
+      "0000D",
+      "0008Q"
+    ],
+    "skipped_record_count": 0,
+    "split_percentages": {
+      "test": 0,
+      "train": 100,
+      "val": 0
+    },
+    "task_type": "puzzle"
+  },
+  "record_format": "parquet",
+  "schema_version": 1,
+  "shards": [
+    {
+      "path": "train-00000.parquet",
+      "record_count": 3,
+      "split": "train"
+    }
+  ],
+  "source_filename": "lichess_db_puzzle.csv.zst",
+  "source_sha256": null,
+  "source_url": "https://database.lichess.org/lichess_db_puzzle.csv.zst",
+  "version": "fixture-subset-v1"
+}

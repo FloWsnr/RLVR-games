@@ -1,19 +1,33 @@
 """Chess-specific CLI registration."""
 
 from argparse import ArgumentParser, Namespace
+from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
 from rlvr_games.cli.common import build_episode_config
 from rlvr_games.cli.specs import GameCliSpec
-from rlvr_games.core.rewards import ZeroReward
 from rlvr_games.core.protocol import Environment
+from rlvr_games.core.rewards import ZeroReward
 from rlvr_games.core.types import StepResult
+from rlvr_games.datasets import DatasetSplit
 from rlvr_games.games.chess.factory import (
     ChessBoardOrientation,
     ChessTextRendererKind,
     make_chess_env,
 )
-from rlvr_games.games.chess.scenarios import STANDARD_START_FEN
+from rlvr_games.games.chess.scenarios import (
+    ChessPuzzleDatasetScenario,
+    STANDARD_START_FEN,
+    StartingPositionScenario,
+)
+
+
+class ChessScenarioKind(StrEnum):
+    """Supported chess scenario kinds exposed through the CLI."""
+
+    STARTING_POSITION = "starting-position"
+    LICHESS_PUZZLES = "lichess-puzzles"
 
 
 def register_chess_arguments(parser: ArgumentParser) -> None:
@@ -24,7 +38,18 @@ def register_chess_arguments(parser: ArgumentParser) -> None:
     parser : ArgumentParser
         Chess play subparser to configure.
     """
+    parser.add_argument(
+        "--scenario",
+        choices=tuple(kind.value for kind in ChessScenarioKind),
+        default=ChessScenarioKind.STARTING_POSITION.value,
+    )
     parser.add_argument("--fen", default=STANDARD_START_FEN)
+    parser.add_argument("--dataset-manifest", type=Path)
+    parser.add_argument(
+        "--dataset-split",
+        choices=tuple(split.value for split in DatasetSplit),
+        default=DatasetSplit.TRAIN.value,
+    )
     parser.add_argument(
         "--renderer",
         choices=tuple(kind.value for kind in ChessTextRendererKind),
@@ -57,7 +82,7 @@ def build_chess_environment(
         Fully configured chess environment.
     """
     return make_chess_env(
-        initial_fen=args.fen,
+        scenario=build_chess_scenario(args=args, parser=parser),
         reward_fn=ZeroReward(),
         config=build_episode_config(args=args, parser=parser),
         text_renderer_kind=ChessTextRendererKind(args.renderer),
@@ -65,6 +90,44 @@ def build_chess_environment(
         image_size=args.image_size,
         image_coordinates=args.image_coordinates,
         orientation=ChessBoardOrientation(args.orientation),
+    )
+
+
+def build_chess_scenario(
+    *,
+    args: Namespace,
+    parser: ArgumentParser,
+) -> StartingPositionScenario | ChessPuzzleDatasetScenario:
+    """Construct a chess scenario from parsed CLI arguments.
+
+    Parameters
+    ----------
+    args : Namespace
+        Parsed CLI arguments for a chess play session.
+    parser : ArgumentParser
+        Parser used to report invalid argument combinations.
+
+    Returns
+    -------
+    StartingPositionScenario | ChessPuzzleDatasetScenario
+        Scenario instance implied by the parsed CLI arguments.
+    """
+    scenario_kind = ChessScenarioKind(args.scenario)
+    if scenario_kind == ChessScenarioKind.STARTING_POSITION:
+        if args.dataset_manifest is not None:
+            parser.error(
+                "--dataset-manifest requires --scenario lichess-puzzles for chess."
+            )
+        return StartingPositionScenario(initial_fen=args.fen)
+
+    if args.dataset_manifest is None:
+        parser.error("--dataset-manifest is required for --scenario lichess-puzzles.")
+    if args.fen != STANDARD_START_FEN:
+        parser.error("--fen is only supported with --scenario starting-position.")
+
+    return ChessPuzzleDatasetScenario(
+        manifest_path=args.dataset_manifest,
+        split=DatasetSplit(args.dataset_split),
     )
 
 

@@ -7,7 +7,7 @@ To understand more about the mission and goal of this library, see the SPEC.md f
 
 ## Project Structure & Module Organization
 
-`rlvr_games/core/` contains the shared environment abstractions: reset/step orchestration, protocols, rewards, trajectories, types, and exceptions. `rlvr_games/cli/` contains the generic CLI parser, shared session runner, common argument helpers, and the game registry. `rlvr_games/games/chess/` and `rlvr_games/games/game2048/` contain the current verifier-backed game implementations split across actions, backend rules, environment wiring, rendering, scenarios, state, and game-specific CLI wiring. Add new games under `rlvr_games/games/<game>/` with the same separation, including a `cli.py` module when the game is exposed through `rlvr-games play`. Register new playable games through the CLI registry instead of hardcoding branches in `rlvr_games/cli/main.py`. `tests/` holds pytest coverage for core behavior and game behavior. Repository metadata lives in `pyproject.toml`, `pyrightconfig.json`, and `uv.lock`; game fixtures or rendered assets should live near the game that owns them.
+`rlvr_games/core/` contains the shared environment abstractions: reset/step orchestration, protocols, rewards, trajectories, types, and exceptions. `rlvr_games/cli/` contains the generic CLI parser, shared session runner, common argument helpers, and the game registry. `rlvr_games/datasets/` contains shared offline dataset download, manifest, sharding, and runtime sampling helpers. `rlvr_games/games/chess/` and `rlvr_games/games/game2048/` contain the current verifier-backed game implementations split across actions, backend rules, environment wiring, rendering, scenarios, state, and game-specific CLI wiring. Add new games under `rlvr_games/games/<game>/` with the same separation, including a `cli.py` module when the game is exposed through `rlvr-games play`. Register new playable games and dataset commands through the CLI registry instead of hardcoding branches in `rlvr_games/cli/main.py`. `tests/` holds pytest coverage for core behavior and game behavior. Repository metadata lives in `pyproject.toml`, `pyrightconfig.json`, and `uv.lock`; game fixtures or rendered assets should live near the game that owns them.
 
 ## Architecture Overview
 
@@ -35,6 +35,9 @@ This is an environment-first RLVR framework. The game engine is the source of tr
 - `uv run ruff format .`: format Python files before submitting.
 - `uv run rlvr-games play chess --seed 0`: manually smoke-test the chess environment through the interactive CLI. Enter UCI moves such as `e2e4`, or use `help`, `legal`, `state`, `show fen`, `trajectory`, `quit`, and `exit` inside the session.
 - `uv run rlvr-games play chess --seed 0 --fen "<fen>"`: start a manual chess test from an explicit FEN position.
+- `uv run rlvr-games datasets download chess lichess-puzzles`: download the raw Lichess puzzle dump into `data/raw/` and skip the download when the file already exists.
+- `uv run rlvr-games datasets preprocess chess lichess-puzzles`: preprocess the local Lichess puzzle dump into Parquet shards plus a manifest under `data/processed/`.
+- `uv run rlvr-games play chess --scenario lichess-puzzles --dataset-manifest <manifest>`: manually smoke-test chess puzzle sampling from a processed dataset manifest.
 - `uv run rlvr-games play chess --seed 0 --max-transitions 4`: test truncation behavior through the CLI.
 - `uv run rlvr-games play chess --seed 0 --renderer unicode`: test alternate text rendering. Supported text renderers are `ascii` and `unicode`.
 - `uv run rlvr-games play chess --seed 0 --image-output-dir <dir> --image-size 360 --image-coordinates --orientation white`: test PNG observation rendering. Supported image orientations are `white` and `black`.

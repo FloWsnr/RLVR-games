@@ -22,6 +22,14 @@ uv run rlvr-games play chess --seed 0 --orientation black
 uv run rlvr-games play chess --seed 0 --image-output-dir ./renders
 ```
 
+You can also play from processed chess puzzle datasets:
+
+```bash
+uv run rlvr-games datasets download chess lichess-puzzles
+uv run rlvr-games datasets preprocess chess lichess-puzzles
+uv run rlvr-games play chess --scenario lichess-puzzles --dataset-manifest data/processed/chess/lichess-puzzles/<version>/manifest.json --seed 0
+```
+
 For 2048, you can also start from an explicit board:
 
 ```bash
@@ -54,10 +62,10 @@ from rlvr_games.games.chess import (
     ChessTextRendererKind,
     make_chess_env,
 )
-from rlvr_games.games.chess.scenarios import STANDARD_START_FEN
+from rlvr_games.games.chess.scenarios import STANDARD_START_FEN, StartingPositionScenario
 
 env = make_chess_env(
-    initial_fen=STANDARD_START_FEN,
+    scenario=StartingPositionScenario(initial_fen=STANDARD_START_FEN),
     reward_fn=ZeroReward(),
     config=EpisodeConfig(),
     text_renderer_kind=ChessTextRendererKind.ASCII,
@@ -111,10 +119,10 @@ from rlvr_games.games.chess import (
     ChessTextRendererKind,
     make_chess_env,
 )
-from rlvr_games.games.chess.scenarios import STANDARD_START_FEN
+from rlvr_games.games.chess.scenarios import STANDARD_START_FEN, StartingPositionScenario
 
 env = make_chess_env(
-    initial_fen=STANDARD_START_FEN,
+    scenario=StartingPositionScenario(initial_fen=STANDARD_START_FEN),
     reward_fn=ZeroReward(),
     config=EpisodeConfig(
         invalid_action_policy=InvalidActionPolicy(

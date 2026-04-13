@@ -2,6 +2,7 @@
 
 from argparse import ArgumentParser, Namespace
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Protocol, TextIO
 
 from rlvr_games.core.protocol import Environment
@@ -11,6 +12,7 @@ from rlvr_games.core.types import Observation, StepResult
 ParserRegistrar = Callable[[ArgumentParser], None]
 EnvironmentBuilder = Callable[[Namespace, ArgumentParser], Environment[Any, Any]]
 StepResultFormatter = Callable[[StepResult], tuple[str, ...]]
+DatasetArtifactBuilder = Callable[[Namespace, ArgumentParser], Path]
 
 
 class InteractiveCommandHandler(Protocol):
@@ -85,3 +87,35 @@ class GameCliSpec:
     build_environment: EnvironmentBuilder
     format_step_result: StepResultFormatter
     interactive_commands: tuple[InteractiveCommandSpec, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DatasetCliSpec:
+    """Dataset-specific CLI registration for offline corpus preparation.
+
+    Attributes
+    ----------
+    game : str
+        Owning game, used under ``rlvr-games datasets <command> <game>``.
+    name : str
+        Dataset family name used under the game namespace.
+    register_download_arguments : ParserRegistrar
+        Callable that attaches dataset-specific download arguments to a
+        subparser.
+    download_dataset : DatasetArtifactBuilder
+        Callable that downloads or resolves the raw dataset artifact and
+        returns its path.
+    register_preprocess_arguments : ParserRegistrar
+        Callable that attaches dataset-specific preprocess arguments to a
+        subparser.
+    preprocess_dataset : DatasetArtifactBuilder
+        Callable that builds the processed dataset manifest and returns its
+        path.
+    """
+
+    game: str
+    name: str
+    register_download_arguments: ParserRegistrar
+    download_dataset: DatasetArtifactBuilder
+    register_preprocess_arguments: ParserRegistrar
+    preprocess_dataset: DatasetArtifactBuilder

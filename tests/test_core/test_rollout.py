@@ -8,7 +8,10 @@ from rlvr_games.games.chess import (
     ChessTextRendererKind,
     make_chess_env,
 )
-from rlvr_games.games.chess.scenarios import STANDARD_START_FEN
+from rlvr_games.games.chess.scenarios import (
+    STANDARD_START_FEN,
+    StartingPositionScenario,
+)
 
 TERMINAL_FEN = "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1"
 
@@ -51,7 +54,7 @@ class ScriptedAgent:
 
 def test_run_episode_records_scripted_checkmate_trajectory() -> None:
     env = make_chess_env(
-        initial_fen=STANDARD_START_FEN,
+        scenario=StartingPositionScenario(initial_fen=STANDARD_START_FEN),
         reward_fn=ZeroReward(),
         config=EpisodeConfig(),
         text_renderer_kind=ChessTextRendererKind.ASCII,
@@ -77,7 +80,7 @@ def test_run_episode_records_scripted_checkmate_trajectory() -> None:
 
 def test_run_episode_passes_sorted_legal_actions_in_context() -> None:
     env = make_chess_env(
-        initial_fen=STANDARD_START_FEN,
+        scenario=StartingPositionScenario(initial_fen=STANDARD_START_FEN),
         reward_fn=ZeroReward(),
         config=EpisodeConfig(max_transitions=1),
         text_renderer_kind=ChessTextRendererKind.ASCII,
@@ -104,7 +107,7 @@ def test_run_episode_passes_sorted_legal_actions_in_context() -> None:
 
 def test_run_episode_finishes_immediately_for_terminal_reset_positions() -> None:
     env = make_chess_env(
-        initial_fen=TERMINAL_FEN,
+        scenario=StartingPositionScenario(initial_fen=TERMINAL_FEN),
         reward_fn=ZeroReward(),
         config=EpisodeConfig(),
         text_renderer_kind=ChessTextRendererKind.ASCII,

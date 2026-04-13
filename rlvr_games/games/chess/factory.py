@@ -4,7 +4,7 @@ from enum import StrEnum
 
 import chess
 
-from rlvr_games.core.protocol import RewardFn
+from rlvr_games.core.protocol import RewardFn, Scenario
 from rlvr_games.core.types import EpisodeConfig
 from rlvr_games.games.chess.actions import ChessAction
 from rlvr_games.games.chess.backend import ChessBackend
@@ -15,7 +15,6 @@ from rlvr_games.games.chess.render import (
     ChessObservationRenderer,
     UnicodeBoardFormatter,
 )
-from rlvr_games.games.chess.scenarios import StartingPositionScenario
 from rlvr_games.games.chess.state import ChessState
 
 
@@ -35,7 +34,7 @@ class ChessBoardOrientation(StrEnum):
 
 def make_chess_env(
     *,
-    initial_fen: str,
+    scenario: Scenario[ChessState],
     reward_fn: RewardFn[ChessState, ChessAction],
     config: EpisodeConfig,
     text_renderer_kind: ChessTextRendererKind,
@@ -48,8 +47,8 @@ def make_chess_env(
 
     Parameters
     ----------
-    initial_fen : str
-        Starting position for the episode scenario.
+    scenario : Scenario[ChessState]
+        Scenario used to create the initial chess position for each episode.
     reward_fn : RewardFn[ChessState, ChessAction]
         Reward function used to score verified transitions.
     config : EpisodeConfig
@@ -93,7 +92,7 @@ def make_chess_env(
 
     return ChessEnv(
         backend=ChessBackend(),
-        scenario=StartingPositionScenario(initial_fen=initial_fen),
+        scenario=scenario,
         renderer=ChessObservationRenderer(
             board_formatter=board_formatter,
             image_renderer=image_renderer,

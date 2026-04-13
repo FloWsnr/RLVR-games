@@ -15,6 +15,7 @@ from rlvr_games.games.chess.render import (
     UnicodeBoardFormatter,
 )
 from rlvr_games.games.chess.scenarios import (
+    ChessPuzzleDatasetScenario,
     STANDARD_START_FEN,
     StartingPositionScenario,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "ChessEnv",
     "ChessFastImageRenderer",
     "ChessObservationRenderer",
+    "ChessPuzzleDatasetScenario",
     "ChessState",
     "ChessTextRendererKind",
     "STANDARD_START_FEN",
