@@ -8,6 +8,7 @@ from rlvr_games.core import (
     InvalidActionError,
     InvalidActionMode,
     InvalidActionPolicy,
+    ZeroReward,
 )
 from rlvr_games.core.rollout import ActionContext, run_episode
 from rlvr_games.core.types import Observation
@@ -55,6 +56,7 @@ def make_env_with_invalid_action_policy(
     """
     return make_chess_env(
         initial_fen=STANDARD_START_FEN,
+        reward_fn=ZeroReward(),
         config=EpisodeConfig(
             invalid_action_policy=InvalidActionPolicy(mode=mode, penalty=penalty),
         ),
@@ -143,6 +145,7 @@ def test_run_episode_works_with_penalize_truncate_policy() -> None:
 def test_run_episode_turn_count_only_counts_accepted_transitions() -> None:
     env = make_chess_env(
         initial_fen=STANDARD_START_FEN,
+        reward_fn=ZeroReward(),
         config=EpisodeConfig(
             max_attempts=2,
             invalid_action_policy=InvalidActionPolicy(

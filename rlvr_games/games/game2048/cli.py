@@ -8,6 +8,7 @@ from rlvr_games.cli.specs import GameCliSpec
 from rlvr_games.core.protocol import Environment
 from rlvr_games.core.types import StepResult
 from rlvr_games.games.game2048.factory import make_game2048_env
+from rlvr_games.games.game2048.rewards import TargetTileReward
 from rlvr_games.games.game2048.scenarios import (
     STANDARD_2048_SIZE,
     STANDARD_2048_TARGET,
@@ -63,6 +64,7 @@ def build_game2048_environment(
         initial_board=initial_board,
         initial_score=0,
         initial_move_count=0,
+        reward_fn=TargetTileReward(),
         config=build_episode_config(args=args, parser=parser),
         include_images=args.image_output_dir is not None,
         image_size=args.image_size,

@@ -2,7 +2,9 @@
 
 from typing import Sequence
 
+from rlvr_games.core.protocol import RewardFn
 from rlvr_games.core.types import EpisodeConfig
+from rlvr_games.games.game2048.actions import Game2048Action
 from rlvr_games.games.game2048.backend import Game2048Backend
 from rlvr_games.games.game2048.env import Game2048Env
 from rlvr_games.games.game2048.render import (
@@ -10,12 +12,12 @@ from rlvr_games.games.game2048.render import (
     Game2048ImageRenderer,
     Game2048ObservationRenderer,
 )
-from rlvr_games.games.game2048.rewards import ScoreDeltaReward
 from rlvr_games.games.game2048.scenarios import (
     FixedBoardScenario,
     RandomStartScenario,
     normalize_initial_board,
 )
+from rlvr_games.games.game2048.state import Game2048State
 
 
 def make_game2048_env(
@@ -25,6 +27,7 @@ def make_game2048_env(
     initial_board: Sequence[Sequence[int]] | None,
     initial_score: int,
     initial_move_count: int,
+    reward_fn: RewardFn[Game2048State, Game2048Action],
     config: EpisodeConfig,
     include_images: bool,
     image_size: int,
@@ -44,6 +47,8 @@ def make_game2048_env(
         Starting score used only when `initial_board` is supplied.
     initial_move_count : int
         Starting move count used only when `initial_board` is supplied.
+    reward_fn : RewardFn[Game2048State, Game2048Action]
+        Reward function used to score verified transitions.
     config : EpisodeConfig
         Episode execution configuration controlling invalid-action handling and
         optional attempt or transition limits.
@@ -56,7 +61,7 @@ def make_game2048_env(
     -------
     Game2048Env
         2048 environment wired with the standard backend, scenario, renderer,
-        and score-delta reward function.
+        and supplied reward function.
     """
     if initial_board is None:
         scenario = RandomStartScenario(
@@ -89,6 +94,6 @@ def make_game2048_env(
             board_formatter=Game2048AsciiBoardFormatter(),
             image_renderer=image_renderer,
         ),
-        reward_fn=ScoreDeltaReward(),
+        reward_fn=reward_fn,
         config=config,
     )

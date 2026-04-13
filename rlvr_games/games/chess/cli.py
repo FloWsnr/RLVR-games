@@ -5,6 +5,7 @@ from typing import Any
 
 from rlvr_games.cli.common import build_episode_config
 from rlvr_games.cli.specs import GameCliSpec
+from rlvr_games.core.rewards import ZeroReward
 from rlvr_games.core.protocol import Environment
 from rlvr_games.core.types import StepResult
 from rlvr_games.games.chess.factory import (
@@ -57,6 +58,7 @@ def build_chess_environment(
     """
     return make_chess_env(
         initial_fen=args.fen,
+        reward_fn=ZeroReward(),
         config=build_episode_config(args=args, parser=parser),
         text_renderer_kind=ChessTextRendererKind(args.renderer),
         include_images=args.image_output_dir is not None,

@@ -17,6 +17,8 @@ from rlvr_games.games.game2048 import (
     Game2048State,
     RandomStartScenario,
     ScoreDeltaReward,
+    TargetTileReward,
+    make_game2048_env,
     spawn_outcomes,
 )
 from rlvr_games.games.game2048.actions import MoveDirection
@@ -226,6 +228,50 @@ def test_apply_move_matches_open_spiel_one_merge_per_turn_case() -> None:
     )
 
 
+def test_score_delta_reward_returns_merge_score_gain_for_non_terminal_move() -> None:
+    backend = Game2048Backend()
+    state = Game2048State(
+        board=MERGE_BOARD,
+        score=0,
+        move_count=0,
+        target_value=2048,
+        rng_state=Random(5).getstate(),
+    )
+    action = backend.parse_action(state, "left").require_action()
+    next_state, transition_info = backend.apply_action(state, action)
+
+    reward = ScoreDeltaReward().evaluate(
+        previous_state=state,
+        action=action,
+        next_state=next_state,
+        transition_info=transition_info,
+    )
+
+    assert reward == 8.0
+
+
+def test_target_tile_reward_ignores_non_terminal_score_gain() -> None:
+    env = make_game2048_env(
+        size=4,
+        target_value=2048,
+        initial_board=MERGE_BOARD,
+        initial_score=0,
+        initial_move_count=0,
+        reward_fn=TargetTileReward(),
+        config=EpisodeConfig(),
+        include_images=False,
+        image_size=360,
+    )
+    env.reset(seed=5)
+
+    result = env.step("left")
+
+    assert result.accepted is True
+    assert result.reward == 0.0
+    assert result.info["score_gain"] == 8
+    assert result.terminated is False
+
+
 def test_reaching_target_tile_terminates_with_reward_and_metadata() -> None:
     env = Game2048Env(
         backend=Game2048Backend(),
@@ -236,7 +282,7 @@ def test_reaching_target_tile_terminates_with_reward_and_metadata() -> None:
             target_value=2048,
         ),
         renderer=make_renderer(),
-        reward_fn=ScoreDeltaReward(),
+        reward_fn=TargetTileReward(),
         config=EpisodeConfig(),
     )
     env.reset(seed=1)
@@ -272,7 +318,7 @@ def test_terminal_reset_marks_episode_finished_and_rejects_steps() -> None:
             target_value=2048,
         ),
         renderer=make_renderer(),
-        reward_fn=ScoreDeltaReward(),
+        reward_fn=TargetTileReward(),
         config=EpisodeConfig(),
     )
 
@@ -295,7 +341,7 @@ def test_game2048_env_records_trajectory_with_real_backend() -> None:
             start_tile_count=2,
         ),
         renderer=make_renderer(),
-        reward_fn=ScoreDeltaReward(),
+        reward_fn=TargetTileReward(),
         config=EpisodeConfig(),
     )
     observation, info = env.reset(seed=0)

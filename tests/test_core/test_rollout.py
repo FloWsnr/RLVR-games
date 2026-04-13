@@ -1,6 +1,6 @@
 """Rollout runner tests."""
 
-from rlvr_games.core import Observation
+from rlvr_games.core import Observation, ZeroReward
 from rlvr_games.core.rollout import ActionContext, run_episode
 from rlvr_games.core.types import EpisodeConfig
 from rlvr_games.games.chess import (
@@ -52,6 +52,7 @@ class ScriptedAgent:
 def test_run_episode_records_scripted_checkmate_trajectory() -> None:
     env = make_chess_env(
         initial_fen=STANDARD_START_FEN,
+        reward_fn=ZeroReward(),
         config=EpisodeConfig(),
         text_renderer_kind=ChessTextRendererKind.ASCII,
         include_images=False,
@@ -77,6 +78,7 @@ def test_run_episode_records_scripted_checkmate_trajectory() -> None:
 def test_run_episode_passes_sorted_legal_actions_in_context() -> None:
     env = make_chess_env(
         initial_fen=STANDARD_START_FEN,
+        reward_fn=ZeroReward(),
         config=EpisodeConfig(max_transitions=1),
         text_renderer_kind=ChessTextRendererKind.ASCII,
         include_images=False,
@@ -103,6 +105,7 @@ def test_run_episode_passes_sorted_legal_actions_in_context() -> None:
 def test_run_episode_finishes_immediately_for_terminal_reset_positions() -> None:
     env = make_chess_env(
         initial_fen=TERMINAL_FEN,
+        reward_fn=ZeroReward(),
         config=EpisodeConfig(),
         text_renderer_kind=ChessTextRendererKind.ASCII,
         include_images=False,

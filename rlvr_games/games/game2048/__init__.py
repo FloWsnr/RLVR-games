@@ -21,7 +21,7 @@ from rlvr_games.games.game2048.render import (
     Game2048ImageRenderer,
     Game2048ObservationRenderer,
 )
-from rlvr_games.games.game2048.rewards import ScoreDeltaReward
+from rlvr_games.games.game2048.rewards import ScoreDeltaReward, TargetTileReward
 from rlvr_games.games.game2048.scenarios import (
     FixedBoardScenario,
     RandomStartScenario,
@@ -54,6 +54,7 @@ __all__ = [
     "STANDARD_2048_SIZE",
     "STANDARD_2048_TARGET",
     "STANDARD_START_TILE_COUNT",
+    "TargetTileReward",
     "make_game2048_env",
     "normalize_initial_board",
     "spawn_outcomes",

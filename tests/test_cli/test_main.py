@@ -10,6 +10,7 @@ from rlvr_games.core import (
     EpisodeConfig,
     InvalidActionMode,
     InvalidActionPolicy,
+    ZeroReward,
 )
 from rlvr_games.games.chess import (
     ChessBoardOrientation,
@@ -33,6 +34,7 @@ def make_env() -> ChessEnv:
     """
     return make_chess_env(
         initial_fen=STANDARD_START_FEN,
+        reward_fn=ZeroReward(),
         config=EpisodeConfig(),
         text_renderer_kind=ChessTextRendererKind.ASCII,
         include_images=False,
@@ -91,6 +93,7 @@ def test_run_play_session_reports_invalid_moves_without_state_change() -> None:
 def test_run_play_session_reports_penalized_invalid_moves_from_env_policy() -> None:
     env = make_chess_env(
         initial_fen=STANDARD_START_FEN,
+        reward_fn=ZeroReward(),
         config=EpisodeConfig(
             invalid_action_policy=InvalidActionPolicy(
                 mode=InvalidActionMode.PENALIZE_CONTINUE,
@@ -126,6 +129,7 @@ def test_run_play_session_reports_penalized_invalid_moves_from_env_policy() -> N
 def test_run_play_session_finishes_immediately_for_terminal_reset_positions() -> None:
     env = make_chess_env(
         initial_fen=TERMINAL_FEN,
+        reward_fn=ZeroReward(),
         config=EpisodeConfig(),
         text_renderer_kind=ChessTextRendererKind.ASCII,
         include_images=False,
@@ -157,6 +161,7 @@ def test_run_play_session_persists_rendered_images_when_requested(
 ) -> None:
     env = make_chess_env(
         initial_fen=STANDARD_START_FEN,
+        reward_fn=ZeroReward(),
         config=EpisodeConfig(max_transitions=1),
         text_renderer_kind=ChessTextRendererKind.ASCII,
         include_images=True,

@@ -7,8 +7,8 @@ from _pytest.monkeypatch import MonkeyPatch
 
 from rlvr_games.cli.main import run_cli, run_play_session
 from rlvr_games.core import EpisodeConfig
+from rlvr_games.games.game2048 import Game2048Env, TargetTileReward, make_game2048_env
 from rlvr_games.games.game2048.cli import GAME2048_CLI_SPEC
-from rlvr_games.games.game2048 import Game2048Env, make_game2048_env
 
 NOOP_UP_BOARD = (
     (2, 0, 0, 0),
@@ -38,6 +38,7 @@ def make_env() -> Game2048Env:
         initial_board=None,
         initial_score=0,
         initial_move_count=0,
+        reward_fn=TargetTileReward(),
         config=EpisodeConfig(),
         include_images=False,
         image_size=360,
@@ -80,6 +81,7 @@ def test_run_play_session_reports_invalid_2048_moves_without_state_change() -> N
         initial_board=NOOP_UP_BOARD,
         initial_score=0,
         initial_move_count=0,
+        reward_fn=TargetTileReward(),
         config=EpisodeConfig(),
         include_images=False,
         image_size=360,
@@ -110,6 +112,7 @@ def test_run_play_session_finishes_immediately_for_terminal_2048_positions() -> 
         initial_board=NO_MOVES_BOARD,
         initial_score=0,
         initial_move_count=0,
+        reward_fn=TargetTileReward(),
         config=EpisodeConfig(),
         include_images=False,
         image_size=360,
