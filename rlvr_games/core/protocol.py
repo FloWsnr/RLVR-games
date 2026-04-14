@@ -3,7 +3,14 @@
 from typing import Any, Protocol, TypeVar
 
 from rlvr_games.core.trajectory import EpisodeTrajectory
-from rlvr_games.core.types import Observation, ParseResult, RenderedImage, StepResult
+from rlvr_games.core.types import (
+    AutoAction,
+    EpisodeBoundary,
+    Observation,
+    ParseResult,
+    RenderedImage,
+    StepResult,
+)
 
 BackendStateT = TypeVar("BackendStateT")
 BackendActionT = TypeVar("BackendActionT")
@@ -14,6 +21,8 @@ RendererStateT = TypeVar("RendererStateT", contravariant=True)
 RewardStateT = TypeVar("RewardStateT", contravariant=True)
 RewardActionT = TypeVar("RewardActionT", contravariant=True)
 RenderInputT = TypeVar("RenderInputT", contravariant=True)
+AutoStateT = TypeVar("AutoStateT")
+AutoActionT = TypeVar("AutoActionT")
 
 
 class GameBackend(Protocol[BackendStateT, BackendActionT]):
@@ -200,6 +209,80 @@ class Environment(Protocol[EnvStateT, EnvActionT]):
         ...
 
 
+class AutoAdvancePolicy(Protocol[AutoStateT, AutoActionT]):
+    """Protocol for automatic internal transitions between agent turns.
+
+    Auto-advance policies let one environment step include zero or more
+    verifier-backed internal actions, such as opponent replies or chance
+    events, before control returns to the agent.
+    """
+
+    def reset(self, *, initial_state: AutoStateT) -> None:
+        """Initialize policy state for a fresh episode.
+
+        Parameters
+        ----------
+        initial_state : AutoStateT
+            Canonical state returned by the scenario at reset time.
+        """
+        ...
+
+    def is_agent_turn(self, *, state: AutoStateT) -> bool:
+        """Return whether control should be returned to the agent.
+
+        Parameters
+        ----------
+        state : AutoStateT
+            Current canonical state after any already-applied transitions.
+
+        Returns
+        -------
+        bool
+            `True` when the agent should act next.
+        """
+        ...
+
+    def select_internal_action(
+        self,
+        *,
+        state: AutoStateT,
+        backend: GameBackend[AutoStateT, AutoActionT],
+    ) -> AutoAction[AutoActionT] | None:
+        """Return the next internal action to auto-apply, if any.
+
+        Parameters
+        ----------
+        state : AutoStateT
+            Current canonical state that is not currently controlled by the
+            agent.
+        backend : GameBackend[AutoStateT, AutoActionT]
+            Backend that will verify and apply the selected action.
+
+        Returns
+        -------
+        AutoAction[AutoActionT] | None
+            Selected internal action, or `None` when the policy cannot
+            continue from the supplied state.
+        """
+        ...
+
+    def episode_boundary(self, *, state: AutoStateT) -> EpisodeBoundary | None:
+        """Return an explicit episode boundary for the supplied state.
+
+        Parameters
+        ----------
+        state : AutoStateT
+            Current canonical state after any already-applied transitions.
+
+        Returns
+        -------
+        EpisodeBoundary | None
+            Explicit task boundary to apply, or `None` when the episode should
+            continue.
+        """
+        ...
+
+
 class Scenario(Protocol[ScenarioStateT]):
     """Protocol for episode initialization logic."""
 
@@ -278,7 +361,7 @@ class ImageRenderer(Protocol[RenderInputT]):
 
 
 class RewardFn(Protocol[RewardStateT, RewardActionT]):
-    """Protocol for computing rewards from verified transitions."""
+    """Protocol for computing rewards from verified environment steps."""
 
     def evaluate(
         self,
@@ -288,22 +371,24 @@ class RewardFn(Protocol[RewardStateT, RewardActionT]):
         next_state: RewardStateT,
         transition_info: dict[str, Any],
     ) -> float:
-        """Return the reward for a transition.
+        """Return the reward for one accepted environment step.
 
         Parameters
         ----------
         previous_state : RewardStateT
-            Canonical state before the action was applied.
+            Canonical state before the agent action was applied.
         action : RewardActionT
-            Parsed action that triggered the transition.
+            Parsed agent action that triggered the step.
         next_state : RewardStateT
-            Canonical state after the transition.
+            Canonical state after the agent action and any internal
+            auto-advanced transitions have been applied.
         transition_info : dict[str, Any]
-            Verifier-produced metadata associated with the transition.
+            Step metadata associated with the accepted action, including any
+            internal auto-advanced transitions.
 
         Returns
         -------
         float
-            Reward assigned to the transition.
+            Reward assigned to the accepted step.
         """
         ...

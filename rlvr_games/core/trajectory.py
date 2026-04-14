@@ -9,6 +9,29 @@ ActionT = TypeVar("ActionT")
 
 
 @dataclass(slots=True)
+class RecordedTransition(Generic[ActionT]):
+    """One accepted backend transition recorded within an env step.
+
+    Attributes
+    ----------
+    source : str
+        Structured label describing who produced the transition, for example
+        ``"agent"`` or ``"opponent"``.
+    raw_action : str
+        Serialized action string applied for this transition.
+    action : ActionT
+        Parsed backend action that was applied.
+    info : dict[str, Any]
+        Verifier metadata emitted for this accepted transition.
+    """
+
+    source: str
+    raw_action: str
+    action: ActionT
+    info: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class TrajectoryStep(Generic[ActionT]):
     """One recorded environment transition.
 
@@ -31,7 +54,11 @@ class TrajectoryStep(Generic[ActionT]):
     truncated : bool
         Whether the episode ended due to an external cutoff.
     info : dict[str, Any]
-        Transition metadata emitted by the backend.
+        Step metadata emitted by the environment.
+    transitions : tuple[RecordedTransition[ActionT], ...]
+        Accepted backend transitions applied during this env step. The first
+        transition is the agent action, followed by any internal auto-advanced
+        transitions.
     """
 
     raw_action: str
@@ -42,6 +69,7 @@ class TrajectoryStep(Generic[ActionT]):
     terminated: bool
     truncated: bool
     info: dict[str, Any] = field(default_factory=dict)
+    transitions: tuple[RecordedTransition[ActionT], ...] = ()
 
 
 @dataclass(slots=True)
@@ -75,11 +103,11 @@ class EpisodeTrajectory(Generic[ActionT]):
 
     @property
     def accepted_step_count(self) -> int:
-        """Return the number of accepted transitions in the episode.
+        """Return the number of accepted env steps in the episode.
 
         Returns
         -------
         int
-            Count of trajectory steps whose actions were accepted and applied.
+            Count of trajectory steps whose agent actions were accepted.
         """
         return sum(1 for step in self.steps if step.accepted)

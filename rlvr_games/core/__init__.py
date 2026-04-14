@@ -8,6 +8,7 @@ from rlvr_games.core.exceptions import (
     RLVRGamesError,
 )
 from rlvr_games.core.protocol import (
+    AutoAdvancePolicy,
     Environment,
     ImageRenderer,
     TextRenderer,
@@ -17,9 +18,15 @@ from rlvr_games.core.rollout import (
     ActionContext,
     build_action_context,
 )
-from rlvr_games.core.trajectory import EpisodeTrajectory, TrajectoryStep
+from rlvr_games.core.trajectory import (
+    EpisodeTrajectory,
+    RecordedTransition,
+    TrajectoryStep,
+)
 from rlvr_games.core.types import (
+    AutoAction,
     EpisodeConfig,
+    EpisodeBoundary,
     InvalidActionMode,
     InvalidActionPolicy,
     Observation,
@@ -30,8 +37,11 @@ from rlvr_games.core.types import (
 
 __all__ = [
     "ActionContext",
+    "AutoAction",
+    "AutoAdvancePolicy",
     "Environment",
     "EpisodeConfig",
+    "EpisodeBoundary",
     "EpisodeFinishedError",
     "EpisodeTrajectory",
     "EnvironmentNotResetError",
@@ -41,6 +51,7 @@ __all__ = [
     "InvalidActionPolicy",
     "Observation",
     "ParseResult",
+    "RecordedTransition",
     "RenderedImage",
     "RLVRGamesError",
     "StepResult",

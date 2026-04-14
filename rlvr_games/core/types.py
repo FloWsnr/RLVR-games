@@ -102,6 +102,71 @@ class Observation:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(slots=True, frozen=True)
+class AutoAction(Generic[ActionT]):
+    """One internal action selected by an auto-advance policy.
+
+    Attributes
+    ----------
+    source : str
+        Structured label describing who produced the action, for example
+        ``"opponent"`` or ``"chance"``.
+    raw_action : str
+        Serialized form of the action for logging and trajectory recording.
+    action : ActionT
+        Parsed backend action ready to be applied.
+    """
+
+    source: str
+    raw_action: str
+    action: ActionT
+
+    def __post_init__(self) -> None:
+        """Validate that the selected action can be recorded coherently.
+
+        Raises
+        ------
+        ValueError
+            If `source` or `raw_action` is empty.
+        """
+        if not self.source:
+            raise ValueError("AutoAction source must be non-empty.")
+        if not self.raw_action:
+            raise ValueError("AutoAction raw_action must be non-empty.")
+
+
+@dataclass(slots=True, frozen=True)
+class EpisodeBoundary:
+    """Explicit episode boundary supplied by an auto-advance policy.
+
+    Attributes
+    ----------
+    terminated : bool
+        Whether the episode should end as a natural task completion.
+    truncated : bool
+        Whether the episode should end due to an external cutoff.
+    info : dict[str, Any]
+        Additional metadata describing why the boundary was reached.
+    """
+
+    terminated: bool
+    truncated: bool
+    info: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate that exactly one episode boundary flag is set.
+
+        Raises
+        ------
+        ValueError
+            If both boundary flags are set or both are unset.
+        """
+        if self.terminated == self.truncated:
+            raise ValueError(
+                "EpisodeBoundary requires exactly one of terminated or truncated."
+            )
+
+
 class InvalidActionMode(StrEnum):
     """Policy modes for handling invalid environment actions."""
 
@@ -188,25 +253,27 @@ class EpisodeConfig:
 
 @dataclass(slots=True)
 class StepResult:
-    """Result returned by a single environment transition.
+    """Result returned by one environment step.
 
     Attributes
     ----------
     observation : Observation
-        Next model-facing observation after the action has been applied.
+        Next model-facing observation after the agent action and any internal
+        auto-advanced actions have been applied.
     reward : float
-        Reward assigned to the transition by the configured reward function.
+        Reward assigned to the step by the configured reward function.
     accepted : bool
         Whether the raw action was accepted by the verifier and applied to the
-        canonical state.
+        canonical state. Accepted steps may still include additional internal
+        auto-advanced transitions after the agent action.
     terminated : bool
         Whether the environment reached a natural terminal state according to
         the game rules.
     truncated : bool
         Whether the episode ended for an external reason such as a turn limit.
     info : dict[str, Any]
-        Transition metadata provided by the backend, including verifier-derived
-        details such as move annotations or terminal outcome information.
+        Step metadata including verifier-derived details for accepted
+        transitions and any internal auto-advanced actions.
     """
 
     observation: Observation

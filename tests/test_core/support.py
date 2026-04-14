@@ -6,6 +6,7 @@ from typing import Any
 from rlvr_games.core import ZeroReward
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.exceptions import InvalidActionError
+from rlvr_games.core.protocol import AutoAdvancePolicy, RewardFn
 from rlvr_games.core.types import EpisodeConfig, Observation, ParseResult
 from rlvr_games.games.chess import (
     ChessAction,
@@ -137,15 +138,20 @@ def make_counter_env(
     *,
     backend: CounterBackend,
     config: EpisodeConfig,
+    reward_fn: RewardFn[CounterState, CounterAction] | None = None,
+    auto_advance_policy: AutoAdvancePolicy[CounterState, CounterAction] | None = None,
 ) -> TurnBasedEnv[CounterState, CounterAction]:
     """Construct the standard counter env used in core tests."""
+    if reward_fn is None:
+        reward_fn = CounterReward()
     return TurnBasedEnv(
         backend=backend,
         scenario=CounterScenario(),
         renderer=CounterRenderer(),
         inspect_state_fn=inspect_counter_state,
-        reward_fn=CounterReward(),
+        reward_fn=reward_fn,
         config=config,
+        auto_advance_policy=auto_advance_policy,
     )
 
 
@@ -169,8 +175,12 @@ def make_chess_env_for_core_tests(
 
 __all__ = [
     "ApplyRejectingCounterBackend",
+    "CounterAction",
     "CounterBackend",
+    "CounterReward",
+    "CounterScenario",
     "CounterState",
+    "inspect_counter_state",
     "make_chess_env_for_core_tests",
     "make_counter_env",
     "STANDARD_START_FEN",

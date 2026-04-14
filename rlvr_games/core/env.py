@@ -10,14 +10,20 @@ from rlvr_games.core.exceptions import (
     InvalidActionError,
 )
 from rlvr_games.core.protocol import (
+    AutoAdvancePolicy,
     GameBackend,
     Renderer,
     RewardFn,
     Scenario,
 )
-from rlvr_games.core.trajectory import EpisodeTrajectory, TrajectoryStep
+from rlvr_games.core.trajectory import (
+    EpisodeTrajectory,
+    RecordedTransition,
+    TrajectoryStep,
+)
 from rlvr_games.core.types import (
     EpisodeConfig,
+    EpisodeBoundary,
     InvalidActionMode,
     Observation,
     RenderedImage,
@@ -26,6 +32,17 @@ from rlvr_games.core.types import (
 
 StateT = TypeVar("StateT")
 ActionT = TypeVar("ActionT")
+
+
+@dataclass(slots=True)
+class _AcceptedTransition(Generic[StateT, ActionT]):
+    """Internal accepted backend transition applied during one env step."""
+
+    source: str
+    raw_action: str
+    action: ActionT
+    next_state: StateT
+    info: dict[str, object]
 
 
 @dataclass(slots=True)
@@ -40,16 +57,26 @@ class _AttemptOutcome(Generic[StateT, ActionT]):
     terminated: bool
     truncated: bool
     info: dict[str, object]
+    transitions: tuple[_AcceptedTransition[StateT, ActionT], ...] = ()
+
+
+@dataclass(slots=True)
+class _ResolutionOutcome(Generic[StateT, ActionT]):
+    """Internal normalized state after any required internal transitions."""
+
+    next_state: StateT
+    terminated: bool
+    truncated: bool
+    info: dict[str, object]
+    transitions: tuple[_AcceptedTransition[StateT, ActionT], ...] = ()
 
 
 class TurnBasedEnv(Generic[StateT, ActionT]):
     """Minimal stateful environment with reset/step semantics.
 
-    The environment coordinates five reusable components: a scenario that
-    creates the initial canonical state, a backend that verifies actions and
-    applies transitions, a renderer that turns state into observations, an
-    inspection function that exposes debug-friendly state summaries, and a
-    reward function that scores verified transitions.
+    The environment coordinates reusable components for scenario reset,
+    verifier-backed transitions, rendering, state inspection, reward
+    evaluation, and optional internal auto-advancement between agent turns.
     """
 
     def __init__(
@@ -61,6 +88,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         inspect_state_fn: Callable[[StateT], dict[str, object]],
         reward_fn: RewardFn[StateT, ActionT],
         config: EpisodeConfig,
+        auto_advance_policy: AutoAdvancePolicy[StateT, ActionT] | None = None,
     ) -> None:
         """Initialize a turn-based environment.
 
@@ -79,10 +107,14 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             Function that converts canonical state into a structured debug view
             used by CLI and rollout tooling.
         reward_fn : RewardFn[StateT, ActionT]
-            Reward function used to score verified transitions.
+            Reward function used to score accepted environment steps.
         config : EpisodeConfig
             Episode-wide configuration such as optional attempt/transition
             limits, invalid-action handling policy, and metadata.
+        auto_advance_policy : AutoAdvancePolicy[StateT, ActionT] | None
+            Optional policy that can apply internal verifier-backed actions
+            such as opponent replies after the agent action until control
+            returns to the agent or the episode finishes.
         """
         self.backend = backend
         self.scenario = scenario
@@ -90,6 +122,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         self.inspect_state_fn = inspect_state_fn
         self.reward_fn = reward_fn
         self.config = config
+        self.auto_advance_policy = auto_advance_policy
 
         self._state: StateT | None = None
         self._trajectory: EpisodeTrajectory[ActionT] | None = None
@@ -191,13 +224,19 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         -------
         tuple[Observation, dict[str, object]]
             A pair containing the initial observation shown to the model and
-            the reset metadata returned by the scenario.
+            the reset metadata returned by the scenario after any required
+            internal auto-advanced transitions have been resolved.
         """
         self._attempt_count = 0
         self._transition_count = 0
-        self._state, info = self.scenario.reset(seed=seed)
+        initial_state, info = self.scenario.reset(seed=seed)
+        if self.auto_advance_policy is not None:
+            self.auto_advance_policy.reset(initial_state=initial_state)
+        resolution = self._resolve_to_agent_turn(state=initial_state)
+        self._state = resolution.next_state
         observation = self.renderer.render(self._state)
-        self._episode_finished = self.backend.is_terminal(self._state)
+        self._episode_finished = resolution.terminated or resolution.truncated
+        info = self._build_reset_info(base_info=info, resolution=resolution)
         self._trajectory = EpisodeTrajectory(
             initial_observation=self._snapshot_observation(observation),
             reset_info=self._snapshot_info(info),
@@ -235,6 +274,13 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             )
 
         previous_state = self.state
+        if self.auto_advance_policy is not None and not self.auto_advance_policy.is_agent_turn(
+            state=previous_state
+        ):
+            raise RuntimeError(
+                "Environment cannot accept an agent action before control "
+                "returns to the agent."
+            )
         parse_result = self.backend.parse_action(previous_state, raw_action)
         if parse_result.error is not None:
             return self._handle_invalid_action(
@@ -246,6 +292,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         try:
             outcome = self._accepted_attempt_outcome(
                 previous_state=previous_state,
+                raw_action=raw_action,
                 action=action,
             )
         except InvalidActionError as exc:
@@ -272,6 +319,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             self.renderer,
             self.inspect_state_fn,
             self.reward_fn,
+            self.auto_advance_policy,
         ):
             close_method = getattr(component, "close", None)
             if callable(close_method):
@@ -282,14 +330,18 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         self,
         *,
         previous_state: StateT,
+        raw_action: str,
         action: ActionT,
     ) -> _AttemptOutcome[StateT, ActionT]:
-        """Apply an accepted action and build a normalized attempt outcome.
+        """Apply one accepted agent action and any internal follow-up actions.
 
         Parameters
         ----------
         previous_state : StateT
             Canonical state before the accepted action.
+        raw_action : str
+            Raw agent action string recorded for the first accepted
+            transition.
         action : ActionT
             Parsed action accepted by the backend parser.
 
@@ -299,38 +351,38 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             Normalized accepted-attempt payload ready to record in the
             trajectory.
         """
-        next_state, transition_info = self.backend.apply_action(previous_state, action)
+        self._attempt_count += 1
+        agent_transition = self._apply_accepted_transition(
+            state=previous_state,
+            source="agent",
+            raw_action=raw_action,
+            action=action,
+        )
+        resolution = self._resolve_to_agent_turn(state=agent_transition.next_state)
+        transitions = [agent_transition, *resolution.transitions]
+
+        info = self._build_accepted_step_info(
+            transitions=transitions,
+            next_state=resolution.next_state,
+            boundary_info=resolution.info,
+        )
         reward = self.reward_fn.evaluate(
             previous_state=previous_state,
             action=action,
-            next_state=next_state,
-            transition_info=transition_info,
+            next_state=resolution.next_state,
+            transition_info=info,
         )
-
-        self._attempt_count += 1
-        self._transition_count += 1
-        terminated = self.backend.is_terminal(next_state)
-        truncated = False
-        info = dict(transition_info)
-        info["accepted"] = True
-        info["attempt_count"] = self._attempt_count
-        info["transition_count"] = self._transition_count
-
-        truncated_reason = self._limit_truncated_reason(terminated=terminated)
-        if truncated_reason is not None:
-            truncated = True
-            info.setdefault("truncated_reason", truncated_reason)
-
-        observation = self.renderer.render(next_state)
+        observation = self.renderer.render(resolution.next_state)
         return _AttemptOutcome(
             action=action,
-            next_state=next_state,
+            next_state=resolution.next_state,
             observation=observation,
             reward=reward,
             accepted=True,
-            terminated=terminated,
-            truncated=truncated,
+            terminated=resolution.terminated,
+            truncated=resolution.truncated,
             info=info,
+            transitions=tuple(transitions),
         )
 
     def _handle_invalid_action(
@@ -445,6 +497,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
                 terminated=outcome.terminated,
                 truncated=outcome.truncated,
                 info=trajectory_info,
+                transitions=self._snapshot_transitions(outcome.transitions),
             )
         )
         return StepResult(
@@ -508,6 +561,172 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             payloads.
         """
         return tuple(image.copy() for image in images)
+
+    def _snapshot_transitions(
+        self,
+        transitions: tuple[_AcceptedTransition[StateT, ActionT], ...],
+    ) -> tuple[RecordedTransition[ActionT], ...]:
+        """Return trajectory-safe copies of accepted backend transitions."""
+        return tuple(
+            RecordedTransition(
+                source=transition.source,
+                raw_action=transition.raw_action,
+                action=deepcopy(transition.action),
+                info=self._snapshot_info(transition.info),
+            )
+            for transition in transitions
+        )
+
+    def _apply_accepted_transition(
+        self,
+        *,
+        state: StateT,
+        source: str,
+        raw_action: str,
+        action: ActionT,
+    ) -> _AcceptedTransition[StateT, ActionT]:
+        """Apply one accepted backend transition and record its metadata."""
+        next_state, transition_info = self.backend.apply_action(state, action)
+        self._transition_count += 1
+        return _AcceptedTransition(
+            source=source,
+            raw_action=raw_action,
+            action=action,
+            next_state=next_state,
+            info=dict(transition_info),
+        )
+
+    def _build_accepted_step_info(
+        self,
+        *,
+        transitions: list[_AcceptedTransition[StateT, ActionT]],
+        next_state: StateT,
+        boundary_info: dict[str, object],
+    ) -> dict[str, object]:
+        """Build step metadata for an accepted agent action."""
+        agent_transition = transitions[0]
+        info = dict(agent_transition.info)
+        info.update(self.inspect_state_fn(next_state))
+        info["accepted"] = True
+        info["attempt_count"] = self._attempt_count
+        info["transition_count"] = self._transition_count
+        info["transition_count_delta"] = len(transitions)
+        info["auto_advanced"] = len(transitions) > 1
+        info["agent_transition"] = self._serialize_transition(agent_transition)
+        info["internal_transitions"] = tuple(
+            self._serialize_transition(transition) for transition in transitions[1:]
+        )
+        info["transitions"] = tuple(
+            self._serialize_transition(transition) for transition in transitions
+        )
+        info.update(boundary_info)
+        return info
+
+    def _build_reset_info(
+        self,
+        *,
+        base_info: dict[str, object],
+        resolution: _ResolutionOutcome[StateT, ActionT],
+    ) -> dict[str, object]:
+        """Build reset metadata after any required internal transitions."""
+        info = dict(base_info)
+        if resolution.terminated or resolution.truncated:
+            info["terminated"] = resolution.terminated
+            info["truncated"] = resolution.truncated
+        if resolution.transitions:
+            info["auto_advanced"] = True
+            info["transition_count"] = self._transition_count
+            info["transition_count_delta"] = len(resolution.transitions)
+            info["initial_transitions"] = tuple(
+                self._serialize_transition(transition)
+                for transition in resolution.transitions
+            )
+        info.update(resolution.info)
+        return info
+
+    def _serialize_transition(
+        self,
+        transition: _AcceptedTransition[StateT, ActionT],
+    ) -> dict[str, object]:
+        """Serialize one accepted backend transition into step metadata."""
+        return {
+            "source": transition.source,
+            "raw_action": transition.raw_action,
+            "info": self._snapshot_info(transition.info),
+        }
+
+    def _episode_boundary(self, *, state: StateT) -> EpisodeBoundary | None:
+        """Return any explicit episode boundary from the auto-advance policy."""
+        if self.auto_advance_policy is None:
+            return None
+        return self.auto_advance_policy.episode_boundary(state=state)
+
+    def _resolve_to_agent_turn(
+        self,
+        *,
+        state: StateT,
+    ) -> _ResolutionOutcome[StateT, ActionT]:
+        """Apply internal transitions until the agent can act or the episode ends."""
+        transitions: list[_AcceptedTransition[StateT, ActionT]] = []
+        current_state = state
+        terminated = False
+        truncated = False
+        info: dict[str, object] = {}
+
+        while True:
+            terminated = self.backend.is_terminal(current_state)
+            if terminated:
+                break
+
+            boundary = self._episode_boundary(state=current_state)
+            if boundary is not None:
+                terminated = boundary.terminated
+                truncated = boundary.truncated
+                info.update(boundary.info)
+                break
+
+            if self.auto_advance_policy is None:
+                break
+            if self.auto_advance_policy.is_agent_turn(state=current_state):
+                break
+
+            auto_action = self.auto_advance_policy.select_internal_action(
+                state=current_state,
+                backend=self.backend,
+            )
+            if auto_action is None:
+                raise RuntimeError(
+                    "Auto-advance policy returned no internal action before "
+                    "control returned to the agent."
+                )
+            try:
+                transition = self._apply_accepted_transition(
+                    state=current_state,
+                    source=auto_action.source,
+                    raw_action=auto_action.raw_action,
+                    action=auto_action.action,
+                )
+            except InvalidActionError:
+                raise RuntimeError(
+                    "Auto-advance policy produced an invalid internal action: "
+                    f"{auto_action.raw_action!r}."
+                ) from None
+            transitions.append(transition)
+            current_state = transition.next_state
+
+        if not terminated and not truncated:
+            truncated_reason = self._limit_truncated_reason(terminated=False)
+            if truncated_reason is not None:
+                truncated = True
+                info["truncated_reason"] = truncated_reason
+
+        return _ResolutionOutcome(
+            next_state=current_state,
+            terminated=terminated,
+            truncated=truncated,
+            info=info,
+            transitions=tuple(transitions),
+        )
 
     def _limit_truncated_reason(self, *, terminated: bool) -> str | None:
         """Return the truncation reason implied by configured episode limits."""

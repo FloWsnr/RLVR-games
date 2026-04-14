@@ -9,6 +9,7 @@ import pytest
 
 from rlvr_games.cli.main import build_parser, run_cli, run_play_session
 from rlvr_games.core import (
+    AutoAction,
     EpisodeConfig,
     InvalidActionMode,
     InvalidActionPolicy,
@@ -16,6 +17,7 @@ from rlvr_games.core import (
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.games.chess import (
     ChessAction,
+    ChessBackend,
     ChessBoardOrientation,
     ChessState,
     ChessTextRendererKind,
@@ -53,11 +55,36 @@ class StubEvaluator:
         """Provide a no-op close hook for reward cleanup tests."""
 
 
-def patch_stockfish_evaluator(monkeypatch: MonkeyPatch) -> None:
-    """Replace Stockfish construction with a pure in-memory stub."""
+class StubMoveSelector:
+    """Minimal move selector stub for CLI auto-reply tests."""
+
+    def select_action(
+        self,
+        *,
+        state: ChessState,
+        backend: ChessBackend,
+    ) -> AutoAction[ChessAction]:
+        """Return a deterministic legal reply from the initial position."""
+        parse_result = backend.parse_action(state, "e7e5")
+        return AutoAction(
+            source="opponent",
+            raw_action="e7e5",
+            action=parse_result.require_action(),
+        )
+
+    def close(self) -> None:
+        """Provide a no-op close hook for move-selector cleanup tests."""
+
+
+def patch_stockfish_runtime(monkeypatch: MonkeyPatch) -> None:
+    """Replace Stockfish construction with pure in-memory stubs."""
     monkeypatch.setattr(
         "rlvr_games.games.chess.cli._build_stockfish_evaluator",
         lambda *, args: StubEvaluator(),
+    )
+    monkeypatch.setattr(
+        "rlvr_games.games.chess.cli._build_stockfish_move_selector",
+        lambda *, args: StubMoveSelector(),
     )
 
 
@@ -251,7 +278,7 @@ def test_run_cli_can_start_and_exit_a_chess_play_session(
     output_stream = StringIO()
     monkeypatch.setattr(sys, "stdin", input_stream)
     monkeypatch.setattr(sys, "stdout", output_stream)
-    patch_stockfish_evaluator(monkeypatch)
+    patch_stockfish_runtime(monkeypatch)
 
     exit_code = run_cli(["play", "chess", "--seed", "5", *ENGINE_REWARD_ARGS])
 
@@ -261,6 +288,24 @@ def test_run_cli_can_start_and_exit_a_chess_play_session(
     assert "Session ended." in output
 
 
+def test_run_cli_auto_replies_with_the_engine_move(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    input_stream = StringIO("e2e4\nquit\n")
+    output_stream = StringIO()
+    monkeypatch.setattr(sys, "stdin", input_stream)
+    monkeypatch.setattr(sys, "stdout", output_stream)
+    patch_stockfish_runtime(monkeypatch)
+
+    exit_code = run_cli(["play", "chess", "--seed", "5", *ENGINE_REWARD_ARGS])
+
+    output = output_stream.getvalue()
+    assert exit_code == 0
+    assert "Agent Move SAN: e4" in output
+    assert "Opponent Move SAN: e5" in output
+    assert '"transition_count_delta": 2' in output
+
+
 def test_run_cli_can_use_black_board_orientation(
     monkeypatch: MonkeyPatch,
 ) -> None:
@@ -268,7 +313,7 @@ def test_run_cli_can_use_black_board_orientation(
     output_stream = StringIO()
     monkeypatch.setattr(sys, "stdin", input_stream)
     monkeypatch.setattr(sys, "stdout", output_stream)
-    patch_stockfish_evaluator(monkeypatch)
+    patch_stockfish_runtime(monkeypatch)
 
     exit_code = run_cli(
         [
@@ -295,7 +340,7 @@ def test_run_cli_can_use_penalize_truncate_invalid_action_policy(
     output_stream = StringIO()
     monkeypatch.setattr(sys, "stdin", input_stream)
     monkeypatch.setattr(sys, "stdout", output_stream)
-    patch_stockfish_evaluator(monkeypatch)
+    patch_stockfish_runtime(monkeypatch)
 
     exit_code = run_cli(
         [
@@ -324,7 +369,7 @@ def test_run_cli_penalize_continue_respects_max_attempts(
     output_stream = StringIO()
     monkeypatch.setattr(sys, "stdin", input_stream)
     monkeypatch.setattr(sys, "stdout", output_stream)
-    patch_stockfish_evaluator(monkeypatch)
+    patch_stockfish_runtime(monkeypatch)
 
     exit_code = run_cli(
         [
@@ -381,7 +426,7 @@ def test_run_cli_can_start_a_chess_puzzle_session(
 def test_build_chess_environment_can_use_engine_eval_dense_reward(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    patch_stockfish_evaluator(monkeypatch)
+    patch_stockfish_runtime(monkeypatch)
     parser = build_parser()
     args = parser.parse_args(
         [

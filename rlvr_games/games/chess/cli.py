@@ -29,6 +29,11 @@ from rlvr_games.games.chess.scenarios import (
 )
 from rlvr_games.games.chess.state import ChessState
 from rlvr_games.games.chess.stockfish_runtime import StockfishEvaluator
+from rlvr_games.games.chess.turns import (
+    ChessEngineAutoAdvancePolicy,
+    ChessPuzzleAutoAdvancePolicy,
+    StockfishMoveSelector,
+)
 
 
 class ChessScenarioKind(StrEnum):
@@ -106,15 +111,22 @@ def build_chess_environment(
     Environment[Any, Any]
         Fully configured chess environment.
     """
+    scenario = build_chess_scenario(args=args, parser=parser)
+    reward_fn = build_chess_reward(args=args, parser=parser)
     return make_chess_env(
-        scenario=build_chess_scenario(args=args, parser=parser),
-        reward_fn=build_chess_reward(args=args, parser=parser),
+        scenario=scenario,
+        reward_fn=reward_fn,
         config=build_episode_config(args=args, parser=parser),
         text_renderer_kind=ChessTextRendererKind(args.renderer),
         include_images=args.image_output_dir is not None,
         image_size=args.image_size,
         image_coordinates=args.image_coordinates,
         orientation=ChessBoardOrientation(args.orientation),
+        auto_advance_policy=build_chess_auto_advance_policy(
+            args=args,
+            parser=parser,
+            scenario=scenario,
+        ),
     )
 
 
@@ -233,6 +245,11 @@ def _build_stockfish_evaluator(*, args: Namespace) -> StockfishEvaluator:
     StockfishEvaluator
         Stockfish-backed evaluator configured from the parsed CLI arguments.
     """
+    if args.engine_depth is None or args.engine_mate_score is None:
+        raise ValueError(
+            "Stockfish evaluator construction requires engine_depth and "
+            "engine_mate_score."
+        )
     if args.stockfish_path is not None:
         return StockfishEvaluator.from_engine_path(
             engine_path=args.stockfish_path,
@@ -243,6 +260,61 @@ def _build_stockfish_evaluator(*, args: Namespace) -> StockfishEvaluator:
         depth=args.engine_depth,
         mate_score=args.engine_mate_score,
     )
+
+
+def build_chess_auto_advance_policy(
+    *,
+    args: Namespace,
+    parser: ArgumentParser,
+    scenario: StartingPositionScenario | ChessPuzzleDatasetScenario,
+) -> ChessEngineAutoAdvancePolicy | ChessPuzzleAutoAdvancePolicy | None:
+    """Construct the chess auto-advance policy implied by parsed arguments.
+
+    Parameters
+    ----------
+    args : Namespace
+        Parsed CLI arguments for a chess play session.
+    parser : ArgumentParser
+        Parser used to report invalid argument combinations.
+    scenario : StartingPositionScenario | ChessPuzzleDatasetScenario
+        Scenario already selected for the session.
+
+    Returns
+    -------
+    ChessEngineAutoAdvancePolicy | ChessPuzzleAutoAdvancePolicy | None
+        Auto-advance policy that should be used for the session.
+    """
+    if isinstance(scenario, ChessPuzzleDatasetScenario):
+        return ChessPuzzleAutoAdvancePolicy()
+    if args.engine_depth is None:
+        parser.error("--engine-depth is required for engine-controlled chess play.")
+    return ChessEngineAutoAdvancePolicy(
+        move_selector=_build_stockfish_move_selector(args=args),
+    )
+
+
+def _build_stockfish_move_selector(*, args: Namespace) -> StockfishMoveSelector:
+    """Construct a Stockfish move selector from parsed CLI arguments.
+
+    Parameters
+    ----------
+    args : Namespace
+        Parsed CLI arguments for a chess play session.
+
+    Returns
+    -------
+    StockfishMoveSelector
+        Stockfish-backed move selector configured from the parsed CLI
+        arguments.
+    """
+    if args.engine_depth is None:
+        raise ValueError("Stockfish move selector construction requires engine_depth.")
+    if args.stockfish_path is not None:
+        return StockfishMoveSelector.from_engine_path(
+            engine_path=args.stockfish_path,
+            depth=args.engine_depth,
+        )
+    return StockfishMoveSelector.from_installed_binary(depth=args.engine_depth)
 
 
 def format_chess_step_result(step_result: StepResult) -> tuple[str, ...]:
@@ -258,7 +330,31 @@ def format_chess_step_result(step_result: StepResult) -> tuple[str, ...]:
     tuple[str, ...]
         Human-readable summary lines derived from the chess transition info.
     """
+    transitions_payload = step_result.info.get("transitions")
+    if not isinstance(transitions_payload, tuple):
+        transitions_payload = ()
+
     summary_lines: list[str] = []
+    if transitions_payload:
+        for transition_index, transition_payload in enumerate(transitions_payload):
+            if not isinstance(transition_payload, dict):
+                continue
+            source = transition_payload.get("source")
+            transition_info = transition_payload.get("info")
+            if not isinstance(source, str) or not isinstance(transition_info, dict):
+                continue
+            move_uci = transition_info.get("move_uci")
+            move_san = transition_info.get("move_san")
+            if transition_index == 0 and len(transitions_payload) == 1:
+                label_prefix = "Move"
+            else:
+                label_prefix = f"{source.replace('_', ' ').title()} Move"
+            if move_uci is not None:
+                summary_lines.append(f"{label_prefix} UCI: {move_uci}")
+            if move_san is not None:
+                summary_lines.append(f"{label_prefix} SAN: {move_san}")
+        return tuple(summary_lines)
+
     move_uci = step_result.info.get("move_uci")
     move_san = step_result.info.get("move_san")
     if move_uci is not None:

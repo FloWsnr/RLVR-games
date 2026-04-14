@@ -27,7 +27,9 @@ game composes that generic environment out of a small set of collaborators:
 - `Renderer`: turns canonical state into model-facing text and images
 - `inspect_state_fn`: returns a debug-oriented state summary for the CLI and
   tooling
-- `RewardFn`: scores verified transitions
+- `RewardFn`: scores accepted environment steps
+- `AutoAdvancePolicy` (optional): applies internal verifier-backed moves such
+  as opponent replies until control returns to the agent
 
 The core loop is:
 
@@ -43,10 +45,12 @@ while not env.episode_finished:
 Inside one `step(...)`, the environment does roughly this:
 
 1. parse the raw action against the current canonical state
-2. apply the accepted action with the game backend
-3. score the verified transition with the reward function
-4. render the next observation
-5. record the attempt in the trajectory
+2. apply the accepted agent action with the game backend
+3. optionally auto-advance internal moves until the agent can act again or the
+   episode ends
+4. score the verified step with the reward function
+5. render the next observation
+6. record the attempt in the trajectory
 
 That split is deliberate. It keeps the generic episode lifecycle in one place,
 while game-specific logic stays inside the backend, scenario, renderer, and

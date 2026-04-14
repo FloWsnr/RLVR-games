@@ -34,12 +34,22 @@ from rlvr_games.games.chess.scenarios import (
 )
 from rlvr_games.games.chess.state import ChessState, inspect_chess_state
 from rlvr_games.games.chess.stockfish_runtime import StockfishEvaluator
+from rlvr_games.games.chess.turns import (
+    ChessEngineAutoAdvancePolicy,
+    ChessMoveSelector,
+    ChessPuzzleAutoAdvancePolicy,
+    StockfishMoveSelector,
+    UciEngineMoveSelector,
+)
 
 __all__ = [
     "ChessAction",
     "AsciiBoardFormatter",
     "ChessBackend",
     "ChessBoardOrientation",
+    "ChessEngineAutoAdvancePolicy",
+    "ChessMoveSelector",
+    "ChessPuzzleAutoAdvancePolicy",
     "ChessFastImageRenderer",
     "ChessObservationRenderer",
     "ChessPerspective",
@@ -55,9 +65,11 @@ __all__ = [
     "PuzzleOnlyMoveSparseReward",
     "STANDARD_START_FEN",
     "StockfishEvaluator",
+    "StockfishMoveSelector",
     "StartingPositionScenario",
     "TerminalOutcomeReward",
     "UciEngineEvaluator",
+    "UciEngineMoveSelector",
     "UnicodeBoardFormatter",
     "make_chess_env",
     "puzzle_solution_moves_uci",
