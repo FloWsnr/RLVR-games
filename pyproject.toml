@@ -13,6 +13,7 @@ classifiers = [
     "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
 ]
 dependencies = [
+    "bitbully>=0.0.77",
     "chess>=1.11.2",
     "pillow>=11.0.0",
     "pyarrow>=18.0.0",

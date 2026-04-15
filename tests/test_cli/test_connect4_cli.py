@@ -4,19 +4,22 @@ from io import StringIO
 import sys
 
 from _pytest.monkeypatch import MonkeyPatch
+import pytest
 
-from rlvr_games.cli.main import run_cli, run_play_session
+from rlvr_games.cli.main import build_parser, run_cli, run_play_session
 from rlvr_games.core import EpisodeConfig
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.games.connect4 import (
     Connect4Action,
+    Connect4SolverAutoAdvancePolicy,
     Connect4State,
     FixedBoardScenario,
     RandomPositionScenario,
+    SolverMoveScoreReward,
     TerminalOutcomeReward,
     make_connect4_env,
 )
-from rlvr_games.games.connect4.cli import CONNECT4_CLI_SPEC
+from rlvr_games.games.connect4.cli import CONNECT4_CLI_SPEC, build_connect4_environment
 from tests.test_games.test_connect4.support import (
     FULL_FIRST_COLUMN_BOARD,
     X_WIN_BOARD,
@@ -176,3 +179,83 @@ def test_run_cli_can_use_a_custom_connect4_board(monkeypatch: MonkeyPatch) -> No
     assert exit_code == 0
     assert "| x x x . . . . |" in output
     assert "Session ended." in output
+
+
+def test_run_cli_solver_opponent_auto_replies(monkeypatch: MonkeyPatch) -> None:
+    input_stream = StringIO("4\nquit\n")
+    output_stream = StringIO()
+    monkeypatch.setattr(sys, "stdin", input_stream)
+    monkeypatch.setattr(sys, "stdout", output_stream)
+
+    exit_code = run_cli(
+        [
+            "play",
+            "connect4",
+            "--seed",
+            "5",
+            "--max-start-moves",
+            "0",
+            "--opponent",
+            "solver",
+        ]
+    )
+
+    output = output_stream.getvalue()
+    assert exit_code == 0
+    assert "Agent Column: 4" in output
+    assert "Opponent Column: 4" in output
+    assert '"transition_count_delta": 2' in output
+
+
+def test_build_connect4_environment_can_use_solver_move_dense_reward() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "play",
+            "connect4",
+            "--reward",
+            "solver-move-dense",
+        ]
+    )
+
+    env = build_connect4_environment(args, parser)
+
+    assert isinstance(env, TurnBasedEnv)
+    assert isinstance(env.reward_fn, SolverMoveScoreReward)
+    assert env.reward_fn.perspective == "mover"
+
+
+def test_build_connect4_environment_can_use_solver_opponent() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "play",
+            "connect4",
+            "--opponent",
+            "solver",
+        ]
+    )
+
+    env = build_connect4_environment(args, parser)
+
+    assert isinstance(env, TurnBasedEnv)
+    assert isinstance(env.auto_advance_policy, Connect4SolverAutoAdvancePolicy)
+
+
+def test_build_connect4_environment_rejects_solver_features_for_non_standard_board() -> (
+    None
+):
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "play",
+            "connect4",
+            "--reward",
+            "solver-move-dense",
+            "--columns",
+            "8",
+        ]
+    )
+
+    with pytest.raises(SystemExit):
+        build_connect4_environment(args, parser)

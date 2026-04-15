@@ -3,6 +3,34 @@ revision = 3
 requires-python = ">=3.13"
 
 [[package]]
+name = "bitbully"
+version = "0.0.77"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "bitbully-databases" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4d/ce/7be14d49b6d10887f978f01b69c460abc910b4ee07dc124c647905b85ae4/bitbully-0.0.77.tar.gz", hash = "sha256:49736c8816450e5ae607fb4b952f5809061e27c51c806279f762f8c73b07b6b2", size = 8147561, upload-time = "2026-04-12T15:38:57.459Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/99/4f/5403cbacaa06c6b51ea7f77a23c011331819422372147b13ec855b17fef7/bitbully-0.0.77-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:55db921fbdb68a5ea8a4d46149c26047531acecc64700d32fe66745afb42d9fb", size = 264214, upload-time = "2026-04-12T15:38:36.557Z" },
+    { url = "https://files.pythonhosted.org/packages/35/85/d73194904f49b90e48095b1fe8702810780e4cd42e8c23e4267f53c78dda/bitbully-0.0.77-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:f60bbd2bfcae1785cb32bf01bd190545505436e6139ad1e51a3f6fba57f772b1", size = 368350, upload-time = "2026-04-12T15:38:37.821Z" },
+    { url = "https://files.pythonhosted.org/packages/76/06/369c7e59d18ed4fafca36398747052be85dc601373d87eb74a546b0c7a0d/bitbully-0.0.77-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:5e68bc6798b1aef53f06d9cb2dff140a9eec3a9553223d25b288b9788563d466", size = 1329730, upload-time = "2026-04-12T15:38:39.283Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/ad/888d6a0df94ef64b3daf244d1d3353ea65bb1b8f77e2f8c61c28a1137334/bitbully-0.0.77-cp313-cp313-win_amd64.whl", hash = "sha256:d77286e76e7ac8db0b35b158de161bb470d37f8f9b68273ea3474b57826317ad", size = 492520, upload-time = "2026-04-12T15:38:40.613Z" },
+    { url = "https://files.pythonhosted.org/packages/70/60/011b6fd273646f37385a7f040a67afb5134c223bd3f51dfcdb3e3a201844/bitbully-0.0.77-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:1937fcdfa5aa501310f4ea02610f0d84593e3ddade9374925e91c2f153ad17db", size = 264731, upload-time = "2026-04-12T15:38:42.267Z" },
+    { url = "https://files.pythonhosted.org/packages/4f/f0/5952c001b7a7b7bf090361c1080f967872c79367a0522332bbff35cd753a/bitbully-0.0.77-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:fa4786e14ebab23db808727785e9e3935222399774bda4c656c46f8e61c48997", size = 368498, upload-time = "2026-04-12T15:38:43.798Z" },
+    { url = "https://files.pythonhosted.org/packages/a0/13/93207e8e800aeddcbe44eb7b9ea15052d861e540a8daa9631219dbbc1a6d/bitbully-0.0.77-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:caf0cdbb239858897f28644361e010acbd2852cf170c54078f38303982d53048", size = 1330189, upload-time = "2026-04-12T15:38:45.324Z" },
+    { url = "https://files.pythonhosted.org/packages/19/06/e2f7429714c6bd9c78a988535fb0b638191a179bbd3937483de8bb51fe42/bitbully-0.0.77-cp314-cp314-win_amd64.whl", hash = "sha256:9d473a0fab89c85bcd2dbe8690ae62de60aeca9ed9dfbb4148d0393156681d0a", size = 502557, upload-time = "2026-04-12T15:38:46.878Z" },
+]
+
+[[package]]
+name = "bitbully-databases"
+version = "0.0.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/81/fe/ebb52e65e4c2c4d89429baf539c132e59f66ba2eac6d95508016aaed7f35/bitbully_databases-0.0.2.tar.gz", hash = "sha256:ca7a1d8d649af0afcf658fc2e0310585f8ffc0ba061ed26662fe9e01a2b957c1", size = 17906173, upload-time = "2025-11-16T18:13:56.52Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/d9/afba82badfc1c1d91d6c8a2a8e750d664eebbc64b0131083002d3e423788/bitbully_databases-0.0.2-py3-none-any.whl", hash = "sha256:42d4431d964dc37d58a8e776729b247ac3e2096c575f27b185ac013a45e26d74", size = 17898621, upload-time = "2025-11-16T18:13:53.233Z" },
+]
+
+[[package]]
 name = "chess"
 version = "1.11.2"
 source = { registry = "https://pypi.org/simple" }
@@ -190,6 +218,7 @@ name = "rlvr-games"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "bitbully" },
     { name = "chess" },
     { name = "pillow" },
     { name = "pyarrow" },
@@ -205,6 +234,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "bitbully", specifier = ">=0.0.77" },
     { name = "chess", specifier = ">=1.11.2" },
     { name = "pillow", specifier = ">=11.0.0" },
     { name = "pyarrow", specifier = ">=18.0.0" },

@@ -1,7 +1,7 @@
 """Factory helpers for constructing Connect 4 environments."""
 
 from rlvr_games.core.env import TurnBasedEnv
-from rlvr_games.core.protocol import RewardFn, Scenario
+from rlvr_games.core.protocol import AutoAdvancePolicy, RewardFn, Scenario
 from rlvr_games.core.types import EpisodeConfig
 from rlvr_games.games.connect4.actions import Connect4Action
 from rlvr_games.games.connect4.backend import Connect4Backend
@@ -20,6 +20,7 @@ def make_connect4_env(
     config: EpisodeConfig,
     include_images: bool,
     image_size: int,
+    auto_advance_policy: AutoAdvancePolicy[Connect4State, Connect4Action] | None = None,
 ) -> TurnBasedEnv[Connect4State, Connect4Action]:
     """Construct a fully wired Connect 4 environment.
 
@@ -36,6 +37,9 @@ def make_connect4_env(
         Whether observations should include rendered board images.
     image_size : int
         Raster image size in pixels. Ignored when `include_images` is `False`.
+    auto_advance_policy : AutoAdvancePolicy[Connect4State, Connect4Action] | None
+        Optional policy that auto-applies internal Connect 4 transitions
+        between agent turns.
 
     Returns
     -------
@@ -57,4 +61,5 @@ def make_connect4_env(
         inspect_state_fn=inspect_connect4_state,
         reward_fn=reward_fn,
         config=config,
+        auto_advance_policy=auto_advance_policy,
     )
