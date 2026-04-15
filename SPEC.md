@@ -41,6 +41,7 @@ Implemented games:
 - Chess
 - 2048
 - Connect 4
+- Minesweeper
 
 Possible next additions:
 
