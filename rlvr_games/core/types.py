@@ -92,9 +92,9 @@ class Observation:
     images : tuple[RenderedImage, ...]
         Zero or more in-memory images associated with the observation.
     metadata : dict[str, Any]
-        Structured auxiliary data derived from canonical state. This is useful
-        for evaluation, logging, or debugging, but it is not the authoritative
-        game state.
+        Structured auxiliary data derived from canonical state that remains
+        safe to expose alongside the observation. This is useful for
+        evaluation or logging, but it is not the authoritative game state.
     """
 
     text: str | None = None
@@ -272,8 +272,8 @@ class StepResult:
     truncated : bool
         Whether the episode ended for an external reason such as a turn limit.
     info : dict[str, Any]
-        Step metadata including verifier-derived details for accepted
-        transitions and any internal auto-advanced actions.
+        Public-safe step metadata including verifier-derived details for
+        accepted transitions and any internal auto-advanced actions.
     """
 
     observation: Observation

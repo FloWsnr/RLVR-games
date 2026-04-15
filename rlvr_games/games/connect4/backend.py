@@ -58,12 +58,11 @@ class Connect4Backend:
 
         action = Connect4Action(column=human_column - 1)
         if action.label not in state.legal_actions:
-            legal_actions_text = ", ".join(state.legal_actions) or "none"
             return ParseResult(
                 action=None,
                 error=(
                     f"Connect 4 column {action.label!r} is illegal for the current "
-                    f"board. Legal actions: {legal_actions_text}."
+                    "board."
                 ),
             )
 
@@ -110,10 +109,8 @@ class Connect4Backend:
             If the supplied column is not legal for the state.
         """
         if action.label not in state.legal_actions:
-            legal_actions_text = ", ".join(state.legal_actions) or "none"
             raise InvalidActionError(
-                f"Connect 4 column {action.label!r} is illegal for the current "
-                f"board. Legal actions: {legal_actions_text}."
+                f"Connect 4 column {action.label!r} is illegal for the current board."
             )
 
         next_board, placed_coordinate = drop_piece(

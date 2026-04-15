@@ -214,8 +214,36 @@ class Game2048State:
         return self.outcome.is_terminal
 
 
+def public_game2048_metadata(state: Game2048State) -> dict[str, object]:
+    """Return model-safe observation metadata for a 2048 state.
+
+    Parameters
+    ----------
+    state : Game2048State
+        Canonical 2048 state to summarize.
+
+    Returns
+    -------
+    dict[str, object]
+        Observation metadata derived from public board state only.
+    """
+    metadata: dict[str, object] = {
+        "board": state.board,
+        "score": state.score,
+        "move_count": state.move_count,
+        "target_value": state.target_value,
+        "size": state.size,
+        "empty_cell_count": state.empty_cell_count,
+        "max_tile": state.max_tile,
+        "is_terminal": state.is_terminal,
+        "won": state.outcome.won if state.is_terminal else False,
+    }
+    metadata.update(state.outcome.metadata())
+    return metadata
+
+
 def inspect_game2048_state(state: Game2048State) -> dict[str, object]:
-    """Return a structured summary of a 2048 state.
+    """Return a structured canonical summary of a 2048 state.
 
     Parameters
     ----------
@@ -227,18 +255,12 @@ def inspect_game2048_state(state: Game2048State) -> dict[str, object]:
     dict[str, object]
         Debug-oriented state summary derived from cached state fields.
     """
-    metadata: dict[str, object] = {
-        "board": state.board,
-        "score": state.score,
-        "move_count": state.move_count,
-        "target_value": state.target_value,
-        "size": state.size,
-        "legal_actions": state.legal_actions,
-        "legal_action_count": state.legal_action_count,
-        "empty_cell_count": state.empty_cell_count,
-        "max_tile": state.max_tile,
-        "is_terminal": state.is_terminal,
-        "won": state.outcome.won if state.is_terminal else False,
-    }
-    metadata.update(state.outcome.metadata())
+    metadata = public_game2048_metadata(state=state)
+    metadata.update(
+        {
+            "legal_actions": state.legal_actions,
+            "legal_action_count": state.legal_action_count,
+            "rng_state": state.rng_state,
+        }
+    )
     return metadata

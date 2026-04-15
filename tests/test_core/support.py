@@ -148,7 +148,7 @@ def make_counter_env(
         backend=backend,
         scenario=CounterScenario(),
         renderer=CounterRenderer(),
-        inspect_state_fn=inspect_counter_state,
+        inspect_canonical_state_fn=inspect_counter_state,
         reward_fn=reward_fn,
         config=config,
         auto_advance_policy=auto_advance_policy,

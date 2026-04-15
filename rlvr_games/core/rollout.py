@@ -17,13 +17,9 @@ class ActionContext:
     ----------
     turn_index : int
         Zero-based turn index for the next action to be taken.
-    legal_actions : tuple[str, ...]
-        Legal serialized actions accepted by the environment for the current
-        state.
     """
 
     turn_index: int
-    legal_actions: tuple[str, ...]
 
 
 def build_action_context(*, env: Environment[StateT, ActionT]) -> ActionContext:
@@ -37,9 +33,6 @@ def build_action_context(*, env: Environment[StateT, ActionT]) -> ActionContext:
     Returns
     -------
     ActionContext
-        Turn index and serialized legal actions for the current state.
+        Turn index for the current agent-visible interaction step.
     """
-    return ActionContext(
-        turn_index=len(env.trajectory.steps),
-        legal_actions=env.legal_actions(),
-    )
+    return ActionContext(turn_index=len(env.trajectory.steps))

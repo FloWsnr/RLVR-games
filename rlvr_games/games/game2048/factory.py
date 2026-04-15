@@ -98,7 +98,7 @@ def make_game2048_env(
             board_formatter=Game2048AsciiBoardFormatter(),
             image_renderer=image_renderer,
         ),
-        inspect_state_fn=inspect_game2048_state,
+        inspect_canonical_state_fn=inspect_game2048_state,
         reward_fn=reward_fn,
         config=config,
     )

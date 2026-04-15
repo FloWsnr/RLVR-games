@@ -199,7 +199,7 @@ def test_terminal_outcome_reward_returns_draw_reward_for_threefold_repetition() 
         backend=ChessBackend(),
         scenario=StartingPositionScenario(initial_fen=STANDARD_START_FEN),
         renderer=make_renderer(),
-        inspect_state_fn=inspect_chess_state,
+        inspect_canonical_state_fn=inspect_chess_state,
         reward_fn=TerminalOutcomeReward(
             perspective="white",
             win_reward=1.0,

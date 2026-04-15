@@ -22,6 +22,7 @@ def test_random_start_scenario_is_seeded_and_spawns_two_tiles() -> None:
     assert state.score == 0
     assert state.move_count == 0
     assert info["scenario"] == "random_start"
+    assert "seed" not in info
     assert info["spawned_tiles"] == (
         {"row": 3, "col": 1, "value": 2},
         {"row": 2, "col": 0, "value": 2},

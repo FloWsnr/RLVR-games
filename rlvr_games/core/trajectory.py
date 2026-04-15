@@ -22,13 +22,18 @@ class RecordedTransition(Generic[ActionT]):
     action : ActionT
         Parsed backend action that was applied.
     info : dict[str, Any]
-        Verifier metadata emitted for this accepted transition.
+        Public-safe verifier metadata emitted for this accepted transition.
+    debug_info : dict[str, Any]
+        Privileged transition trace intended for debugging and offline
+        analysis. This may include canonical-state details that are not safe
+        to expose to the agent.
     """
 
     source: str
     raw_action: str
     action: ActionT
     info: dict[str, Any] = field(default_factory=dict)
+    debug_info: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -54,7 +59,11 @@ class TrajectoryStep(Generic[ActionT]):
     truncated : bool
         Whether the episode ended due to an external cutoff.
     info : dict[str, Any]
-        Step metadata emitted by the environment.
+        Public-safe step metadata emitted by the environment.
+    debug_info : dict[str, Any]
+        Privileged step trace intended for debugging and offline analysis.
+        This may include canonical-state details that are not safe to expose
+        to the agent.
     transitions : tuple[RecordedTransition[ActionT], ...]
         Accepted backend transitions applied during this env step. The first
         transition is the agent action, followed by any internal auto-advanced
@@ -69,6 +78,7 @@ class TrajectoryStep(Generic[ActionT]):
     terminated: bool
     truncated: bool
     info: dict[str, Any] = field(default_factory=dict)
+    debug_info: dict[str, Any] = field(default_factory=dict)
     transitions: tuple[RecordedTransition[ActionT], ...] = ()
 
 
@@ -81,13 +91,18 @@ class EpisodeTrajectory(Generic[ActionT]):
     initial_observation : Observation
         Observation returned immediately after `reset()`.
     reset_info : dict[str, Any]
-        Metadata emitted by the scenario during reset.
+        Public-safe metadata emitted by the scenario during reset.
+    debug_reset_info : dict[str, Any]
+        Privileged reset trace intended for debugging and offline analysis.
+        This may include canonical-state details that are not safe to expose
+        to the agent.
     steps : list[TrajectoryStep[ActionT]]
         Ordered transition records accumulated during the episode.
     """
 
     initial_observation: Observation
     reset_info: dict[str, Any] = field(default_factory=dict)
+    debug_reset_info: dict[str, Any] = field(default_factory=dict)
     steps: list[TrajectoryStep[ActionT]] = field(default_factory=list)
 
     @property

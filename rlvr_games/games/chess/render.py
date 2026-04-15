@@ -9,7 +9,7 @@ from PIL.Image import Image as PILImage
 
 from rlvr_games.core.protocol import ImageRenderer, TextRenderer
 from rlvr_games.core.types import Observation, RenderedImage
-from rlvr_games.games.chess.state import ChessState, inspect_chess_state
+from rlvr_games.games.chess.state import ChessState, public_chess_metadata
 
 
 class AsciiBoardFormatter:
@@ -459,7 +459,7 @@ class ChessObservationRenderer:
 
     The renderer combines text and image views over the canonical board state
     while exposing metadata derived from the verifier-backed state, such as
-    side to move, legal move count, repetition state, and terminal outcomes.
+    side to move, repetition state, and terminal outcomes.
     """
 
     def __init__(
@@ -492,7 +492,6 @@ class ChessObservationRenderer:
             self.board_formatter.render_text(state.board),
             f"FEN: {state.fen}",
             f"Side to move: {state.side_to_move}",
-            f"Legal move count: {state.legal_action_count}",
             f"Repetition count: {state.repetition_count}",
             f"In check: {'yes' if state.is_check else 'no'}",
             f"Terminal: {'yes' if state.is_terminal else 'no'}",
@@ -528,5 +527,5 @@ class ChessObservationRenderer:
                 state=state,
             ),
             images=images,
-            metadata=inspect_chess_state(state=state),
+            metadata=public_chess_metadata(state=state),
         )

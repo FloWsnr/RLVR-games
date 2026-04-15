@@ -12,7 +12,7 @@ from rlvr_games.games.connect4.state import (
     EMPTY_CELL,
     PLAYER_O,
     PLAYER_X,
-    inspect_connect4_state,
+    public_connect4_metadata,
 )
 
 
@@ -178,7 +178,6 @@ class Connect4ObservationRenderer:
             Observation whose text and images are derived from the canonical
             board and cached state summary.
         """
-        legal_actions_text = " ".join(state.legal_actions) or "none"
         lines = [
             "Connect 4 board:",
             self.board_formatter.render_text(state.board),
@@ -186,7 +185,6 @@ class Connect4ObservationRenderer:
             f"Connect length: {state.connect_length}",
             f"Moves played: {state.move_count}",
             f"Current player: {state.current_player}",
-            f"Legal actions ({state.legal_action_count}): {legal_actions_text}",
             f"Terminal: {'yes' if state.is_terminal else 'no'}",
         ]
         if state.is_terminal:
@@ -200,5 +198,5 @@ class Connect4ObservationRenderer:
         return Observation(
             text="\n".join(lines),
             images=images,
-            metadata=inspect_connect4_state(state=state),
+            metadata=public_connect4_metadata(state=state),
         )

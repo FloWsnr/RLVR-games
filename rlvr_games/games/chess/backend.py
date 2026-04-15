@@ -83,8 +83,7 @@ class ChessBackend:
         -------
         tuple[ChessState, dict[str, Any]]
             Updated canonical state and metadata describing the move, resulting
-            position, legal move count, repetition state, and any terminal
-            outcome.
+            position, repetition state, and any terminal outcome.
 
         Raises
         ------
@@ -115,7 +114,6 @@ class ChessBackend:
             "move_san": move_san,
             "fen": next_state.fen,
             "side_to_move": next_state.side_to_move,
-            "legal_action_count": next_state.legal_action_count,
             "repetition_count": next_state.repetition_count,
             "is_check": next_state.is_check,
             "is_terminal": next_state.is_terminal,

@@ -101,7 +101,7 @@ def make_chess_env(
             board_formatter=board_formatter,
             image_renderer=image_renderer,
         ),
-        inspect_state_fn=inspect_chess_state,
+        inspect_canonical_state_fn=inspect_chess_state,
         reward_fn=reward_fn,
         config=config,
         auto_advance_policy=auto_advance_policy,

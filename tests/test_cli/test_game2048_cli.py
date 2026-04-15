@@ -54,7 +54,7 @@ def make_env() -> TurnBasedEnv[Game2048State, Game2048Action]:
 def test_run_play_session_handles_2048_commands_and_moves() -> None:
     env = make_env()
     input_stream = StringIO(
-        "help\nlegal\nstate\nshow max_tile\nleft\ntrajectory\nquit\n"
+        "help\ndebug-legal\nstate\nshow max_tile\nleft\ntrajectory\nquit\n"
     )
     output_stream = StringIO()
 
@@ -70,7 +70,11 @@ def test_run_play_session_handles_2048_commands_and_moves() -> None:
     output = output_stream.getvalue()
     assert exit_code == 0
     assert "Reset info:" in output
-    assert "Commands: help legal state show <key> trajectory quit exit" in output
+    assert (
+        "Commands: help state show <key> debug-state debug-show <key> "
+        "debug-legal trajectory quit exit"
+    ) in output
+    assert '"seed":' not in output
     assert "Legal actions (4): up right down left" in output
     assert "State:" in output
     assert "max_tile: 2" in output
@@ -155,6 +159,7 @@ def test_run_cli_can_start_and_exit_a_2048_play_session(
 
     output = output_stream.getvalue()
     assert exit_code == 0
+    assert '"seed":' not in output
     assert "2048 board:" in output
     assert "Session ended." in output
 

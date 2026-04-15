@@ -36,7 +36,6 @@ def test_apply_action_updates_state_and_transition_info() -> None:
         "move_san": "e4",
         "fen": next_state.fen,
         "side_to_move": "black",
-        "legal_action_count": 20,
         "repetition_count": 1,
         "is_check": False,
         "is_terminal": False,

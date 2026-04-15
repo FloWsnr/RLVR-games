@@ -38,12 +38,14 @@ def test_clearing_board_terminates_with_reward_and_public_metadata() -> None:
     second_result = env.step("reveal 3 1")
 
     assert info["scenario"] == "fixed_board"
+    assert "hidden_board" not in info
     assert "Minesweeper board:" in (observation.text or "")
     assert first_result.reward == 0.0
     assert first_result.terminated is False
     assert second_result.reward == 1.0
     assert second_result.terminated is True
     assert second_result.info["termination"] == "cleared"
+    assert "hidden_board" not in second_result.info
     assert second_result.observation.metadata["won"] is True
     assert "hidden_board" not in second_result.observation.metadata
 
@@ -73,13 +75,18 @@ def test_env_records_trajectory_and_keeps_hidden_board_debug_only() -> None:
         include_images=False,
         image_size=240,
     )
-    env.reset(seed=7)
+    _, info = env.reset(seed=7)
 
     result = env.step("reveal 2 2")
 
+    assert "seed" not in info
+    assert env.trajectory.debug_reset_info["placement_seed"] == 7
     assert result.accepted is True
     assert len(env.trajectory.steps) == 1
     assert env.trajectory.steps[0].action is not None
     assert env.trajectory.steps[0].action.label == "reveal 2 2"
-    assert env.inspect_state()["hidden_board"] is not None
+    assert env.inspect_canonical_state()["hidden_board"] is not None
+    assert "hidden_board" not in result.info
     assert "hidden_board" not in result.observation.metadata
+    assert env.trajectory.steps[0].debug_info["hidden_board"] is not None
+    assert env.trajectory.steps[0].transitions[0].debug_info["hidden_board"] is not None

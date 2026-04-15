@@ -19,7 +19,6 @@ def test_random_board_scenario_is_seeded_and_starts_with_pending_layout() -> Non
     assert state.placement_seed == 11
     assert info == {
         "scenario": "random_board",
-        "seed": 11,
         "rows": 3,
         "columns": 3,
         "mine_count": 2,

@@ -23,7 +23,6 @@ def test_observation_renderer_includes_text_metadata_and_images() -> None:
 
     assert "Connect 4 board:" in (observation.text or "")
     assert "Current player: x" in (observation.text or "")
-    assert "Legal actions (7): 1 2 3 4 5 6 7" in (observation.text or "")
     assert observation.metadata["current_player"] == "x"
     assert len(observation.images) == 1
     assert observation.images[0].key.startswith("connect4-board-")

@@ -126,7 +126,7 @@ def fixture_puzzle_manifest_path() -> Path:
 
 def test_run_play_session_handles_commands_and_moves() -> None:
     env = make_env()
-    input_stream = StringIO("help\nlegal\nshow fen\ne2e4\ntrajectory\nquit\n")
+    input_stream = StringIO("help\ndebug-legal\nshow fen\ne2e4\ntrajectory\nquit\n")
     output_stream = StringIO()
 
     exit_code = run_play_session(
@@ -141,7 +141,10 @@ def test_run_play_session_handles_commands_and_moves() -> None:
     output = output_stream.getvalue()
     assert exit_code == 0
     assert "Reset info:" in output
-    assert "Commands: help legal state show <key> trajectory quit exit" in output
+    assert (
+        "Commands: help state show <key> debug-state debug-show <key> "
+        "debug-legal trajectory quit exit"
+    ) in output
     assert "Legal actions (20):" in output
     assert f"fen: {STANDARD_START_FEN}" in output
     assert "Move SAN: e4" in output

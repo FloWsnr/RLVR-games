@@ -63,8 +63,8 @@ class RandomStartScenario:
         Returns
         -------
         tuple[Game2048State, dict[str, object]]
-            Canonical initial state and reset metadata describing the random
-            seed, initial board, and spawned starting tiles.
+            Canonical initial state and public-safe reset metadata describing
+            the initial board and spawned starting tiles.
         """
         board = make_empty_board(size=self.size)
         rng_state = self.chance_model.initial_rng_state(seed=seed)
@@ -94,7 +94,6 @@ class RandomStartScenario:
         )
         return state, {
             "scenario": "random_start",
-            "seed": seed,
             "size": state.size,
             "target_value": state.target_value,
             "start_tile_count": self.start_tile_count,
@@ -146,8 +145,8 @@ class FixedBoardScenario:
         Returns
         -------
         tuple[Game2048State, dict[str, object]]
-            Canonical initial state and metadata describing the configured
-            board, score, move count, and RNG seed.
+            Canonical initial state and public-safe metadata describing the
+            configured board, score, and move count.
         """
         state = Game2048State(
             board=self.initial_board,
@@ -158,7 +157,6 @@ class FixedBoardScenario:
         )
         return state, {
             "scenario": "fixed_board",
-            "seed": seed,
             "size": state.size,
             "target_value": state.target_value,
             "initial_board": state.board,

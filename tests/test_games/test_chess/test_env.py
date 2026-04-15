@@ -99,7 +99,7 @@ def test_checkmate_sequence_terminates_with_winner_metadata() -> None:
         backend=ChessBackend(),
         scenario=StartingPositionScenario(),
         renderer=make_renderer(),
-        inspect_state_fn=inspect_chess_state,
+        inspect_canonical_state_fn=inspect_chess_state,
         reward_fn=make_reward(),
         config=EpisodeConfig(),
     )
@@ -127,7 +127,7 @@ def test_threefold_repetition_terminates_on_the_third_occurrence() -> None:
         backend=ChessBackend(),
         scenario=StartingPositionScenario(),
         renderer=make_renderer(),
-        inspect_state_fn=inspect_chess_state,
+        inspect_canonical_state_fn=inspect_chess_state,
         reward_fn=make_reward(),
         config=EpisodeConfig(),
     )
@@ -160,7 +160,7 @@ def test_custom_valid_fen_reset_is_normalized() -> None:
         backend=ChessBackend(),
         scenario=StartingPositionScenario(initial_fen=PROMOTION_FEN),
         renderer=make_renderer(),
-        inspect_state_fn=inspect_chess_state,
+        inspect_canonical_state_fn=inspect_chess_state,
         reward_fn=make_reward(),
         config=EpisodeConfig(),
     )
@@ -178,7 +178,7 @@ def test_terminal_reset_marks_episode_finished_and_rejects_steps() -> None:
         backend=ChessBackend(),
         scenario=StartingPositionScenario(initial_fen=TERMINAL_FEN),
         renderer=make_renderer(),
-        inspect_state_fn=inspect_chess_state,
+        inspect_canonical_state_fn=inspect_chess_state,
         reward_fn=make_reward(),
         config=EpisodeConfig(),
     )
@@ -197,7 +197,7 @@ def test_invalid_fen_reset_fails_fast() -> None:
         backend=ChessBackend(),
         scenario=StartingPositionScenario(initial_fen="not-a-fen"),
         renderer=make_renderer(),
-        inspect_state_fn=inspect_chess_state,
+        inspect_canonical_state_fn=inspect_chess_state,
         reward_fn=make_reward(),
         config=EpisodeConfig(),
     )
@@ -211,7 +211,7 @@ def test_env_records_trajectory_with_real_backend() -> None:
         backend=ChessBackend(),
         scenario=StartingPositionScenario(),
         renderer=make_renderer(),
-        inspect_state_fn=inspect_chess_state,
+        inspect_canonical_state_fn=inspect_chess_state,
         reward_fn=make_reward(),
         config=EpisodeConfig(),
     )

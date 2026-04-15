@@ -446,8 +446,37 @@ def find_winning_cells(
     return ()
 
 
+def public_connect4_metadata(state: Connect4State) -> dict[str, object]:
+    """Return model-safe observation metadata for a Connect 4 state.
+
+    Parameters
+    ----------
+    state : Connect4State
+        Canonical Connect 4 state to summarize.
+
+    Returns
+    -------
+    dict[str, object]
+        Observation metadata derived from public board state only.
+    """
+    metadata: dict[str, object] = {
+        "board": state.board,
+        "rows": state.rows,
+        "columns": state.columns,
+        "connect_length": state.connect_length,
+        "move_count": state.move_count,
+        "current_player": state.current_player,
+        "column_heights": state.column_heights,
+        "piece_count_x": state.piece_count_x,
+        "piece_count_o": state.piece_count_o,
+        "is_terminal": state.is_terminal,
+    }
+    metadata.update(state.outcome.metadata())
+    return metadata
+
+
 def inspect_connect4_state(state: Connect4State) -> dict[str, object]:
-    """Return a structured summary of a Connect 4 state.
+    """Return a structured canonical summary of a Connect 4 state.
 
     Parameters
     ----------
@@ -459,21 +488,13 @@ def inspect_connect4_state(state: Connect4State) -> dict[str, object]:
     dict[str, object]
         Debug-oriented state summary derived from cached state fields.
     """
-    metadata: dict[str, object] = {
-        "board": state.board,
-        "rows": state.rows,
-        "columns": state.columns,
-        "connect_length": state.connect_length,
-        "move_count": state.move_count,
-        "current_player": state.current_player,
-        "legal_actions": state.legal_actions,
-        "legal_action_count": state.legal_action_count,
-        "column_heights": state.column_heights,
-        "piece_count_x": state.piece_count_x,
-        "piece_count_o": state.piece_count_o,
-        "is_terminal": state.is_terminal,
-    }
-    metadata.update(state.outcome.metadata())
+    metadata = public_connect4_metadata(state=state)
+    metadata.update(
+        {
+            "legal_actions": state.legal_actions,
+            "legal_action_count": state.legal_action_count,
+        }
+    )
     return metadata
 
 

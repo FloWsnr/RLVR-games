@@ -81,7 +81,7 @@ def make_minesweeper_env(
             board_formatter=MinesweeperAsciiBoardFormatter(),
             image_renderer=image_renderer,
         ),
-        inspect_state_fn=inspect_minesweeper_state,
+        inspect_canonical_state_fn=inspect_minesweeper_state,
         reward_fn=reward_fn,
         config=config,
     )

@@ -29,7 +29,9 @@ def test_observation_renderer_hides_mines_in_text_and_metadata() -> None:
 
     assert "Minesweeper board:" in (observation.text or "")
     assert "Action format: reveal <row> <col>" in (observation.text or "")
+    assert "Legal actions" not in (observation.text or "")
     assert "hidden_board" not in observation.metadata
+    assert "legal_action_count" not in observation.metadata
     assert observation.metadata["visible_board"] == (
         ("#", "#", "#"),
         ("#", "#", "#"),

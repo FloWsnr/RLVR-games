@@ -94,16 +94,11 @@ class MinesweeperBackend:
 
         action = MinesweeperAction(verb=verb, row=row, col=col)
         if action.label not in state.legal_actions:
-            legal_actions_text = ", ".join(state.legal_actions[:12])
-            if len(state.legal_actions) > 12:
-                legal_actions_text += ", ..."
-            if not legal_actions_text:
-                legal_actions_text = "none"
             return ParseResult(
                 action=None,
                 error=(
                     f"Minesweeper action {action.label!r} is illegal for the current "
-                    f"board. Legal actions: {legal_actions_text}."
+                    "board."
                 ),
             )
 

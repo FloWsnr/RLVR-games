@@ -75,12 +75,11 @@ class Game2048Backend:
             )
 
         if direction.value not in state.legal_actions:
-            legal_actions_text = ", ".join(state.legal_actions) or "none"
             return ParseResult(
                 action=None,
                 error=(
                     f"2048 direction {direction.value!r} is illegal for the current "
-                    f"board. Legal actions: {legal_actions_text}."
+                    "board."
                 ),
             )
 
@@ -127,10 +126,8 @@ class Game2048Backend:
             If the supplied direction is not legal for the state.
         """
         if action.label not in state.legal_actions:
-            legal_actions_text = ", ".join(state.legal_actions) or "none"
             raise InvalidActionError(
-                f"2048 direction {action.label!r} is illegal for the current board. "
-                f"Legal actions: {legal_actions_text}."
+                f"2048 direction {action.label!r} is illegal for the current board."
             )
 
         move_summary = apply_move(board=state.board, direction=action.direction)
@@ -177,7 +174,6 @@ class Game2048Backend:
             ),
             "max_tile": next_state.max_tile,
             "empty_cell_count": next_state.empty_cell_count,
-            "legal_action_count": next_state.legal_action_count,
             "is_terminal": next_state.is_terminal,
             "won": next_state.outcome.won if next_state.is_terminal else False,
             "target_value": next_state.target_value,

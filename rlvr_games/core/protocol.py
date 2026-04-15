@@ -55,7 +55,7 @@ class GameBackend(Protocol[BackendStateT, BackendActionT]):
         ...
 
     def legal_actions(self, state: BackendStateT) -> list[str]:
-        """Return model-facing legal actions for the current state.
+        """Return serialized legal actions for the current state.
 
         Parameters
         ----------
@@ -65,7 +65,7 @@ class GameBackend(Protocol[BackendStateT, BackendActionT]):
         Returns
         -------
         list[str]
-            Legal actions serialized in the format expected from the model.
+            Legal actions serialized in the format accepted by the backend.
         """
         ...
 
@@ -141,11 +141,13 @@ class Environment(Protocol[EnvStateT, EnvActionT]):
         Returns
         -------
         tuple[str, ...]
-            Legal model-facing actions accepted by the environment.
+            Legal serialized actions accepted by the environment. This is a
+            tooling-facing surface rather than part of the default
+            observation.
         """
         ...
 
-    def inspect_state(self) -> dict[str, object]:
+    def inspect_canonical_state(self) -> dict[str, object]:
         """Return a debug-oriented snapshot of the current canonical state.
 
         Returns
@@ -178,7 +180,7 @@ class Environment(Protocol[EnvStateT, EnvActionT]):
         Returns
         -------
         tuple[Observation, dict[str, object]]
-            Initial observation and reset metadata.
+            Initial observation and public-safe reset metadata.
         """
         ...
 
@@ -194,7 +196,9 @@ class Environment(Protocol[EnvStateT, EnvActionT]):
         -------
         StepResult
             Observation, reward, terminal flags, and transition metadata for
-            the attempted step.
+            the attempted step. The returned observation remains the
+            agent-facing view, while canonical inspection belongs in
+            `inspect_canonical_state()`.
         """
         ...
 

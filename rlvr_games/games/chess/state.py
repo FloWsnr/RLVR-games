@@ -372,8 +372,33 @@ class ChessState:
         )
 
 
+def public_chess_metadata(state: ChessState) -> dict[str, object]:
+    """Return model-safe observation metadata for a chess state.
+
+    Parameters
+    ----------
+    state : ChessState
+        Canonical chess state to summarize.
+
+    Returns
+    -------
+    dict[str, object]
+        Observation metadata derived from public board state only.
+    """
+    metadata: dict[str, object] = {
+        "fen": state.fen,
+        "turn": state.side_to_move,
+        "side_to_move": state.side_to_move,
+        "is_check": state.is_check,
+        "is_terminal": state.is_terminal,
+        "repetition_count": state.repetition_count,
+    }
+    metadata.update(state.outcome.metadata())
+    return metadata
+
+
 def inspect_chess_state(state: ChessState) -> dict[str, object]:
-    """Return a structured summary of a chess state.
+    """Return a structured canonical summary of a chess state.
 
     Parameters
     ----------
@@ -385,14 +410,13 @@ def inspect_chess_state(state: ChessState) -> dict[str, object]:
     dict[str, object]
         Debug-oriented state summary derived from cached state fields.
     """
-    metadata: dict[str, object] = {
-        "fen": state.fen,
-        "turn": state.side_to_move,
-        "side_to_move": state.side_to_move,
-        "is_check": state.is_check,
-        "is_terminal": state.is_terminal,
-        "legal_action_count": state.legal_action_count,
-        "repetition_count": state.repetition_count,
-    }
-    metadata.update(state.outcome.metadata())
-    return metadata
+    summary = public_chess_metadata(state=state)
+    summary.update(
+        {
+            "repetition_key": state.repetition_key,
+            "repetition_counts": state.repetition_counts,
+            "metadata": state.metadata,
+            "legal_action_count": state.legal_action_count,
+        }
+    )
+    return summary

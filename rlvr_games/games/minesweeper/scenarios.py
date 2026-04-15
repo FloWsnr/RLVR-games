@@ -55,7 +55,7 @@ class RandomBoardScenario:
         Returns
         -------
         tuple[MinesweeperState, dict[str, object]]
-            Canonical initial state and reset metadata.
+            Canonical initial state and public-safe reset metadata.
         """
         state = MinesweeperState(
             rows=self.rows,
@@ -67,7 +67,6 @@ class RandomBoardScenario:
         )
         return state, {
             "scenario": "random_board",
-            "seed": seed,
             "rows": self.rows,
             "columns": self.columns,
             "mine_count": self.mine_count,
@@ -119,7 +118,6 @@ class FixedBoardScenario:
             "rows": state.rows,
             "columns": state.columns,
             "mine_count": state.mine_count,
-            "hidden_board": self.hidden_board,
             "pending_mine_layout": False,
         }
 

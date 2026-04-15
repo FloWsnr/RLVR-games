@@ -57,6 +57,7 @@ class _AttemptOutcome(Generic[StateT, ActionT]):
     terminated: bool
     truncated: bool
     info: dict[str, object]
+    debug_info: dict[str, object]
     transitions: tuple[_AcceptedTransition[StateT, ActionT], ...] = ()
 
 
@@ -85,7 +86,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         backend: GameBackend[StateT, ActionT],
         scenario: Scenario[StateT],
         renderer: Renderer[StateT],
-        inspect_state_fn: Callable[[StateT], dict[str, object]],
+        inspect_canonical_state_fn: Callable[[StateT], dict[str, object]],
         reward_fn: RewardFn[StateT, ActionT],
         config: EpisodeConfig,
         auto_advance_policy: AutoAdvancePolicy[StateT, ActionT] | None = None,
@@ -103,7 +104,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         renderer : Renderer[StateT]
             Adapter that converts canonical state into the observation exposed
             to the model.
-        inspect_state_fn : Callable[[StateT], dict[str, object]]
+        inspect_canonical_state_fn : Callable[[StateT], dict[str, object]]
             Function that converts canonical state into a structured debug view
             used by CLI and rollout tooling.
         reward_fn : RewardFn[StateT, ActionT]
@@ -119,7 +120,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         self.backend = backend
         self.scenario = scenario
         self.renderer = renderer
-        self.inspect_state_fn = inspect_state_fn
+        self.inspect_canonical_state_fn = inspect_canonical_state_fn
         self.reward_fn = reward_fn
         self.config = config
         self.auto_advance_policy = auto_advance_policy
@@ -188,7 +189,9 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         Returns
         -------
         tuple[str, ...]
-            Legal model-facing actions accepted by the environment.
+            Legal serialized actions accepted by the environment. This is kept
+            for tooling and debugging rather than exposed through the default
+            observation.
 
         Raises
         ------
@@ -197,7 +200,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         """
         return tuple(self.backend.legal_actions(self.state))
 
-    def inspect_state(self) -> dict[str, object]:
+    def inspect_canonical_state(self) -> dict[str, object]:
         """Return a debug-oriented snapshot of the current canonical state.
 
         Returns
@@ -210,7 +213,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         EnvironmentNotResetError
             If `reset()` has not been called yet.
         """
-        return deepcopy(self.inspect_state_fn(self.state))
+        return self._inspect_state_summary(self.state)
 
     def reset(self, *, seed: int) -> tuple[Observation, dict[str, object]]:
         """Start a fresh episode from the configured scenario.
@@ -224,8 +227,8 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         -------
         tuple[Observation, dict[str, object]]
             A pair containing the initial observation shown to the model and
-            the reset metadata returned by the scenario after any required
-            internal auto-advanced transitions have been resolved.
+            the public-safe reset metadata returned by the scenario after any
+            required internal auto-advanced transitions have been resolved.
         """
         self._attempt_count = 0
         self._transition_count = 0
@@ -237,9 +240,14 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         observation = self.renderer.render(self._state)
         self._episode_finished = resolution.terminated or resolution.truncated
         info = self._build_reset_info(base_info=info, resolution=resolution)
+        debug_reset_info = self._build_reset_debug_info(
+            public_info=info,
+            resolution=resolution,
+        )
         self._trajectory = EpisodeTrajectory(
             initial_observation=self._snapshot_observation(observation),
             reset_info=self._snapshot_info(info),
+            debug_reset_info=self._snapshot_info(debug_reset_info),
         )
         return observation, info
 
@@ -255,7 +263,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         -------
         StepResult
             The rendered next observation, reward, terminal flags, and
-            transition metadata for the applied action.
+            public-safe transition metadata for the applied action.
 
         Raises
         ------
@@ -274,8 +282,9 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             )
 
         previous_state = self.state
-        if self.auto_advance_policy is not None and not self.auto_advance_policy.is_agent_turn(
-            state=previous_state
+        if (
+            self.auto_advance_policy is not None
+            and not self.auto_advance_policy.is_agent_turn(state=previous_state)
         ):
             raise RuntimeError(
                 "Environment cannot accept an agent action before control "
@@ -317,7 +326,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             self.backend,
             self.scenario,
             self.renderer,
-            self.inspect_state_fn,
+            self.inspect_canonical_state_fn,
             self.reward_fn,
             self.auto_advance_policy,
         ):
@@ -363,8 +372,12 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
 
         info = self._build_accepted_step_info(
             transitions=transitions,
-            next_state=resolution.next_state,
             boundary_info=resolution.info,
+        )
+        debug_info = self._build_accepted_step_debug_info(
+            public_info=info,
+            transitions=transitions,
+            next_state=resolution.next_state,
         )
         reward = self.reward_fn.evaluate(
             previous_state=previous_state,
@@ -382,6 +395,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             terminated=resolution.terminated,
             truncated=resolution.truncated,
             info=info,
+            debug_info=debug_info,
             transitions=tuple(transitions),
         )
 
@@ -472,6 +486,10 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             terminated=terminated,
             truncated=truncated,
             info=info,
+            debug_info=self._build_rejected_step_debug_info(
+                public_info=info,
+                state=previous_state,
+            ),
         )
         return outcome
 
@@ -486,6 +504,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         self._state = outcome.next_state
         trajectory_observation = self._snapshot_observation(outcome.observation)
         trajectory_info = self._snapshot_info(outcome.info)
+        trajectory_debug_info = self._snapshot_info(outcome.debug_info)
 
         self.trajectory.steps.append(
             TrajectoryStep(
@@ -497,6 +516,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
                 terminated=outcome.terminated,
                 truncated=outcome.truncated,
                 info=trajectory_info,
+                debug_info=trajectory_debug_info,
                 transitions=self._snapshot_transitions(outcome.transitions),
             )
         )
@@ -573,6 +593,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
                 raw_action=transition.raw_action,
                 action=deepcopy(transition.action),
                 info=self._snapshot_info(transition.info),
+                debug_info=self._snapshot_info(self._transition_debug_info(transition)),
             )
             for transition in transitions
         )
@@ -600,13 +621,11 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         self,
         *,
         transitions: list[_AcceptedTransition[StateT, ActionT]],
-        next_state: StateT,
         boundary_info: dict[str, object],
     ) -> dict[str, object]:
         """Build step metadata for an accepted agent action."""
         agent_transition = transitions[0]
         info = dict(agent_transition.info)
-        info.update(self.inspect_state_fn(next_state))
         info["accepted"] = True
         info["attempt_count"] = self._attempt_count
         info["transition_count"] = self._transition_count
@@ -621,6 +640,30 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         )
         info.update(boundary_info)
         return info
+
+    def _build_accepted_step_debug_info(
+        self,
+        *,
+        public_info: dict[str, object],
+        transitions: list[_AcceptedTransition[StateT, ActionT]],
+        next_state: StateT,
+    ) -> dict[str, object]:
+        """Build privileged step metadata for trajectory debugging."""
+        debug_info = dict(public_info)
+        debug_info["agent_transition"] = self._serialize_transition(
+            transitions[0],
+            debug=True,
+        )
+        debug_info["internal_transitions"] = tuple(
+            self._serialize_transition(transition, debug=True)
+            for transition in transitions[1:]
+        )
+        debug_info["transitions"] = tuple(
+            self._serialize_transition(transition, debug=True)
+            for transition in transitions
+        )
+        debug_info.update(self._inspect_state_summary(next_state))
+        return debug_info
 
     def _build_reset_info(
         self,
@@ -644,16 +687,61 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         info.update(resolution.info)
         return info
 
+    def _build_reset_debug_info(
+        self,
+        *,
+        public_info: dict[str, object],
+        resolution: _ResolutionOutcome[StateT, ActionT],
+    ) -> dict[str, object]:
+        """Build privileged reset metadata for trajectory debugging."""
+        debug_info = dict(public_info)
+        if resolution.transitions:
+            debug_info["initial_transitions"] = tuple(
+                self._serialize_transition(transition, debug=True)
+                for transition in resolution.transitions
+            )
+        debug_info.update(self._inspect_state_summary(resolution.next_state))
+        return debug_info
+
+    def _build_rejected_step_debug_info(
+        self,
+        *,
+        public_info: dict[str, object],
+        state: StateT,
+    ) -> dict[str, object]:
+        """Build privileged metadata for a rejected attempted step."""
+        debug_info = dict(public_info)
+        debug_info.update(self._inspect_state_summary(state))
+        return debug_info
+
     def _serialize_transition(
         self,
         transition: _AcceptedTransition[StateT, ActionT],
+        *,
+        debug: bool = False,
     ) -> dict[str, object]:
         """Serialize one accepted backend transition into step metadata."""
+        transition_info = transition.info
+        if debug:
+            transition_info = self._transition_debug_info(transition)
         return {
             "source": transition.source,
             "raw_action": transition.raw_action,
-            "info": self._snapshot_info(transition.info),
+            "info": self._snapshot_info(transition_info),
         }
+
+    def _transition_debug_info(
+        self,
+        transition: _AcceptedTransition[StateT, ActionT],
+    ) -> dict[str, object]:
+        """Return privileged transition metadata for trajectory debugging."""
+        debug_info = dict(transition.info)
+        debug_info.update(self._inspect_state_summary(transition.next_state))
+        return debug_info
+
+    def _inspect_state_summary(self, state: StateT) -> dict[str, object]:
+        """Return a deep-copied canonical state summary for `state`."""
+        return deepcopy(self.inspect_canonical_state_fn(state))
 
     def _episode_boundary(self, *, state: StateT) -> EpisodeBoundary | None:
         """Return any explicit episode boundary from the auto-advance policy."""

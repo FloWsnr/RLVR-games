@@ -12,7 +12,8 @@ an agent through interaction with an executable verifier.
 - Text and images are observations over canonical symbolic state, not the
   authoritative state themselves.
 - Trajectories are first-class data. Each episode records observations, raw
-  actions, parsed actions, rewards, terminal flags, and transition metadata.
+  actions, parsed actions, rewards, terminal flags, public-safe metadata, and
+  privileged debug traces over canonical state.
 - Games plug into one shared environment loop instead of each game inventing
   its own runner.
 
@@ -25,8 +26,8 @@ game composes that generic environment out of a small set of collaborators:
 - `GameBackend`: parses actions, checks legality, applies transitions, and
   decides terminality
 - `Renderer`: turns canonical state into model-facing text and images
-- `inspect_state_fn`: returns a debug-oriented state summary for the CLI and
-  tooling
+- `inspect_canonical_state_fn`: returns a privileged canonical-state summary
+  for debugging and tooling
 - `RewardFn`: scores accepted environment steps
 - `AutoAdvancePolicy` (optional): applies internal verifier-backed moves such
   as opponent replies until control returns to the agent
@@ -55,6 +56,17 @@ Inside one `step(...)`, the environment does roughly this:
 That split is deliberate. It keeps the generic episode lifecycle in one place,
 while game-specific logic stays inside the backend, scenario, renderer, and
 reward components.
+
+The intended agent-facing surface is the observation only. Canonical
+inspection through `env.inspect_canonical_state()` and exact move enumeration
+through `env.legal_actions()` remain available for debugging, CLI tooling, and
+future action-masking experiments, but they are not injected into the default
+observation or action context.
+
+The same split now applies to trajectory metadata: `reset_info`,
+`TrajectoryStep.info`, and `RecordedTransition.info` stay public-safe, while
+their `debug_*` counterparts retain privileged canonical-state traces for
+offline debugging and analysis.
 
 ## Architectural Boundaries
 
@@ -123,6 +135,10 @@ views, and the trajectory records the full verified interaction history.
 
 Observations may contain both text and in-memory images, which makes the same
 environment surface usable for text-only and multimodal training loops.
+
+The interactive CLI follows the same split: `state` and `show <key>` read from
+observation metadata, while `debug-state`, `debug-show <key>`, and
+`debug-legal` are explicit privileged debug commands.
 
 ## Development
 

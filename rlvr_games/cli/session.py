@@ -12,15 +12,27 @@ from rlvr_games.core.types import Observation, RenderedImage, StepResult
 
 _BUILT_IN_COMMAND_USAGES: tuple[str, ...] = (
     "help",
-    "legal",
     "state",
     "show <key>",
+    "debug-state",
+    "debug-show <key>",
+    "debug-legal",
     "trajectory",
     "quit",
     "exit",
 )
 _BUILT_IN_COMMAND_NAMES = frozenset(
-    {"help", "legal", "state", "show", "trajectory", "quit", "exit"}
+    {
+        "help",
+        "state",
+        "show",
+        "debug-state",
+        "debug-show",
+        "debug-legal",
+        "trajectory",
+        "quit",
+        "exit",
+    }
 )
 
 
@@ -95,25 +107,42 @@ def run_play_session(
                 _write_help(output_stream=output_stream, game_spec=game_spec)
                 continue
 
-            if command_name == "legal":
+            if command_name == "debug-legal":
                 legal_actions = " ".join(env.legal_actions())
                 _write_line(
                     output_stream,
-                    f"Legal actions ({len(context.legal_actions)}): {legal_actions}",
+                    f"Legal actions ({len(env.legal_actions())}): {legal_actions}",
                 )
                 continue
 
             if command_name == "state":
                 _write_line(
-                    output_stream, f"State: {_format_json(env.inspect_state())}"
+                    output_stream, f"State: {_format_json(observation.metadata)}"
                 )
                 continue
 
             if command_name == "show":
                 _write_metadata_value(
                     output_stream=output_stream,
-                    state_view=env.inspect_state(),
+                    state_view=observation.metadata,
                     arguments=command_arguments,
+                    command_name="show",
+                )
+                continue
+
+            if command_name == "debug-state":
+                _write_line(
+                    output_stream,
+                    f"Canonical state: {_format_json(env.inspect_canonical_state())}",
+                )
+                continue
+
+            if command_name == "debug-show":
+                _write_metadata_value(
+                    output_stream=output_stream,
+                    state_view=env.inspect_canonical_state(),
+                    arguments=command_arguments,
+                    command_name="debug-show",
                 )
                 continue
 
@@ -235,6 +264,7 @@ def _write_metadata_value(
     output_stream: TextIO,
     state_view: dict[str, object],
     arguments: tuple[str, ...],
+    command_name: str,
 ) -> None:
     """Print one observation metadata value selected by key.
 
@@ -243,12 +273,12 @@ def _write_metadata_value(
     output_stream : TextIO
         Stream receiving command output.
     state_view : dict[str, object]
-        Debug-oriented state summary to query.
+        Observation or canonical debug summary to query.
     arguments : tuple[str, ...]
-        Command arguments following ``show``.
+        Command arguments following the metadata inspection command.
     """
     if len(arguments) != 1:
-        _write_line(output_stream, "Usage: show <key>")
+        _write_line(output_stream, f"Usage: {command_name} <key>")
         return
 
     key = arguments[0]

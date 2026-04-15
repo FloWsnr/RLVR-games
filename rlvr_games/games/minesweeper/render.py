@@ -247,7 +247,6 @@ class MinesweeperObservationRenderer:
             f"Hidden cells: {state.hidden_cell_count}",
             f"Remaining safe cells: {state.remaining_safe_cells}",
             f"Pending mine layout: {'yes' if state.has_pending_mines else 'no'}",
-            f"Legal actions: {state.legal_action_count}",
             "Action format: reveal <row> <col> | flag <row> <col> | unflag <row> <col>",
             f"Terminal: {'yes' if state.is_terminal else 'no'}",
             f"Won: {'yes' if state.outcome.won else 'no'}",

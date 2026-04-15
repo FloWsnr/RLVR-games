@@ -8,7 +8,7 @@ from PIL import Image, ImageDraw, ImageFont
 from rlvr_games.core.protocol import ImageRenderer, TextRenderer
 from rlvr_games.core.types import Observation, RenderedImage
 from rlvr_games.games.game2048.engine import Board
-from rlvr_games.games.game2048.state import Game2048State, inspect_game2048_state
+from rlvr_games.games.game2048.state import Game2048State, public_game2048_metadata
 
 
 class Game2048AsciiBoardFormatter:
@@ -328,7 +328,6 @@ class Game2048ObservationRenderer:
             Observation whose text and images are derived from the canonical
             board and cached state summary.
         """
-        legal_actions_text = " ".join(state.legal_actions) or "none"
         lines = [
             "2048 board:",
             self.board_formatter.render_text(state.board),
@@ -337,7 +336,6 @@ class Game2048ObservationRenderer:
             f"Target tile: {state.target_value}",
             f"Max tile: {state.max_tile}",
             f"Empty cells: {state.empty_cell_count}",
-            f"Legal actions ({state.legal_action_count}): {legal_actions_text}",
             f"Terminal: {'yes' if state.is_terminal else 'no'}",
             f"Won: {'yes' if state.outcome.won else 'no'}",
         ]
@@ -351,5 +349,5 @@ class Game2048ObservationRenderer:
         return Observation(
             text="\n".join(lines),
             images=images,
-            metadata=inspect_game2048_state(state=state),
+            metadata=public_game2048_metadata(state=state),
         )

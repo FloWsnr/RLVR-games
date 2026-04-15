@@ -409,7 +409,6 @@ def public_minesweeper_metadata(state: MinesweeperState) -> dict[str, object]:
         "flagged_cell_count": state.flagged_cell_count,
         "hidden_cell_count": state.hidden_cell_count,
         "remaining_safe_cells": state.remaining_safe_cells,
-        "legal_action_count": state.legal_action_count,
         "pending_mine_layout": state.has_pending_mines,
         "is_terminal": state.is_terminal,
         "won": state.outcome.won,
@@ -443,6 +442,8 @@ def inspect_minesweeper_state(state: MinesweeperState) -> dict[str, object]:
             "revealed": state.revealed,
             "flagged": state.flagged,
             "placement_seed": state.placement_seed,
+            "legal_actions": state.legal_actions,
+            "legal_action_count": state.legal_action_count,
         }
     )
     return metadata

@@ -50,7 +50,7 @@ def test_reaching_target_tile_terminates_with_reward_and_metadata() -> None:
             chance_model=chance_model,
         ),
         renderer=make_renderer(),
-        inspect_state_fn=inspect_game2048_state,
+        inspect_canonical_state_fn=inspect_game2048_state,
         reward_fn=TargetTileReward(),
         config=EpisodeConfig(),
     )
@@ -73,7 +73,6 @@ def test_reaching_target_tile_terminates_with_reward_and_metadata() -> None:
     )
     assert env.state.legal_actions == ()
     assert result.observation.metadata["is_terminal"] is True
-    assert result.observation.metadata["legal_action_count"] == 0
     assert result.observation.metadata["won"] is True
 
 
@@ -89,7 +88,7 @@ def test_terminal_reset_marks_episode_finished_and_rejects_steps() -> None:
             chance_model=chance_model,
         ),
         renderer=make_renderer(),
-        inspect_state_fn=inspect_game2048_state,
+        inspect_canonical_state_fn=inspect_game2048_state,
         reward_fn=TargetTileReward(),
         config=EpisodeConfig(),
     )
@@ -115,16 +114,19 @@ def test_env_records_trajectory_with_real_backend() -> None:
             chance_model=chance_model,
         ),
         renderer=make_renderer(),
-        inspect_state_fn=inspect_game2048_state,
+        inspect_canonical_state_fn=inspect_game2048_state,
         reward_fn=TargetTileReward(),
         config=EpisodeConfig(),
     )
     observation, info = env.reset(seed=0)
+    initial_debug_reset_info = dict(env.trajectory.debug_reset_info)
+    reset_debug_state = env.inspect_canonical_state()
 
     result = env.step("left")
 
-    assert info["seed"] == 0
+    assert "seed" not in info
     assert "2048 board:" in (observation.text or "")
+    assert initial_debug_reset_info["rng_state"] == reset_debug_state["rng_state"]
     assert result.reward == 0.0
     assert result.accepted is True
     assert len(env.trajectory.steps) == 1
@@ -132,3 +134,8 @@ def test_env_records_trajectory_with_real_backend() -> None:
     assert env.trajectory.steps[0].action is not None
     assert env.trajectory.steps[0].action.label == "left"
     assert env.trajectory.steps[0].info["direction"] == "left"
+    assert "rng_state" not in result.info
+    assert (
+        env.trajectory.steps[0].debug_info["rng_state"]
+        == env.inspect_canonical_state()["rng_state"]
+    )

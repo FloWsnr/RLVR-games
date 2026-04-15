@@ -6,7 +6,7 @@ from rlvr_games.core.rollout import build_action_context
 from tests.test_core.support import CounterBackend, make_counter_env
 
 
-def test_build_action_context_uses_current_turn_index_and_legal_actions() -> None:
+def test_build_action_context_uses_current_turn_index() -> None:
     env = make_counter_env(
         backend=CounterBackend(),
         config=EpisodeConfig(max_transitions=3),
@@ -18,6 +18,4 @@ def test_build_action_context_uses_current_turn_index_and_legal_actions() -> Non
     next_context = build_action_context(env=env)
 
     assert initial_context.turn_index == 0
-    assert initial_context.legal_actions == ("1",)
     assert next_context.turn_index == 1
-    assert next_context.legal_actions == ("1",)

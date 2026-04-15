@@ -55,7 +55,9 @@ def make_env() -> TurnBasedEnv[Connect4State, Connect4Action]:
 
 def test_run_play_session_handles_connect4_commands_and_moves() -> None:
     env = make_env()
-    input_stream = StringIO("help\nlegal\nshow current_player\n1\ntrajectory\nquit\n")
+    input_stream = StringIO(
+        "help\ndebug-legal\nshow current_player\n1\ntrajectory\nquit\n"
+    )
     output_stream = StringIO()
 
     exit_code = run_play_session(
@@ -70,7 +72,10 @@ def test_run_play_session_handles_connect4_commands_and_moves() -> None:
     output = output_stream.getvalue()
     assert exit_code == 0
     assert "Reset info:" in output
-    assert "Commands: help legal state show <key> trajectory quit exit" in output
+    assert (
+        "Commands: help state show <key> debug-state debug-show <key> "
+        "debug-legal trajectory quit exit"
+    ) in output
     assert "Legal actions (7): 1 2 3 4 5 6 7" in output
     assert "current_player: x" in output
     assert "Player: x" in output

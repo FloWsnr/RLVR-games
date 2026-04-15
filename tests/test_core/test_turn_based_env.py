@@ -105,10 +105,13 @@ def test_records_trajectory_until_terminal() -> None:
     assert third.terminated is True
     assert first.accepted is True
     assert env.legal_actions() == ("1",)
-    assert env.inspect_state()["value"] == 3
+    assert env.inspect_canonical_state()["value"] == 3
+    assert env.trajectory.debug_reset_info["value"] == 0
     assert env.trajectory.steps[-1].accepted is True
     assert env.trajectory.total_reward == 3.0
     assert len(env.trajectory.steps) == 3
+    assert env.trajectory.steps[-1].debug_info["value"] == 3
+    assert env.trajectory.steps[-1].transitions[0].debug_info["value"] == 3
     assert env.trajectory.steps[-1].observation.metadata["value"] == 3
 
 
@@ -215,3 +218,6 @@ def test_trajectory_snapshots_do_not_alias_returned_results() -> None:
     assert env.trajectory.initial_observation.metadata["value"] == 0
     assert env.trajectory.steps[0].info["value"] == 1
     assert env.trajectory.steps[0].observation.metadata["value"] == 1
+    assert env.trajectory.debug_reset_info["value"] == 0
+    assert env.trajectory.steps[0].debug_info["value"] == 1
+    assert env.trajectory.steps[0].transitions[0].debug_info["value"] == 1
