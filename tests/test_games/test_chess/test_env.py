@@ -20,6 +20,7 @@ from rlvr_games.games.chess import (
     ChessObservationRenderer,
     ChessPuzzleDatasetScenario,
     ChessState,
+    StockfishMoveSelector,
     ChessTextRendererKind,
     PuzzleOnlyMoveDenseReward,
     PuzzleOnlyMoveSparseReward,
@@ -28,6 +29,7 @@ from rlvr_games.games.chess import (
     make_chess_env,
 )
 from rlvr_games.games.chess.scenarios import STANDARD_START_FEN
+from rlvr_games.games.chess.stockfish_runtime import resolve_stockfish_binary_path
 from rlvr_games.games.chess.state import inspect_chess_state
 
 PROMOTION_FEN = "k7/4P3/8/8/8/8/8/7K w - - 0 1"
@@ -60,6 +62,14 @@ def fixture_puzzle_manifest_path() -> Path:
         / "lichess_puzzles_subset"
         / "manifest.json"
     )
+
+
+def fixture_stockfish_binary_path() -> Path:
+    """Return a usable local Stockfish binary path or skip the test."""
+    try:
+        return resolve_stockfish_binary_path()
+    except FileNotFoundError as exc:
+        pytest.skip(str(exc))
 
 
 class ScriptedMoveSelector:
@@ -251,6 +261,67 @@ def test_engine_auto_advance_returns_to_agent_turn_and_records_reply() -> None:
     assert env.trajectory.steps[0].transitions[0].source == "agent"
     assert env.trajectory.steps[0].transitions[1].source == "opponent"
     assert env.trajectory.steps[0].transitions[1].raw_action == "e7e5"
+
+
+def test_engine_auto_advance_can_play_multiple_real_stockfish_replies() -> None:
+    env = make_chess_env(
+        scenario=StartingPositionScenario(),
+        reward_fn=make_reward(),
+        config=EpisodeConfig(),
+        text_renderer_kind=ChessTextRendererKind.ASCII,
+        include_images=False,
+        image_size=360,
+        image_coordinates=True,
+        orientation=ChessBoardOrientation.WHITE,
+        auto_advance_policy=ChessEngineAutoAdvancePolicy(
+            move_selector=StockfishMoveSelector.from_engine_path(
+                engine_path=fixture_stockfish_binary_path(),
+                depth=1,
+            ),
+        ),
+    )
+
+    try:
+        observation, info = env.reset(seed=41)
+        assert info["scenario"] == "starting_position"
+        assert observation.metadata["side_to_move"] == "white"
+
+        candidate_moves_by_turn = (
+            ("e2e4",),
+            ("g1f3", "d2d4", "b1c3", "f1c4"),
+            ("d2d4", "b1c3", "f1c4", "c2c3"),
+        )
+
+        for turn_index, candidate_moves in enumerate(candidate_moves_by_turn):
+            legal_actions = env.legal_actions()
+            assert any(
+                candidate_move in legal_actions for candidate_move in candidate_moves
+            )
+            raw_action = next(
+                candidate_move
+                for candidate_move in candidate_moves
+                if candidate_move in legal_actions
+            )
+            result = env.step(raw_action)
+
+            assert result.accepted is True
+            assert result.terminated is False
+            assert result.truncated is False
+            assert result.info["auto_advanced"] is True
+            assert result.info["transition_count_delta"] == 2
+            assert len(env.trajectory.steps) == turn_index + 1
+            assert len(env.trajectory.steps[-1].transitions) == 2
+            assert env.trajectory.steps[-1].transitions[0].source == "agent"
+            assert env.trajectory.steps[-1].transitions[1].source == "opponent"
+            assert result.observation.metadata["side_to_move"] == "white"
+            assert env.state.side_to_move == "white"
+            assert env.trajectory.steps[-1].transitions[0].raw_action == raw_action
+            assert env.trajectory.steps[-1].transitions[1].raw_action != raw_action
+
+        assert env.trajectory.accepted_step_count == 3
+        assert env.trajectory.steps[-1].info["transition_count"] == 6
+    finally:
+        env.close()
 
 
 def test_puzzle_auto_advance_replays_canonical_reply_and_finishes_on_solution() -> None:
