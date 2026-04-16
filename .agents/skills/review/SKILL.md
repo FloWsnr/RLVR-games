@@ -23,7 +23,7 @@ Use a separate review agent to challenge the latest change before handoff. The r
 4. Describe the implementation neutrally. Do not frame it as already correct, clean, fixed, or improved. Avoid language that nudges the reviewer toward approval.
 5. Ask explicitly for critical review focused on bugs, regressions, edge cases, invalid assumptions, and missing tests. Prefer concrete findings with file references. Also ask whether the refactor fits in the overall architectural direction, including for future work and scaling.
 6. For long tasks, review each completed chunk after it becomes meaningful instead of waiting for one final review at the end.
-7. Before final handoff, incorporate the review findings or explain why a finding was not applied.
+7. Incorporate the review findings into your work or explain why a finding was not applied.
 
 ## Prompt Guidance
 
@@ -32,7 +32,7 @@ The reviewer should receive a compact, neutral summary. Good inputs state what c
 Use a prompt in this shape:
 
 ```text
-Review this change independently. Look for bugs, behavioral regressions, invalid assumptions, edge cases, and missing tests.
+Review this change independently. Look for bugs, behavioral regressions, invalid assumptions, edge cases, and missing tests. Also ask whether the refactor fits in the overall architectural direction, including for future work and scaling.
 
 Task summary:
 - ...
