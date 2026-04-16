@@ -1,5 +1,6 @@
 data/
 rlvr_games/games/chess/.stockfish/
+worktrees/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

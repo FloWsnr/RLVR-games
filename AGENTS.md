@@ -50,6 +50,7 @@ environment-first RLVR framework built around executable game verifiers.
   hide behavior.
 - Do not use `from __future__ import annotations`.
 - Write numpy-style docstrings for functions and classes.
+- Create new worktrees in the `./worktrees/` directory for each task. Name them descriptively.
 
 ## Git Hygiene
 
