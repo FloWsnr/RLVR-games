@@ -1,11 +1,11 @@
 ---
 name: review
-description: Use this skill after each larger task or change to launch an independent review agent. The reviewer must run on GPT-5.4 with xhigh reasoning, receive a concise neutral summary of the task and implemented solution, and check for bugs, regressions, and missing tests without being primed toward a positive conclusion.
+description: Use this skill when asked to review a task you did or independently after a bigger change. The reviewer must run on GPT-5.4 with xhigh reasoning, receive a concise neutral summary of the task and implemented solution, and check for bugs, regressions, and missing tests without being primed toward a positive conclusion.
 ---
 
 # Independent Review Workflow
 
-Run this skill after each larger task or change. A meaningful change is any non-trivial behavior change, refactor, or test update that materially affects the implementation.
+Run this skill after larger tasks or changes. A meaningful change is any non-trivial behavior change, refactor, or update that materially affects the implementation. Do not run the reviewer for small fixes or immediately after addressing the last review comment.
 
 ## Goal
 
@@ -21,7 +21,7 @@ Use a separate review agent to challenge the latest change before handoff. The r
    - the changed files or code areas
    - the behavior that was added, removed, or modified
 4. Describe the implementation neutrally. Do not frame it as already correct, clean, fixed, or improved. Avoid language that nudges the reviewer toward approval.
-5. Ask explicitly for critical review focused on bugs, regressions, edge cases, invalid assumptions, and missing tests. Prefer concrete findings with file references.
+5. Ask explicitly for critical review focused on bugs, regressions, edge cases, invalid assumptions, and missing tests. Prefer concrete findings with file references. Also ask whether the refactor fits in the overall architectural direction, including for future work and scaling.
 6. For long tasks, review each completed chunk after it becomes meaningful instead of waiting for one final review at the end.
 7. Before final handoff, incorporate the review findings or explain why a finding was not applied.
 
