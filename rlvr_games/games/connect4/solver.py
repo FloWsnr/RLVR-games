@@ -6,10 +6,8 @@ from typing import Literal, Protocol
 from bitbully import BitBully, Board as BitBullyBoard
 
 from rlvr_games.games.connect4.actions import Connect4Action
-from rlvr_games.games.connect4.scenarios import (
-    STANDARD_CONNECT4_COLUMNS,
-    STANDARD_CONNECT4_CONNECT_LENGTH,
-    STANDARD_CONNECT4_ROWS,
+from rlvr_games.games.connect4.variant import (
+    validate_standard_connect4_configuration,
 )
 from rlvr_games.games.connect4.state import Connect4State
 
@@ -127,6 +125,16 @@ class BitBullySolver:
             )
         )
 
+    def validate_state(self, *, state: Connect4State) -> None:
+        """Validate that `state` is compatible with BitBully.
+
+        Parameters
+        ----------
+        state : Connect4State
+            Canonical state to validate.
+        """
+        ensure_bitbully_supported_state(state=state)
+
     def score_actions(
         self,
         *,
@@ -211,15 +219,11 @@ def ensure_bitbully_supported_state(*, state: Connect4State) -> None:
     ValueError
         If `state` is not the standard 7x6 connect-4 game.
     """
-    if (
-        state.rows != STANDARD_CONNECT4_ROWS
-        or state.columns != STANDARD_CONNECT4_COLUMNS
-        or state.connect_length != STANDARD_CONNECT4_CONNECT_LENGTH
-    ):
-        raise ValueError(
-            "BitBully only supports standard Connect 4 with rows=6, columns=7, "
-            "and connect_length=4."
-        )
+    validate_standard_connect4_configuration(
+        rows=state.rows,
+        columns=state.columns,
+        connect_length=state.connect_length,
+    )
 
 
 def bitbully_board_from_state(*, state: Connect4State) -> BitBullyBoard:

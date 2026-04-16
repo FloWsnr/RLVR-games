@@ -267,6 +267,9 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         if self.reset_event_policy is not None:
             self.reset_event_policy.reset(initial_state=initial_state)
         reset_event_resolution = self._resolve_reset_events(state=initial_state)
+        reward_reset = getattr(self.reward_fn, "reset", None)
+        if callable(reward_reset):
+            reward_reset(initial_state=reset_event_resolution.next_state)
         if self.auto_advance_policy is not None:
             self.auto_advance_policy.reset(
                 initial_state=reset_event_resolution.next_state
@@ -667,9 +670,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         auto_advanced_transitions: tuple[_AcceptedTransition[StateT, ActionT], ...],
     ) -> tuple[RecordedResetEvent, ...]:
         """Return one merged reset-time history for the episode reset."""
-        return self._snapshot_applied_reset_events(
-            applied_reset_events
-        ) + tuple(
+        return self._snapshot_applied_reset_events(applied_reset_events) + tuple(
             RecordedResetEvent(
                 source=transition.source,
                 label=transition.raw_action,

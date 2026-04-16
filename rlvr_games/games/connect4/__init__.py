@@ -19,9 +19,6 @@ from rlvr_games.games.connect4.scenarios import (
     DEFAULT_RANDOM_START_MAX_MOVES,
     FixedBoardScenario,
     RandomPositionScenario,
-    STANDARD_CONNECT4_COLUMNS,
-    STANDARD_CONNECT4_CONNECT_LENGTH,
-    STANDARD_CONNECT4_ROWS,
     normalize_initial_board,
 )
 from rlvr_games.games.connect4.state import (
@@ -37,6 +34,11 @@ from rlvr_games.games.connect4.solver import (
     ensure_bitbully_supported_state,
 )
 from rlvr_games.games.connect4.turns import Connect4SolverAutoAdvancePolicy
+from rlvr_games.games.connect4.variant import (
+    STANDARD_CONNECT4_COLUMNS,
+    STANDARD_CONNECT4_CONNECT_LENGTH,
+    STANDARD_CONNECT4_ROWS,
+)
 
 __all__ = [
     "Board",

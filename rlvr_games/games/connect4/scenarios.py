@@ -11,10 +11,13 @@ from rlvr_games.games.connect4.state import (
     make_empty_board,
     normalize_board,
 )
+from rlvr_games.games.connect4.variant import (
+    STANDARD_CONNECT4_COLUMNS,
+    STANDARD_CONNECT4_CONNECT_LENGTH,
+    STANDARD_CONNECT4_ROWS,
+    validate_standard_connect4_configuration,
+)
 
-STANDARD_CONNECT4_ROWS = 6
-STANDARD_CONNECT4_COLUMNS = 7
-STANDARD_CONNECT4_CONNECT_LENGTH = 4
 DEFAULT_RANDOM_START_MAX_MOVES = 10
 
 
@@ -53,10 +56,11 @@ class RandomPositionScenario:
         ValueError
             If the board shape or random opening depth is invalid.
         """
-        if self.rows < 1:
-            raise ValueError("Connect 4 scenarios require at least one row.")
-        if self.columns < 1:
-            raise ValueError("Connect 4 scenarios require at least one column.")
+        validate_standard_connect4_configuration(
+            rows=self.rows,
+            columns=self.columns,
+            connect_length=self.connect_length,
+        )
         if self.min_start_moves < 0:
             raise ValueError("Connect 4 min_start_moves must be non-negative.")
         if self.max_start_moves < 0:
@@ -134,8 +138,13 @@ class FixedBoardScenario:
     connect_length: int = STANDARD_CONNECT4_CONNECT_LENGTH
 
     def __post_init__(self) -> None:
-        """Normalize the configured starting board."""
+        """Normalize and validate the configured starting board."""
         self.initial_board = normalize_board(rows=self.initial_board)
+        validate_standard_connect4_configuration(
+            rows=len(self.initial_board),
+            columns=len(self.initial_board[0]),
+            connect_length=self.connect_length,
+        )
 
     def reset(self, *, seed: int) -> ScenarioReset[Connect4State]:
         """Create a fresh Connect 4 episode from the configured board.

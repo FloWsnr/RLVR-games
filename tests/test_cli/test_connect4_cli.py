@@ -247,18 +247,28 @@ def test_build_connect4_environment_can_use_solver_opponent() -> None:
     assert isinstance(env.auto_advance_policy, Connect4SolverAutoAdvancePolicy)
 
 
-def test_build_connect4_environment_rejects_solver_features_for_non_standard_board() -> (
-    None
-):
+def test_connect4_cli_rejects_removed_rows_option() -> None:
+    parser = build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "play",
+                "connect4",
+                "--rows",
+                "5",
+            ]
+        )
+
+
+def test_build_connect4_environment_rejects_non_standard_fixed_board() -> None:
     parser = build_parser()
     args = parser.parse_args(
         [
             "play",
             "connect4",
-            "--reward",
-            "solver-move-dense",
-            "--columns",
-            "8",
+            "--board",
+            "......./......./......./......./.......",
         ]
     )
 

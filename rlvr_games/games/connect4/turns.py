@@ -31,6 +31,9 @@ class Connect4SolverAutoAdvancePolicy(AutoAdvancePolicy[Connect4State, Connect4A
 
     def reset(self, *, initial_state: Connect4State) -> None:
         """Record which side is controlled by the agent for this episode."""
+        validate_state = getattr(self.move_selector, "validate_state", None)
+        if callable(validate_state):
+            validate_state(state=initial_state)
         self._agent_side = cast(str, initial_state.current_player)
 
     def is_agent_turn(self, *, state: Connect4State) -> bool:

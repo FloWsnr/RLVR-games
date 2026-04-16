@@ -1,10 +1,12 @@
 """Connect 4 scenario tests."""
 
+import pytest
+
 from rlvr_games.games.connect4 import (
     FixedBoardScenario,
     RandomPositionScenario,
 )
-from tests.test_games.test_connect4.support import PRE_WIN_BOARD
+from tests.test_games.test_connect4.support import PRE_WIN_BOARD, board_from_rows
 
 
 def test_random_position_scenario_is_deterministic_and_non_terminal() -> None:
@@ -42,3 +44,25 @@ def test_fixed_board_scenario_preserves_board() -> None:
     assert state.board == PRE_WIN_BOARD
     assert info["scenario"] == "fixed_board"
     assert info["initial_board"] == PRE_WIN_BOARD
+
+
+def test_random_position_scenario_rejects_non_standard_variant() -> None:
+    with pytest.raises(ValueError, match="standard 6x7 board"):
+        RandomPositionScenario(
+            rows=5,
+            columns=7,
+            connect_length=4,
+        )
+
+
+def test_fixed_board_scenario_rejects_non_standard_board_size() -> None:
+    with pytest.raises(ValueError, match="standard 6x7 board"):
+        FixedBoardScenario(
+            initial_board=board_from_rows(
+                ".......",
+                ".......",
+                ".......",
+                ".......",
+                ".......",
+            )
+        )

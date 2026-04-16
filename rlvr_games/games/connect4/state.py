@@ -3,6 +3,11 @@
 from dataclasses import dataclass, field
 from typing import Sequence
 
+from rlvr_games.games.connect4.variant import (
+    validate_standard_connect4_configuration,
+    validate_standard_connect4_dimensions,
+)
+
 EMPTY_CELL = "."
 PLAYER_X = "x"
 PLAYER_O = "o"
@@ -95,7 +100,7 @@ class Connect4Outcome:
 
 @dataclass(init=False, slots=True, frozen=True)
 class Connect4State:
-    """Canonical Connect 4 state.
+    """Canonical standard Connect 4 state.
 
     Attributes
     ----------
@@ -158,12 +163,11 @@ class Connect4State:
         normalized_board = normalize_board(rows=board)
         row_count = len(normalized_board)
         column_count = len(normalized_board[0])
-        if connect_length < 2:
-            raise ValueError("Connect 4 connect_length must be at least 2.")
-        if connect_length > max(row_count, column_count):
-            raise ValueError(
-                "Connect 4 connect_length must fit within the board dimensions."
-            )
+        validate_standard_connect4_configuration(
+            rows=row_count,
+            columns=column_count,
+            connect_length=connect_length,
+        )
 
         _validate_gravity(board=normalized_board)
         piece_count_x = sum(row.count(PLAYER_X) for row in normalized_board)
@@ -270,24 +274,21 @@ class Connect4State:
 
 
 def make_empty_board(*, rows: int, columns: int) -> Board:
-    """Return an empty Connect 4 board with the requested dimensions.
+    """Return an empty standard Connect 4 board.
 
     Parameters
     ----------
     rows : int
-        Number of rows in the board.
+        Number of rows in the board. Must be 6.
     columns : int
-        Number of columns in the board.
+        Number of columns in the board. Must be 7.
 
     Returns
     -------
     Board
         Empty top-down board.
     """
-    if rows < 1:
-        raise ValueError("Connect 4 boards must have at least one row.")
-    if columns < 1:
-        raise ValueError("Connect 4 boards must have at least one column.")
+    validate_standard_connect4_dimensions(rows=rows, columns=columns)
     return tuple(tuple(EMPTY_CELL for _ in range(columns)) for _ in range(rows))
 
 

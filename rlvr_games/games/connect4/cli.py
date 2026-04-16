@@ -18,14 +18,12 @@ from rlvr_games.games.connect4.scenarios import (
     DEFAULT_RANDOM_START_MAX_MOVES,
     FixedBoardScenario,
     RandomPositionScenario,
-    STANDARD_CONNECT4_COLUMNS,
-    STANDARD_CONNECT4_CONNECT_LENGTH,
-    STANDARD_CONNECT4_ROWS,
     normalize_initial_board,
 )
 from rlvr_games.games.connect4.solver import BitBullySolver
 from rlvr_games.games.connect4.state import Board, Connect4State
 from rlvr_games.games.connect4.turns import Connect4SolverAutoAdvancePolicy
+from rlvr_games.games.connect4.variant import validate_standard_connect4_dimensions
 
 
 class Connect4RewardKind(StrEnum):
@@ -50,13 +48,6 @@ def register_connect4_arguments(parser: ArgumentParser) -> None:
     parser : ArgumentParser
         Connect 4 play subparser to configure.
     """
-    parser.add_argument("--rows", type=int, default=STANDARD_CONNECT4_ROWS)
-    parser.add_argument("--columns", type=int, default=STANDARD_CONNECT4_COLUMNS)
-    parser.add_argument(
-        "--connect-length",
-        type=int,
-        default=STANDARD_CONNECT4_CONNECT_LENGTH,
-    )
     parser.add_argument(
         "--max-start-moves", type=int, default=DEFAULT_RANDOM_START_MAX_MOVES
     )
@@ -94,7 +85,6 @@ def build_connect4_environment(
     scenario = build_connect4_scenario(args=args, parser=parser)
     solver: BitBullySolver | None = None
     if connect4_solver_requested(args=args):
-        validate_connect4_solver_configuration(args=args, parser=parser)
         solver = BitBullySolver()
 
     return make_connect4_env(
@@ -137,19 +127,20 @@ def build_connect4_scenario(
 
     if args.board is None:
         return RandomPositionScenario(
-            rows=args.rows,
-            columns=args.columns,
-            connect_length=args.connect_length,
             min_start_moves=0,
             max_start_moves=args.max_start_moves,
         )
 
     if args.max_start_moves != DEFAULT_RANDOM_START_MAX_MOVES:
         parser.error("--max-start-moves is only supported without --board.")
-    return FixedBoardScenario(
-        initial_board=args.board,
-        connect_length=args.connect_length,
-    )
+    try:
+        validate_standard_connect4_dimensions(
+            rows=len(args.board),
+            columns=len(args.board[0]),
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
+    return FixedBoardScenario(initial_board=args.board)
 
 
 def build_connect4_reward(
@@ -222,38 +213,6 @@ def connect4_solver_requested(*, args: Namespace) -> bool:
         Connect4RewardKind(args.reward) == Connect4RewardKind.SOLVER_MOVE_DENSE
         or Connect4OpponentKind(args.opponent) == Connect4OpponentKind.SOLVER
     )
-
-
-def validate_connect4_solver_configuration(
-    *,
-    args: Namespace,
-    parser: ArgumentParser,
-) -> None:
-    """Validate that the requested Connect 4 setup is BitBully-compatible.
-
-    Parameters
-    ----------
-    args : Namespace
-        Parsed CLI arguments for a Connect 4 play session.
-    parser : ArgumentParser
-        Parser used to raise argument errors.
-    """
-    if args.board is None:
-        rows = args.rows
-        columns = args.columns
-    else:
-        rows = len(args.board)
-        columns = len(args.board[0])
-
-    if (
-        rows != STANDARD_CONNECT4_ROWS
-        or columns != STANDARD_CONNECT4_COLUMNS
-        or args.connect_length != STANDARD_CONNECT4_CONNECT_LENGTH
-    ):
-        parser.error(
-            "BitBully-backed connect4 rewards and solver opponents require the "
-            "standard 6x7 board with connect_length=4."
-        )
 
 
 def format_connect4_step_result(step_result: StepResult) -> tuple[str, ...]:

@@ -182,6 +182,18 @@ class SolverMoveScoreReward:
             perspective=concrete_perspective,
         )
 
+    def reset(self, *, initial_state: Connect4State) -> None:
+        """Validate reset-time state compatibility for the configured scorer.
+
+        Parameters
+        ----------
+        initial_state : Connect4State
+            Canonical state visible to the agent after reset-time events.
+        """
+        validate_state = getattr(self.scorer, "validate_state", None)
+        if callable(validate_state):
+            validate_state(state=initial_state)
+
     def close(self) -> None:
         """Close the underlying scorer when it owns external resources.
 

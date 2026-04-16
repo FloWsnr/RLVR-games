@@ -77,3 +77,21 @@ def test_state_detects_wins_and_draws() -> None:
     assert draw_state.outcome.winner is None
     assert draw_state.outcome.termination == "draw"
     assert draw_state.legal_actions == ()
+
+
+def test_state_rejects_non_standard_board_size() -> None:
+    invalid_board = board_from_rows(
+        ".......",
+        ".......",
+        ".......",
+        ".......",
+        ".......",
+    )
+
+    with pytest.raises(ValueError, match="standard 6x7 board"):
+        Connect4State(board=invalid_board, connect_length=4)
+
+
+def test_state_rejects_non_standard_connect_length() -> None:
+    with pytest.raises(ValueError, match="standard 6x7 board"):
+        Connect4State(board=PRE_WIN_BOARD, connect_length=5)

@@ -1,14 +1,12 @@
 """Connect 4 BitBully solver tests."""
 
-import pytest
-
 from rlvr_games.games.connect4 import (
     BitBullySolver,
     Connect4Action,
     Connect4State,
 )
 from rlvr_games.games.connect4.state import make_empty_board
-from tests.test_games.test_connect4.support import PRE_WIN_BOARD, board_from_rows
+from tests.test_games.test_connect4.support import PRE_WIN_BOARD
 
 
 def test_bitbully_solver_scores_and_selects_the_center_on_the_empty_board() -> None:
@@ -63,21 +61,3 @@ def test_bitbully_solver_identifies_the_forced_winning_move() -> None:
         == 18.0
     )
     assert next(iter(solver.score_actions(state=state, perspective="x"))) == "4"
-
-
-def test_bitbully_solver_rejects_non_standard_connect4_variants() -> None:
-    solver = BitBullySolver()
-    state = Connect4State(
-        board=board_from_rows(
-            "........",
-            "........",
-            "........",
-            "........",
-            "........",
-            "........",
-        ),
-        connect_length=4,
-    )
-
-    with pytest.raises(ValueError, match="standard Connect 4"):
-        solver.select_action(state=state)
