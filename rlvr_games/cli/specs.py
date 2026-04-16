@@ -4,8 +4,8 @@ from argparse import ArgumentParser, Namespace
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol, TextIO
 
+from rlvr_games.core.action_context import ActionContext
 from rlvr_games.core.protocol import Environment
-from rlvr_games.core.rollout import ActionContext
 from rlvr_games.core.types import Observation, StepResult
 
 ParserRegistrar = Callable[[ArgumentParser], None]

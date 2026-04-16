@@ -4,6 +4,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Callable, Generic, TypeVar
 
+from rlvr_games.core.action_context import AgentContextProjector
 from rlvr_games.core.exceptions import (
     EpisodeFinishedError,
     EnvironmentNotResetError,
@@ -100,6 +101,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         inspect_canonical_state_fn: Callable[[StateT], dict[str, object]],
         reward_fn: RewardFn[StateT, ActionT],
         config: EpisodeConfig,
+        agent_context_projector: AgentContextProjector[StateT] | None = None,
         reset_event_policy: ResetEventPolicy[StateT] | None = None,
         auto_advance_policy: AutoAdvancePolicy[StateT, ActionT] | None = None,
     ) -> None:
@@ -124,6 +126,9 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         config : EpisodeConfig
             Episode-wide configuration such as optional attempt/transition
             limits, invalid-action handling policy, and metadata.
+        agent_context_projector : AgentContextProjector[StateT] | None
+            Optional projector that exposes selected public-safe structured
+            context to the agent alongside the turn index.
         reset_event_policy : ResetEventPolicy[StateT] | None
             Optional policy that applies authoritative reset-time events such
             as chance spawns or dealer actions before the first observation is
@@ -139,6 +144,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         self.inspect_canonical_state_fn = inspect_canonical_state_fn
         self.reward_fn = reward_fn
         self.config = config
+        self._agent_context_projector = agent_context_projector
         self.reset_event_policy = reset_event_policy
         self.auto_advance_policy = auto_advance_policy
 
@@ -199,6 +205,13 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
                 "Call reset() before accessing env.trajectory."
             )
         return self._trajectory
+
+    @property
+    def agent_context_projector(
+        self,
+    ) -> AgentContextProjector[StateT] | None:
+        """Return the optional projector used for agent-facing context."""
+        return self._agent_context_projector
 
     def legal_actions(self) -> tuple[str, ...]:
         """Return the legal serialized actions for the current state.
@@ -360,6 +373,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             self.renderer,
             self.inspect_canonical_state_fn,
             self.reward_fn,
+            self.agent_context_projector,
             self.reset_event_policy,
             self.auto_advance_policy,
         ):

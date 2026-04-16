@@ -1,7 +1,15 @@
 """Connect 4 environment integration tests."""
 
+from dataclasses import dataclass
+
 import pytest
 
+from rlvr_games.core import (
+    AgentVisibleEvent,
+    ProjectedActionContext,
+    PublicResetEvent,
+    build_action_context,
+)
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.exceptions import EpisodeFinishedError
 from rlvr_games.core.types import EpisodeConfig
@@ -43,6 +51,30 @@ def make_empty_start_env() -> TurnBasedEnv[Connect4State, Connect4Action]:
         include_images=False,
         image_size=360,
     )
+
+
+@dataclass(slots=True)
+class Connect4OpeningProjector:
+    """Return one fixed opening event for factory wiring tests."""
+
+    def project_action_context(
+        self,
+        *,
+        state: Connect4State,
+        reset_events: tuple[PublicResetEvent, ...],
+    ) -> ProjectedActionContext:
+        """Project one simple opening event."""
+        del state
+        del reset_events
+        return ProjectedActionContext(
+            opening_events=(
+                AgentVisibleEvent(
+                    kind="opening_event",
+                    source="setup",
+                    text="factory wired projector",
+                ),
+            ),
+        )
 
 
 def test_horizontal_win_sequence_terminates_with_reward_and_metadata() -> None:
@@ -111,6 +143,34 @@ def test_env_records_trajectory_with_real_backend() -> None:
     assert env.trajectory.steps[0].action is not None
     assert env.trajectory.steps[0].action.label == "1"
     assert env.trajectory.steps[0].info["player"] == "x"
+
+
+def test_factory_forwards_agent_context_projector() -> None:
+    env = make_connect4_env(
+        scenario=RandomPositionScenario(
+            rows=6,
+            columns=7,
+            connect_length=4,
+            min_start_moves=0,
+            max_start_moves=0,
+        ),
+        reward_fn=make_reward(),
+        config=EpisodeConfig(),
+        include_images=False,
+        image_size=360,
+        agent_context_projector=Connect4OpeningProjector(),
+    )
+    env.reset(seed=3)
+
+    context = build_action_context(env=env)
+
+    assert context.opening_events == (
+        AgentVisibleEvent(
+            kind="opening_event",
+            source="setup",
+            text="factory wired projector",
+        ),
+    )
 
 
 def test_solver_auto_advance_returns_to_agent_turn_and_records_reply() -> None:

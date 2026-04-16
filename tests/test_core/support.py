@@ -6,6 +6,7 @@ from typing import Any
 from rlvr_games.core import ZeroReward
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.exceptions import InvalidActionError
+from rlvr_games.core.action_context import AgentContextProjector
 from rlvr_games.core.protocol import AutoAdvancePolicy, ResetEventPolicy, RewardFn
 from rlvr_games.core.trajectory import ScenarioReset
 from rlvr_games.core.types import EpisodeConfig, Observation, ParseResult
@@ -143,6 +144,7 @@ def make_counter_env(
     backend: CounterBackend,
     config: EpisodeConfig,
     reward_fn: RewardFn[CounterState, CounterAction] | None = None,
+    agent_context_projector: AgentContextProjector[CounterState] | None = None,
     reset_event_policy: ResetEventPolicy[CounterState] | None = None,
     auto_advance_policy: AutoAdvancePolicy[CounterState, CounterAction] | None = None,
 ) -> TurnBasedEnv[CounterState, CounterAction]:
@@ -156,6 +158,7 @@ def make_counter_env(
         inspect_canonical_state_fn=inspect_counter_state,
         reward_fn=reward_fn,
         config=config,
+        agent_context_projector=agent_context_projector,
         reset_event_policy=reset_event_policy,
         auto_advance_policy=auto_advance_policy,
     )

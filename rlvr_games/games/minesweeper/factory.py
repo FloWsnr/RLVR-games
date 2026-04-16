@@ -1,5 +1,6 @@
 """Factory helpers for constructing Minesweeper environments."""
 
+from rlvr_games.core.action_context import AgentContextProjector
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.protocol import RewardFn
 from rlvr_games.core.types import EpisodeConfig
@@ -31,6 +32,7 @@ def make_minesweeper_env(
     config: EpisodeConfig,
     include_images: bool,
     image_size: int,
+    agent_context_projector: AgentContextProjector[MinesweeperState] | None = None,
 ) -> TurnBasedEnv[MinesweeperState, MinesweeperAction]:
     """Construct a fully wired Minesweeper environment.
 
@@ -54,6 +56,9 @@ def make_minesweeper_env(
         Whether observations should include rendered board images.
     image_size : int
         Raster image size in pixels. Ignored when `include_images` is `False`.
+    agent_context_projector : AgentContextProjector[MinesweeperState] | None
+        Optional projector that adds structured agent-visible context such as
+        opening events.
 
     Returns
     -------
@@ -84,4 +89,5 @@ def make_minesweeper_env(
         inspect_canonical_state_fn=inspect_minesweeper_state,
         reward_fn=reward_fn,
         config=config,
+        agent_context_projector=agent_context_projector,
     )

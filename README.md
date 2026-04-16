@@ -29,6 +29,9 @@ game composes that generic environment out of a small set of collaborators:
 - `inspect_canonical_state_fn`: returns a privileged canonical-state summary
   for debugging and tooling
 - `RewardFn`: scores accepted environment steps
+- `AgentContextProjector` (optional): projects selected public-safe structured
+  context, such as opening events, into the agent-facing action context while
+  the environment keeps ownership of generic fields like turn index
 - `ResetEventPolicy` (optional): applies authoritative reset-time events such
   as dealer actions or chance outcomes before the first observation
 - `AutoAdvancePolicy` (optional): applies internal verifier-backed moves such
@@ -59,11 +62,13 @@ That split is deliberate. It keeps the generic episode lifecycle in one place,
 while game-specific logic stays inside the backend, scenario, renderer, and
 reward components.
 
-The intended agent-facing surface is the observation only. Canonical
-inspection through `env.inspect_canonical_state()` and exact move enumeration
-through `env.legal_actions()` remain available for debugging, CLI tooling, and
-future action-masking experiments, but they are not injected into the default
-observation or action context.
+The intended agent-facing surface is the observation plus explicit structured
+action context. Canonical inspection through `env.inspect_canonical_state()`
+and exact move enumeration through `env.legal_actions()` remain available for
+debugging, CLI tooling, and future action-masking experiments, but they are
+not injected into the default observation. Any extra agent-visible setup
+history should be exposed explicitly through `ActionContext`, not smuggled
+through `reset_info` or renderer output.
 
 The same split now applies to trajectory metadata: `reset_info`,
 `trajectory.reset_events`, `TrajectoryStep.info`, and `RecordedTransition.info`
@@ -123,12 +128,20 @@ same shape:
 observation, reset_info = env.reset(seed=0)
 
 while not env.episode_finished:
+    context = build_action_context(env=env)
     raw_action = agent.act(observation, context)
     step_result = env.step(raw_action)
     observation = step_result.observation
 
 trajectory = env.trajectory
 ```
+
+`ActionContext` always includes the env-owned `turn_index`. Games may add
+structured projected data such as `opening_events` through an
+`AgentContextProjector`, but that projector only contributes the extra
+agent-visible fields rather than constructing the full context itself. The
+projector receives detached public reset-event snapshots rather than the full
+debug trajectory.
 
 Game-specific factories, scenarios, renderers, and rewards live under
 `rlvr_games/games/<game>/`. The important invariant is the same across games:

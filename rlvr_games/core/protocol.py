@@ -2,6 +2,7 @@
 
 from typing import Any, Protocol, TypeVar
 
+from rlvr_games.core.action_context import AgentContextProjector
 from rlvr_games.core.trajectory import (
     AppliedResetEvent,
     EpisodeTrajectory,
@@ -18,7 +19,7 @@ from rlvr_games.core.types import (
 
 BackendStateT = TypeVar("BackendStateT")
 BackendActionT = TypeVar("BackendActionT")
-EnvStateT = TypeVar("EnvStateT", covariant=True)
+EnvStateT = TypeVar("EnvStateT")
 EnvActionT = TypeVar("EnvActionT")
 ScenarioStateT = TypeVar("ScenarioStateT")
 RendererStateT = TypeVar("RendererStateT", contravariant=True)
@@ -171,6 +172,21 @@ class Environment(Protocol[EnvStateT, EnvActionT]):
         -------
         EpisodeTrajectory[EnvActionT]
             The episode trajectory accumulated so far.
+        """
+        ...
+
+    @property
+    def agent_context_projector(
+        self,
+    ) -> AgentContextProjector[EnvStateT] | None:
+        """Return the optional agent-facing context projector.
+
+        Returns
+        -------
+        AgentContextProjector[EnvStateT] | None
+            Projector used to expose structured public-safe context to the
+            agent, or `None` when the environment uses the default minimal
+            action context.
         """
         ...
 

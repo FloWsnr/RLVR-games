@@ -4,6 +4,7 @@ from enum import StrEnum
 
 import chess
 
+from rlvr_games.core.action_context import AgentContextProjector
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.protocol import AutoAdvancePolicy, RewardFn, Scenario
 from rlvr_games.core.types import EpisodeConfig
@@ -42,6 +43,7 @@ def make_chess_env(
     image_size: int,
     image_coordinates: bool,
     orientation: ChessBoardOrientation,
+    agent_context_projector: AgentContextProjector[ChessState] | None = None,
     auto_advance_policy: AutoAdvancePolicy[ChessState, ChessAction] | None = None,
 ) -> TurnBasedEnv[ChessState, ChessAction]:
     """Construct a fully wired chess environment.
@@ -66,6 +68,9 @@ def make_chess_env(
         Ignored when `include_images` is `False`.
     orientation : ChessBoardOrientation
         Side to place at the bottom of text and raster board renders.
+    agent_context_projector : AgentContextProjector[ChessState] | None
+        Optional projector that adds structured agent-visible context such as
+        opening events.
     auto_advance_policy : AutoAdvancePolicy[ChessState, ChessAction] | None
         Optional policy that auto-applies internal chess transitions between
         agent turns.
@@ -104,5 +109,6 @@ def make_chess_env(
         inspect_canonical_state_fn=inspect_chess_state,
         reward_fn=reward_fn,
         config=config,
+        agent_context_projector=agent_context_projector,
         auto_advance_policy=auto_advance_policy,
     )

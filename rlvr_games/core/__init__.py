@@ -1,5 +1,12 @@
 """Core environment abstractions for RLVR games."""
 
+from rlvr_games.core.action_context import (
+    ActionContext,
+    AgentContextProjector,
+    AgentVisibleEvent,
+    PublicResetEvent,
+    ProjectedActionContext,
+)
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.exceptions import (
     EpisodeFinishedError,
@@ -15,10 +22,7 @@ from rlvr_games.core.protocol import (
     TextRenderer,
 )
 from rlvr_games.core.rewards import ZeroReward
-from rlvr_games.core.rollout import (
-    ActionContext,
-    build_action_context,
-)
+from rlvr_games.core.rollout import build_action_context
 from rlvr_games.core.trajectory import (
     AppliedResetEvent,
     EpisodeTrajectory,
@@ -41,6 +45,10 @@ from rlvr_games.core.types import (
 
 __all__ = [
     "ActionContext",
+    "AgentContextProjector",
+    "AgentVisibleEvent",
+    "PublicResetEvent",
+    "ProjectedActionContext",
     "AppliedResetEvent",
     "AutoAction",
     "AutoAdvancePolicy",

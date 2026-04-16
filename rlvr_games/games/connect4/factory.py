@@ -1,5 +1,6 @@
 """Factory helpers for constructing Connect 4 environments."""
 
+from rlvr_games.core.action_context import AgentContextProjector
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.protocol import AutoAdvancePolicy, RewardFn, Scenario
 from rlvr_games.core.types import EpisodeConfig
@@ -20,6 +21,7 @@ def make_connect4_env(
     config: EpisodeConfig,
     include_images: bool,
     image_size: int,
+    agent_context_projector: AgentContextProjector[Connect4State] | None = None,
     auto_advance_policy: AutoAdvancePolicy[Connect4State, Connect4Action] | None = None,
 ) -> TurnBasedEnv[Connect4State, Connect4Action]:
     """Construct a fully wired Connect 4 environment.
@@ -37,6 +39,9 @@ def make_connect4_env(
         Whether observations should include rendered board images.
     image_size : int
         Raster image size in pixels. Ignored when `include_images` is `False`.
+    agent_context_projector : AgentContextProjector[Connect4State] | None
+        Optional projector that adds structured agent-visible context such as
+        opening events.
     auto_advance_policy : AutoAdvancePolicy[Connect4State, Connect4Action] | None
         Optional policy that auto-applies internal Connect 4 transitions
         between agent turns.
@@ -61,5 +66,6 @@ def make_connect4_env(
         inspect_canonical_state_fn=inspect_connect4_state,
         reward_fn=reward_fn,
         config=config,
+        agent_context_projector=agent_context_projector,
         auto_advance_policy=auto_advance_policy,
     )

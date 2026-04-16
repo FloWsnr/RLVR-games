@@ -2,6 +2,7 @@
 
 from typing import Sequence
 
+from rlvr_games.core.action_context import AgentContextProjector
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.protocol import RewardFn
 from rlvr_games.core.types import EpisodeConfig
@@ -33,6 +34,7 @@ def make_game2048_env(
     config: EpisodeConfig,
     include_images: bool,
     image_size: int,
+    agent_context_projector: AgentContextProjector[Game2048State] | None = None,
 ) -> TurnBasedEnv[Game2048State, Game2048Action]:
     """Construct a fully wired 2048 environment.
 
@@ -58,6 +60,9 @@ def make_game2048_env(
         Whether observations should include rendered board images.
     image_size : int
         Raster image size in pixels. Ignored when `include_images` is `False`.
+    agent_context_projector : AgentContextProjector[Game2048State] | None
+        Optional projector that adds structured agent-visible context such as
+        opening events.
 
     Returns
     -------
@@ -109,5 +114,6 @@ def make_game2048_env(
         inspect_canonical_state_fn=inspect_game2048_state,
         reward_fn=reward_fn,
         config=config,
+        agent_context_projector=agent_context_projector,
         reset_event_policy=reset_event_policy,
     )
