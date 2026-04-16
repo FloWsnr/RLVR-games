@@ -44,7 +44,7 @@ environment-first RLVR framework built around executable game verifiers.
 - Add focused pytest coverage for parsing, illegal actions, rewards, terminal
   behavior, truncation behavior, rendering, and trajectory recording.
 - Prefer deterministic tests with explicit seeds.
-- Run the full validation stack before finishing: format, lint (`uv run ruff`), static type
+- Run the full validation stack before finishing: format & lint (`uv run ruff check`, `uv run ruff format`), static type
   checking (`uv run pyright`), and tests (`uv run pytest`).
 - Keep types explicit. Avoid unnecessary optional/default parameters when they
   hide behavior.
