@@ -8,6 +8,7 @@ from rlvr_games.core import (
     AgentVisibleEvent,
     ProjectedActionContext,
     PublicResetEvent,
+    TextMessagePart,
     build_action_context,
 )
 from rlvr_games.core.env import TurnBasedEnv
@@ -171,6 +172,32 @@ def test_factory_forwards_agent_context_projector() -> None:
             text="factory wired projector",
         ),
     )
+
+
+def test_default_message_adapter_uses_standard_column_reminder() -> None:
+    env = make_connect4_env(
+        scenario=RandomPositionScenario(
+            rows=6,
+            columns=7,
+            connect_length=4,
+            min_start_moves=0,
+            max_start_moves=0,
+        ),
+        reward_fn=make_reward(),
+        config=EpisodeConfig(),
+        include_images=False,
+        image_size=360,
+    )
+    observation, _ = env.reset(seed=3)
+
+    messages = env.messages_for_observation(
+        observation,
+        action_context=build_action_context(env=env),
+    )
+
+    text_part = messages[0].content[0]
+    assert isinstance(text_part, TextMessagePart)
+    assert "`1` to `7`" in text_part.text
 
 
 def test_solver_auto_advance_returns_to_agent_turn_and_records_reply() -> None:

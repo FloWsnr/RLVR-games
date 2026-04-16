@@ -2,6 +2,7 @@
 
 import pytest
 
+from rlvr_games.core import TextMessagePart, build_action_context
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.exceptions import EpisodeFinishedError
 from rlvr_games.core.types import EpisodeConfig
@@ -50,6 +51,22 @@ def test_reset_applies_the_opening_roll_and_records_a_reset_event() -> None:
     assert env.trajectory.reset_events[0].label == "opening-roll 4 4 1 3 5"
     assert "rng_state" not in info
     assert env.trajectory.reset_events[0].debug_info["rng_state"] != ()
+
+
+def test_default_message_adapter_does_not_advertise_opening_roll() -> None:
+    env = make_standard_env()
+    observation, _ = env.reset(seed=0)
+
+    messages = env.messages_for_observation(
+        observation,
+        action_context=build_action_context(env=env),
+    )
+
+    text_part = messages[0].content[0]
+    assert isinstance(text_part, TextMessagePart)
+    assert "`opening-roll`" not in text_part.text
+    assert "`reroll 1 3 5`" in text_part.text
+    assert "`score full-house`" in text_part.text
 
 
 def test_env_scores_a_category_and_starts_the_next_turn() -> None:

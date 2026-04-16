@@ -3,10 +3,15 @@
 from dataclasses import dataclass
 from typing import Any
 
-from rlvr_games.core import ZeroReward
+from rlvr_games.core import (
+    DefaultObservationMessageAdapter,
+    DefaultObservationMessagePolicy,
+    ZeroReward,
+)
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.exceptions import InvalidActionError
 from rlvr_games.core.action_context import AgentContextProjector
+from rlvr_games.core.messages import ObservationMessageAdapter
 from rlvr_games.core.protocol import AutoAdvancePolicy, ResetEventPolicy, RewardFn
 from rlvr_games.core.trajectory import ScenarioReset
 from rlvr_games.core.types import EpisodeConfig, Observation, ParseResult
@@ -145,12 +150,17 @@ def make_counter_env(
     config: EpisodeConfig,
     reward_fn: RewardFn[CounterState, CounterAction] | None = None,
     agent_context_projector: AgentContextProjector[CounterState] | None = None,
+    observation_message_adapter: ObservationMessageAdapter | None = None,
     reset_event_policy: ResetEventPolicy[CounterState] | None = None,
     auto_advance_policy: AutoAdvancePolicy[CounterState, CounterAction] | None = None,
 ) -> TurnBasedEnv[CounterState, CounterAction]:
     """Construct the standard counter env used in core tests."""
     if reward_fn is None:
         reward_fn = CounterReward()
+    if observation_message_adapter is None:
+        observation_message_adapter = DefaultObservationMessageAdapter(
+            policy=DefaultObservationMessagePolicy()
+        )
     return TurnBasedEnv(
         backend=backend,
         scenario=CounterScenario(),
@@ -159,6 +169,7 @@ def make_counter_env(
         reward_fn=reward_fn,
         config=config,
         agent_context_projector=agent_context_projector,
+        observation_message_adapter=observation_message_adapter,
         reset_event_policy=reset_event_policy,
         auto_advance_policy=auto_advance_policy,
     )

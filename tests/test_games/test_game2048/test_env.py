@@ -2,6 +2,10 @@
 
 import pytest
 
+from rlvr_games.core import (
+    DefaultObservationMessageAdapter,
+    DefaultObservationMessagePolicy,
+)
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.exceptions import EpisodeFinishedError
 from rlvr_games.core.types import EpisodeConfig
@@ -39,6 +43,11 @@ def make_renderer() -> Game2048ObservationRenderer:
     )
 
 
+def make_message_adapter() -> DefaultObservationMessageAdapter:
+    """Return a generic observation message adapter for direct env tests."""
+    return DefaultObservationMessageAdapter(policy=DefaultObservationMessagePolicy())
+
+
 def test_reaching_target_tile_terminates_with_reward_and_metadata() -> None:
     chance_model = Game2048ChanceModel()
     env = TurnBasedEnv(
@@ -54,6 +63,7 @@ def test_reaching_target_tile_terminates_with_reward_and_metadata() -> None:
         inspect_canonical_state_fn=inspect_game2048_state,
         reward_fn=TargetTileReward(),
         config=EpisodeConfig(),
+        observation_message_adapter=make_message_adapter(),
     )
     env.reset(seed=1)
 
@@ -92,6 +102,7 @@ def test_terminal_reset_marks_episode_finished_and_rejects_steps() -> None:
         inspect_canonical_state_fn=inspect_game2048_state,
         reward_fn=TargetTileReward(),
         config=EpisodeConfig(),
+        observation_message_adapter=make_message_adapter(),
     )
 
     observation, _ = env.reset(seed=23)
@@ -119,6 +130,7 @@ def test_env_records_trajectory_with_real_backend() -> None:
         inspect_canonical_state_fn=inspect_game2048_state,
         reward_fn=TargetTileReward(),
         config=EpisodeConfig(),
+        observation_message_adapter=make_message_adapter(),
         reset_event_policy=Game2048StartTilePolicy(
             backend=backend,
             start_tile_count=2,

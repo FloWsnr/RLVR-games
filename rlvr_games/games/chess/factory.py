@@ -6,6 +6,10 @@ import chess
 
 from rlvr_games.core.action_context import AgentContextProjector
 from rlvr_games.core.env import TurnBasedEnv
+from rlvr_games.core.messages import (
+    DefaultObservationMessageAdapter,
+    DefaultObservationMessagePolicy,
+)
 from rlvr_games.core.protocol import AutoAdvancePolicy, RewardFn, Scenario
 from rlvr_games.core.types import EpisodeConfig
 from rlvr_games.games.chess.actions import ChessAction
@@ -31,6 +35,18 @@ class ChessBoardOrientation(StrEnum):
 
     WHITE = "white"
     BLACK = "black"
+
+
+def _default_chess_message_adapter() -> DefaultObservationMessageAdapter:
+    """Return the default chess observation message adapter."""
+    return DefaultObservationMessageAdapter(
+        policy=DefaultObservationMessagePolicy(
+            action_reminder_text=(
+                "Respond with one legal chess move in UCI format, for example "
+                "`e2e4` or `a7a8q`."
+            ),
+        )
+    )
 
 
 def make_chess_env(
@@ -110,5 +126,6 @@ def make_chess_env(
         reward_fn=reward_fn,
         config=config,
         agent_context_projector=agent_context_projector,
+        observation_message_adapter=_default_chess_message_adapter(),
         auto_advance_policy=auto_advance_policy,
     )

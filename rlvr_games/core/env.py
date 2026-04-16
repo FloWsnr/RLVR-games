@@ -4,12 +4,13 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Callable, Generic, TypeVar
 
-from rlvr_games.core.action_context import AgentContextProjector
+from rlvr_games.core.action_context import ActionContext, AgentContextProjector
 from rlvr_games.core.exceptions import (
     EpisodeFinishedError,
     EnvironmentNotResetError,
     InvalidActionError,
 )
+from rlvr_games.core.messages import ChatMessage, ObservationMessageAdapter
 from rlvr_games.core.protocol import (
     AutoAdvancePolicy,
     GameBackend,
@@ -102,6 +103,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         reward_fn: RewardFn[StateT, ActionT],
         config: EpisodeConfig,
         agent_context_projector: AgentContextProjector[StateT] | None = None,
+        observation_message_adapter: ObservationMessageAdapter,
         reset_event_policy: ResetEventPolicy[StateT] | None = None,
         auto_advance_policy: AutoAdvancePolicy[StateT, ActionT] | None = None,
     ) -> None:
@@ -129,6 +131,9 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         agent_context_projector : AgentContextProjector[StateT] | None
             Optional projector that exposes selected public-safe structured
             context to the agent alongside the turn index.
+        observation_message_adapter : ObservationMessageAdapter
+            Adapter that converts observations into trainer-facing chat
+            messages while keeping the renderer output transport-neutral.
         reset_event_policy : ResetEventPolicy[StateT] | None
             Optional policy that applies authoritative reset-time events such
             as chance spawns or dealer actions before the first observation is
@@ -145,6 +150,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         self.reward_fn = reward_fn
         self.config = config
         self._agent_context_projector = agent_context_projector
+        self._observation_message_adapter = observation_message_adapter
         self.reset_event_policy = reset_event_policy
         self.auto_advance_policy = auto_advance_policy
 
@@ -212,6 +218,37 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
     ) -> AgentContextProjector[StateT] | None:
         """Return the optional projector used for agent-facing context."""
         return self._agent_context_projector
+
+    @property
+    def observation_message_adapter(self) -> ObservationMessageAdapter:
+        """Return the observation-to-message adapter."""
+        return self._observation_message_adapter
+
+    def messages_for_observation(
+        self,
+        observation: Observation,
+        *,
+        action_context: ActionContext,
+    ) -> tuple[ChatMessage, ...]:
+        """Adapt an observation into trainer-facing chat messages.
+
+        Parameters
+        ----------
+        observation : Observation
+            Observation to adapt for the next model turn.
+        action_context : ActionContext
+            Structured context that belongs to the supplied observation.
+
+        Returns
+        -------
+        tuple[ChatMessage, ...]
+            Structured chat messages derived from the supplied observation and
+            its associated action context.
+        """
+        return self._observation_message_adapter.to_messages(
+            observation=observation,
+            action_context=action_context,
+        )
 
     def legal_actions(self) -> tuple[str, ...]:
         """Return the legal serialized actions for the current state.

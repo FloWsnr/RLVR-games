@@ -2,7 +2,8 @@
 
 from typing import Any, Protocol, TypeVar
 
-from rlvr_games.core.action_context import AgentContextProjector
+from rlvr_games.core.action_context import ActionContext, AgentContextProjector
+from rlvr_games.core.messages import ChatMessage, ObservationMessageAdapter
 from rlvr_games.core.trajectory import (
     AppliedResetEvent,
     EpisodeTrajectory,
@@ -190,6 +191,18 @@ class Environment(Protocol[EnvStateT, EnvActionT]):
         """
         ...
 
+    @property
+    def observation_message_adapter(self) -> ObservationMessageAdapter:
+        """Return the observation-to-message adapter.
+
+        Returns
+        -------
+        ObservationMessageAdapter
+            Adapter used to turn observations into trainer-facing chat
+            messages.
+        """
+        ...
+
     def reset(self, *, seed: int) -> tuple[Observation, dict[str, object]]:
         """Start a fresh episode.
 
@@ -220,6 +233,29 @@ class Environment(Protocol[EnvStateT, EnvActionT]):
             the attempted step. The returned observation remains the
             agent-facing view, while canonical inspection belongs in
             `inspect_canonical_state()`.
+        """
+        ...
+
+    def messages_for_observation(
+        self,
+        observation: Observation,
+        *,
+        action_context: ActionContext,
+    ) -> tuple[ChatMessage, ...]:
+        """Adapt an observation into trainer-facing chat messages.
+
+        Parameters
+        ----------
+        observation : Observation
+            Observation to adapt for the next model turn.
+        action_context : ActionContext
+            Structured context that belongs to the supplied observation.
+
+        Returns
+        -------
+        tuple[ChatMessage, ...]
+            Structured chat messages produced from the supplied observation
+            and action context.
         """
         ...
 

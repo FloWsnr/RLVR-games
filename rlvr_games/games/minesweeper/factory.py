@@ -2,6 +2,10 @@
 
 from rlvr_games.core.action_context import AgentContextProjector
 from rlvr_games.core.env import TurnBasedEnv
+from rlvr_games.core.messages import (
+    DefaultObservationMessageAdapter,
+    DefaultObservationMessagePolicy,
+)
 from rlvr_games.core.protocol import RewardFn
 from rlvr_games.core.types import EpisodeConfig
 from rlvr_games.games.minesweeper.actions import MinesweeperAction
@@ -20,6 +24,18 @@ from rlvr_games.games.minesweeper.state import (
     MinesweeperState,
     inspect_minesweeper_state,
 )
+
+
+def _default_minesweeper_message_adapter() -> DefaultObservationMessageAdapter:
+    """Return the default Minesweeper observation message adapter."""
+    return DefaultObservationMessageAdapter(
+        policy=DefaultObservationMessagePolicy(
+            action_reminder_text=(
+                "Respond with one action in the form `<verb> <row> <col>`, "
+                "for example `reveal 3 5`, `flag 2 4`, or `unflag 2 4`."
+            ),
+        )
+    )
 
 
 def make_minesweeper_env(
@@ -90,4 +106,5 @@ def make_minesweeper_env(
         reward_fn=reward_fn,
         config=config,
         agent_context_projector=agent_context_projector,
+        observation_message_adapter=_default_minesweeper_message_adapter(),
     )

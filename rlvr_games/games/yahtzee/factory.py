@@ -1,6 +1,10 @@
 """Factory helpers for constructing Yahtzee environments."""
 
 from rlvr_games.core.env import TurnBasedEnv
+from rlvr_games.core.messages import (
+    DefaultObservationMessageAdapter,
+    DefaultObservationMessagePolicy,
+)
 from rlvr_games.core.protocol import RewardFn
 from rlvr_games.core.types import EpisodeConfig
 from rlvr_games.games.yahtzee.actions import YahtzeeAction
@@ -16,6 +20,18 @@ from rlvr_games.games.yahtzee.reset_events import YahtzeeOpeningRollPolicy
 from rlvr_games.games.yahtzee.scenarios import FixedStateScenario, StandardGameScenario
 from rlvr_games.games.yahtzee.state import YahtzeeState, inspect_yahtzee_state
 from rlvr_games.games.yahtzee.turns import YahtzeeOpeningRollAutoAdvancePolicy
+
+
+def _default_yahtzee_message_adapter() -> DefaultObservationMessageAdapter:
+    """Return the default Yahtzee observation message adapter."""
+    return DefaultObservationMessageAdapter(
+        policy=DefaultObservationMessagePolicy(
+            action_reminder_text=(
+                "Respond with one Yahtzee action such as `reroll 1 3 5` "
+                "or `score full-house`."
+            ),
+        )
+    )
 
 
 def make_yahtzee_env(
@@ -79,6 +95,7 @@ def make_yahtzee_env(
         inspect_canonical_state_fn=inspect_yahtzee_state,
         reward_fn=reward_fn,
         config=config,
+        observation_message_adapter=_default_yahtzee_message_adapter(),
         reset_event_policy=reset_event_policy,
         auto_advance_policy=YahtzeeOpeningRollAutoAdvancePolicy(),
     )

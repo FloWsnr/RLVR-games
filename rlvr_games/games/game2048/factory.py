@@ -4,6 +4,10 @@ from typing import Sequence
 
 from rlvr_games.core.action_context import AgentContextProjector
 from rlvr_games.core.env import TurnBasedEnv
+from rlvr_games.core.messages import (
+    DefaultObservationMessageAdapter,
+    DefaultObservationMessagePolicy,
+)
 from rlvr_games.core.protocol import RewardFn
 from rlvr_games.core.types import EpisodeConfig
 from rlvr_games.games.game2048.actions import Game2048Action
@@ -21,6 +25,17 @@ from rlvr_games.games.game2048.scenarios import (
     normalize_initial_board,
 )
 from rlvr_games.games.game2048.state import Game2048State, inspect_game2048_state
+
+
+def _default_game2048_message_adapter() -> DefaultObservationMessageAdapter:
+    """Return the default 2048 observation message adapter."""
+    return DefaultObservationMessageAdapter(
+        policy=DefaultObservationMessagePolicy(
+            action_reminder_text=(
+                "Respond with one move: `up`, `right`, `down`, or `left`."
+            ),
+        )
+    )
 
 
 def make_game2048_env(
@@ -115,5 +130,6 @@ def make_game2048_env(
         reward_fn=reward_fn,
         config=config,
         agent_context_projector=agent_context_projector,
+        observation_message_adapter=_default_game2048_message_adapter(),
         reset_event_policy=reset_event_policy,
     )

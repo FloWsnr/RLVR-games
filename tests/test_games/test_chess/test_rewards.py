@@ -2,6 +2,10 @@
 
 import chess
 
+from rlvr_games.core import (
+    DefaultObservationMessageAdapter,
+    DefaultObservationMessagePolicy,
+)
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.types import EpisodeConfig
 from rlvr_games.games.chess import (
@@ -34,6 +38,11 @@ def make_renderer() -> ChessObservationRenderer:
         board_formatter=AsciiBoardFormatter(orientation=chess.WHITE),
         image_renderer=None,
     )
+
+
+def make_message_adapter() -> DefaultObservationMessageAdapter:
+    """Return a generic observation message adapter for direct env tests."""
+    return DefaultObservationMessageAdapter(policy=DefaultObservationMessagePolicy())
 
 
 def make_puzzle_state(
@@ -207,6 +216,7 @@ def test_terminal_outcome_reward_returns_draw_reward_for_threefold_repetition() 
             loss_reward=-1.0,
         ),
         config=EpisodeConfig(),
+        observation_message_adapter=make_message_adapter(),
     )
     env.reset(seed=5)
 

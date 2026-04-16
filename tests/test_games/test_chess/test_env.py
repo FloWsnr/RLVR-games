@@ -5,6 +5,10 @@ from pathlib import Path
 import pytest
 
 from rlvr_games.datasets import DatasetSplit
+from rlvr_games.core import (
+    DefaultObservationMessageAdapter,
+    DefaultObservationMessagePolicy,
+)
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.protocol import GameBackend
 from rlvr_games.core.types import AutoAction
@@ -42,6 +46,11 @@ def make_renderer() -> ChessObservationRenderer:
         board_formatter=AsciiBoardFormatter(orientation=chess.WHITE),
         image_renderer=None,
     )
+
+
+def make_message_adapter() -> DefaultObservationMessageAdapter:
+    """Return a generic observation message adapter for direct env tests."""
+    return DefaultObservationMessageAdapter(policy=DefaultObservationMessagePolicy())
 
 
 def make_reward() -> TerminalOutcomeReward:
@@ -102,6 +111,7 @@ def test_checkmate_sequence_terminates_with_winner_metadata() -> None:
         inspect_canonical_state_fn=inspect_chess_state,
         reward_fn=make_reward(),
         config=EpisodeConfig(),
+        observation_message_adapter=make_message_adapter(),
     )
     env.reset(seed=11)
 
@@ -130,6 +140,7 @@ def test_threefold_repetition_terminates_on_the_third_occurrence() -> None:
         inspect_canonical_state_fn=inspect_chess_state,
         reward_fn=make_reward(),
         config=EpisodeConfig(),
+        observation_message_adapter=make_message_adapter(),
     )
     env.reset(seed=5)
 
@@ -163,6 +174,7 @@ def test_custom_valid_fen_reset_is_normalized() -> None:
         inspect_canonical_state_fn=inspect_chess_state,
         reward_fn=make_reward(),
         config=EpisodeConfig(),
+        observation_message_adapter=make_message_adapter(),
     )
 
     observation, info = env.reset(seed=17)
@@ -181,6 +193,7 @@ def test_terminal_reset_marks_episode_finished_and_rejects_steps() -> None:
         inspect_canonical_state_fn=inspect_chess_state,
         reward_fn=make_reward(),
         config=EpisodeConfig(),
+        observation_message_adapter=make_message_adapter(),
     )
 
     observation, _ = env.reset(seed=23)
@@ -200,6 +213,7 @@ def test_invalid_fen_reset_fails_fast() -> None:
         inspect_canonical_state_fn=inspect_chess_state,
         reward_fn=make_reward(),
         config=EpisodeConfig(),
+        observation_message_adapter=make_message_adapter(),
     )
 
     with pytest.raises(ValueError):
@@ -214,6 +228,7 @@ def test_env_records_trajectory_with_real_backend() -> None:
         inspect_canonical_state_fn=inspect_chess_state,
         reward_fn=make_reward(),
         config=EpisodeConfig(),
+        observation_message_adapter=make_message_adapter(),
     )
     observation, info = env.reset(seed=123)
 

@@ -2,6 +2,10 @@
 
 from rlvr_games.core.action_context import AgentContextProjector
 from rlvr_games.core.env import TurnBasedEnv
+from rlvr_games.core.messages import (
+    DefaultObservationMessageAdapter,
+    DefaultObservationMessagePolicy,
+)
 from rlvr_games.core.protocol import AutoAdvancePolicy, RewardFn, Scenario
 from rlvr_games.core.types import EpisodeConfig
 from rlvr_games.games.connect4.actions import Connect4Action
@@ -12,6 +16,19 @@ from rlvr_games.games.connect4.render import (
     Connect4ObservationRenderer,
 )
 from rlvr_games.games.connect4.state import Connect4State, inspect_connect4_state
+from rlvr_games.games.connect4.variant import STANDARD_CONNECT4_COLUMNS
+
+
+def _default_connect4_message_adapter() -> DefaultObservationMessageAdapter:
+    """Return the default Connect 4 observation message adapter."""
+    return DefaultObservationMessageAdapter(
+        policy=DefaultObservationMessagePolicy(
+            action_reminder_text=(
+                "Respond with one legal column number from `1` to "
+                f"`{STANDARD_CONNECT4_COLUMNS}`."
+            ),
+        )
+    )
 
 
 def make_connect4_env(
@@ -67,5 +84,6 @@ def make_connect4_env(
         reward_fn=reward_fn,
         config=config,
         agent_context_projector=agent_context_projector,
+        observation_message_adapter=_default_connect4_message_adapter(),
         auto_advance_policy=auto_advance_policy,
     )
