@@ -5,6 +5,7 @@ from typing import Any, Generic, TypeVar
 
 from rlvr_games.core.types import Observation
 
+StateT = TypeVar("StateT")
 ActionT = TypeVar("ActionT")
 
 
@@ -34,6 +35,69 @@ class RecordedTransition(Generic[ActionT]):
     action: ActionT
     info: dict[str, Any] = field(default_factory=dict)
     debug_info: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class AppliedResetEvent(Generic[StateT]):
+    """One authoritative reset-time event applied before the first agent turn.
+
+    Attributes
+    ----------
+    source : str
+        Structured label describing who produced the event, for example
+        ``"chance"``, ``"dealer"``, or ``"opponent"``.
+    label : str
+        Structured serialized label describing the event, such as an opening
+        deal or forced move.
+    next_state : StateT
+        Canonical state after the reset-time event has been applied.
+    info : dict[str, Any]
+        Public-safe metadata describing the applied event.
+    """
+
+    source: str
+    label: str
+    next_state: StateT
+    info: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate that the applied reset event can be recorded coherently."""
+        if not self.source:
+            raise ValueError("AppliedResetEvent source must be non-empty.")
+        if not self.label:
+            raise ValueError("AppliedResetEvent label must be non-empty.")
+
+
+@dataclass(slots=True)
+class RecordedResetEvent:
+    """One reset-time event recorded before the first agent action.
+
+    Attributes
+    ----------
+    source : str
+        Structured label describing who produced the event, for example
+        ``"chance"``, ``"dealer"``, or ``"opponent"``.
+    label : str
+        Structured serialized label describing the event.
+    info : dict[str, Any]
+        Public-safe metadata describing the event.
+    debug_info : dict[str, Any]
+        Privileged event trace intended for debugging and offline analysis.
+        This may include canonical-state details that are not safe to expose
+        to the agent.
+    """
+
+    source: str
+    label: str
+    info: dict[str, Any] = field(default_factory=dict)
+    debug_info: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate that the recorded reset event can be inspected coherently."""
+        if not self.source:
+            raise ValueError("RecordedResetEvent source must be non-empty.")
+        if not self.label:
+            raise ValueError("RecordedResetEvent label must be non-empty.")
 
 
 @dataclass(slots=True)
@@ -83,6 +147,23 @@ class TrajectoryStep(Generic[ActionT]):
 
 
 @dataclass(slots=True)
+class ScenarioReset(Generic[StateT]):
+    """Structured result returned by scenario reset logic.
+
+    Attributes
+    ----------
+    initial_state : StateT
+        Canonical state from which the environment should continue reset
+        resolution.
+    reset_info : dict[str, Any]
+        Public-safe scenario metadata for the reset.
+    """
+
+    initial_state: StateT
+    reset_info: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class EpisodeTrajectory(Generic[ActionT]):
     """Recorded data for a full environment episode.
 
@@ -90,6 +171,11 @@ class EpisodeTrajectory(Generic[ActionT]):
     ----------
     initial_observation : Observation
         Observation returned immediately after `reset()`.
+    reset_events : tuple[RecordedResetEvent, ...]
+        Reset-time history recorded before the first agent action. This may
+        include chance, dealer, or other authoritative setup events together
+        with any reset-time auto-advanced transitions applied by the
+        environment.
     reset_info : dict[str, Any]
         Public-safe metadata emitted by the scenario during reset.
     debug_reset_info : dict[str, Any]
@@ -101,6 +187,7 @@ class EpisodeTrajectory(Generic[ActionT]):
     """
 
     initial_observation: Observation
+    reset_events: tuple[RecordedResetEvent, ...] = ()
     reset_info: dict[str, Any] = field(default_factory=dict)
     debug_reset_info: dict[str, Any] = field(default_factory=dict)
     steps: list[TrajectoryStep[ActionT]] = field(default_factory=list)

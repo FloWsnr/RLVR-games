@@ -6,7 +6,8 @@ from typing import Any
 from rlvr_games.core import ZeroReward
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.exceptions import InvalidActionError
-from rlvr_games.core.protocol import AutoAdvancePolicy, RewardFn
+from rlvr_games.core.protocol import AutoAdvancePolicy, ResetEventPolicy, RewardFn
+from rlvr_games.core.trajectory import ScenarioReset
 from rlvr_games.core.types import EpisodeConfig, Observation, ParseResult
 from rlvr_games.games.chess import (
     ChessAction,
@@ -38,9 +39,12 @@ class CounterAction:
 class CounterScenario:
     """Return a fixed initial counter state."""
 
-    def reset(self, *, seed: int) -> tuple[CounterState, dict[str, Any]]:
+    def reset(self, *, seed: int) -> ScenarioReset[CounterState]:
         """Return the standard initial counter state."""
-        return CounterState(value=0), {"scenario": "counter", "seed": seed}
+        return ScenarioReset(
+            initial_state=CounterState(value=0),
+            reset_info={"scenario": "counter", "seed": seed},
+        )
 
 
 class CounterRenderer:
@@ -139,6 +143,7 @@ def make_counter_env(
     backend: CounterBackend,
     config: EpisodeConfig,
     reward_fn: RewardFn[CounterState, CounterAction] | None = None,
+    reset_event_policy: ResetEventPolicy[CounterState] | None = None,
     auto_advance_policy: AutoAdvancePolicy[CounterState, CounterAction] | None = None,
 ) -> TurnBasedEnv[CounterState, CounterAction]:
     """Construct the standard counter env used in core tests."""
@@ -151,6 +156,7 @@ def make_counter_env(
         inspect_canonical_state_fn=inspect_counter_state,
         reward_fn=reward_fn,
         config=config,
+        reset_event_policy=reset_event_policy,
         auto_advance_policy=auto_advance_policy,
     )
 

@@ -12,12 +12,15 @@ from rlvr_games.core.exceptions import (
 from rlvr_games.core.protocol import (
     AutoAdvancePolicy,
     GameBackend,
+    ResetEventPolicy,
     Renderer,
     RewardFn,
     Scenario,
 )
 from rlvr_games.core.trajectory import (
+    AppliedResetEvent,
     EpisodeTrajectory,
+    RecordedResetEvent,
     RecordedTransition,
     TrajectoryStep,
 )
@@ -72,6 +75,14 @@ class _ResolutionOutcome(Generic[StateT, ActionT]):
     transitions: tuple[_AcceptedTransition[StateT, ActionT], ...] = ()
 
 
+@dataclass(slots=True)
+class _ResetEventResolutionOutcome(Generic[StateT]):
+    """Internal normalized state after reset-time event application."""
+
+    next_state: StateT
+    events: tuple[AppliedResetEvent[StateT], ...] = ()
+
+
 class TurnBasedEnv(Generic[StateT, ActionT]):
     """Minimal stateful environment with reset/step semantics.
 
@@ -89,6 +100,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         inspect_canonical_state_fn: Callable[[StateT], dict[str, object]],
         reward_fn: RewardFn[StateT, ActionT],
         config: EpisodeConfig,
+        reset_event_policy: ResetEventPolicy[StateT] | None = None,
         auto_advance_policy: AutoAdvancePolicy[StateT, ActionT] | None = None,
     ) -> None:
         """Initialize a turn-based environment.
@@ -112,6 +124,10 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         config : EpisodeConfig
             Episode-wide configuration such as optional attempt/transition
             limits, invalid-action handling policy, and metadata.
+        reset_event_policy : ResetEventPolicy[StateT] | None
+            Optional policy that applies authoritative reset-time events such
+            as chance spawns or dealer actions before the first observation is
+            returned.
         auto_advance_policy : AutoAdvancePolicy[StateT, ActionT] | None
             Optional policy that can apply internal verifier-backed actions
             such as opponent replies after the agent action until control
@@ -123,6 +139,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         self.inspect_canonical_state_fn = inspect_canonical_state_fn
         self.reward_fn = reward_fn
         self.config = config
+        self.reset_event_policy = reset_event_policy
         self.auto_advance_policy = auto_advance_policy
 
         self._state: StateT | None = None
@@ -227,25 +244,40 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         -------
         tuple[Observation, dict[str, object]]
             A pair containing the initial observation shown to the model and
-            the public-safe reset metadata returned by the scenario after any
-            required internal auto-advanced transitions have been resolved.
+            the public-safe reset metadata after any required reset-time
+            events and internal auto-advanced transitions have been resolved.
         """
         self._attempt_count = 0
         self._transition_count = 0
-        initial_state, info = self.scenario.reset(seed=seed)
+        scenario_reset = self.scenario.reset(seed=seed)
+        initial_state = scenario_reset.initial_state
+        if self.reset_event_policy is not None:
+            self.reset_event_policy.reset(initial_state=initial_state)
+        reset_event_resolution = self._resolve_reset_events(state=initial_state)
         if self.auto_advance_policy is not None:
-            self.auto_advance_policy.reset(initial_state=initial_state)
-        resolution = self._resolve_to_agent_turn(state=initial_state)
+            self.auto_advance_policy.reset(
+                initial_state=reset_event_resolution.next_state
+            )
+        resolution = self._resolve_to_agent_turn(
+            state=reset_event_resolution.next_state
+        )
         self._state = resolution.next_state
         observation = self.renderer.render(self._state)
         self._episode_finished = resolution.terminated or resolution.truncated
-        info = self._build_reset_info(base_info=info, resolution=resolution)
+        info = self._build_reset_info(
+            base_info=scenario_reset.reset_info,
+            resolution=resolution,
+        )
         debug_reset_info = self._build_reset_debug_info(
             public_info=info,
-            resolution=resolution,
+            next_state=resolution.next_state,
         )
         self._trajectory = EpisodeTrajectory(
             initial_observation=self._snapshot_observation(observation),
+            reset_events=self._snapshot_reset_events(
+                applied_reset_events=reset_event_resolution.events,
+                auto_advanced_transitions=resolution.transitions,
+            ),
             reset_info=self._snapshot_info(info),
             debug_reset_info=self._snapshot_info(debug_reset_info),
         )
@@ -328,6 +360,7 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             self.renderer,
             self.inspect_canonical_state_fn,
             self.reward_fn,
+            self.reset_event_policy,
             self.auto_advance_policy,
         ):
             close_method = getattr(component, "close", None)
@@ -598,6 +631,40 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             for transition in transitions
         )
 
+    def _snapshot_applied_reset_events(
+        self,
+        events: tuple[AppliedResetEvent[StateT], ...],
+    ) -> tuple[RecordedResetEvent, ...]:
+        """Return trajectory-safe copies of applied reset-time events."""
+        return tuple(
+            RecordedResetEvent(
+                source=event.source,
+                label=event.label,
+                info=self._snapshot_info(event.info),
+                debug_info=self._snapshot_info(self._reset_event_debug_info(event)),
+            )
+            for event in events
+        )
+
+    def _snapshot_reset_events(
+        self,
+        *,
+        applied_reset_events: tuple[AppliedResetEvent[StateT], ...],
+        auto_advanced_transitions: tuple[_AcceptedTransition[StateT, ActionT], ...],
+    ) -> tuple[RecordedResetEvent, ...]:
+        """Return one merged reset-time history for the episode reset."""
+        return self._snapshot_applied_reset_events(
+            applied_reset_events
+        ) + tuple(
+            RecordedResetEvent(
+                source=transition.source,
+                label=transition.raw_action,
+                info=self._snapshot_info(transition.info),
+                debug_info=self._snapshot_info(self._transition_debug_info(transition)),
+            )
+            for transition in auto_advanced_transitions
+        )
+
     def _apply_accepted_transition(
         self,
         *,
@@ -671,19 +738,11 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         base_info: dict[str, object],
         resolution: _ResolutionOutcome[StateT, ActionT],
     ) -> dict[str, object]:
-        """Build reset metadata after any required internal transitions."""
+        """Build reset metadata after reset-time resolution is complete."""
         info = dict(base_info)
         if resolution.terminated or resolution.truncated:
             info["terminated"] = resolution.terminated
             info["truncated"] = resolution.truncated
-        if resolution.transitions:
-            info["auto_advanced"] = True
-            info["transition_count"] = self._transition_count
-            info["transition_count_delta"] = len(resolution.transitions)
-            info["initial_transitions"] = tuple(
-                self._serialize_transition(transition)
-                for transition in resolution.transitions
-            )
         info.update(resolution.info)
         return info
 
@@ -691,16 +750,11 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         self,
         *,
         public_info: dict[str, object],
-        resolution: _ResolutionOutcome[StateT, ActionT],
+        next_state: StateT,
     ) -> dict[str, object]:
         """Build privileged reset metadata for trajectory debugging."""
         debug_info = dict(public_info)
-        if resolution.transitions:
-            debug_info["initial_transitions"] = tuple(
-                self._serialize_transition(transition, debug=True)
-                for transition in resolution.transitions
-            )
-        debug_info.update(self._inspect_state_summary(resolution.next_state))
+        debug_info.update(self._inspect_state_summary(next_state))
         return debug_info
 
     def _build_rejected_step_debug_info(
@@ -737,6 +791,15 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
         """Return privileged transition metadata for trajectory debugging."""
         debug_info = dict(transition.info)
         debug_info.update(self._inspect_state_summary(transition.next_state))
+        return debug_info
+
+    def _reset_event_debug_info(
+        self,
+        event: AppliedResetEvent[StateT],
+    ) -> dict[str, object]:
+        """Return privileged metadata for one applied reset-time event."""
+        debug_info = dict(event.info)
+        debug_info.update(self._inspect_state_summary(event.next_state))
         return debug_info
 
     def _inspect_state_summary(self, state: StateT) -> dict[str, object]:
@@ -814,6 +877,30 @@ class TurnBasedEnv(Generic[StateT, ActionT]):
             truncated=truncated,
             info=info,
             transitions=tuple(transitions),
+        )
+
+    def _resolve_reset_events(
+        self,
+        *,
+        state: StateT,
+    ) -> _ResetEventResolutionOutcome[StateT]:
+        """Apply reset-time events before handing control to auto-advance."""
+        if self.reset_event_policy is None:
+            return _ResetEventResolutionOutcome(next_state=state)
+
+        events: list[AppliedResetEvent[StateT]] = []
+        current_state = state
+        while True:
+            event = self.reset_event_policy.apply_next_event(state=current_state)
+            if event is None:
+                break
+            self._transition_count += 1
+            events.append(event)
+            current_state = event.next_state
+
+        return _ResetEventResolutionOutcome(
+            next_state=current_state,
+            events=tuple(events),
         )
 
     def _limit_truncated_reason(self, *, terminated: bool) -> str | None:

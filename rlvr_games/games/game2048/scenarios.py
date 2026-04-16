@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Sequence
 
+from rlvr_games.core.trajectory import ScenarioReset
 from rlvr_games.games.game2048.chance import Game2048ChanceModel
 from rlvr_games.games.game2048.engine import (
     Board,
@@ -52,7 +53,7 @@ class RandomStartScenario:
         if self.start_tile_count > self.size * self.size:
             raise ValueError("2048 start_tile_count cannot exceed board capacity.")
 
-    def reset(self, *, seed: int) -> tuple[Game2048State, dict[str, object]]:
+    def reset(self, *, seed: int) -> ScenarioReset[Game2048State]:
         """Create a fresh random 2048 episode.
 
         Parameters
@@ -62,44 +63,26 @@ class RandomStartScenario:
 
         Returns
         -------
-        tuple[Game2048State, dict[str, object]]
-            Canonical initial state and public-safe reset metadata describing
-            the initial board and spawned starting tiles.
+        ScenarioReset[Game2048State]
+            Structured reset payload describing the seeded empty board from
+            which reset-time chance events should spawn the starting tiles.
         """
-        board = make_empty_board(size=self.size)
-        rng_state = self.chance_model.initial_rng_state(seed=seed)
-        spawned_tiles: list[dict[str, int]] = []
-        for _ in range(self.start_tile_count):
-            spawn_transition = self.chance_model.spawn_tile(
-                board=board,
-                rng_state=rng_state,
-            )
-            board = spawn_transition.board
-            rng_state = spawn_transition.rng_state
-            spawned_tile = spawn_transition.spawned_tile
-            spawned_tiles.append(
-                {
-                    "row": spawned_tile.row,
-                    "col": spawned_tile.col,
-                    "value": spawned_tile.value,
-                }
-            )
-
         state = Game2048State(
-            board=board,
+            board=make_empty_board(size=self.size),
             score=0,
             move_count=0,
             target_value=self.target_value,
-            rng_state=rng_state,
+            rng_state=self.chance_model.initial_rng_state(seed=seed),
         )
-        return state, {
-            "scenario": "random_start",
-            "size": state.size,
-            "target_value": state.target_value,
-            "start_tile_count": self.start_tile_count,
-            "initial_board": state.board,
-            "spawned_tiles": tuple(spawned_tiles),
-        }
+        return ScenarioReset(
+            initial_state=state,
+            reset_info={
+                "scenario": "random_start",
+                "size": state.size,
+                "target_value": state.target_value,
+                "start_tile_count": self.start_tile_count,
+            },
+        )
 
 
 @dataclass(slots=True)
@@ -134,7 +117,7 @@ class FixedBoardScenario:
         if self.initial_move_count < 0:
             raise ValueError("2048 initial_move_count must be non-negative.")
 
-    def reset(self, *, seed: int) -> tuple[Game2048State, dict[str, object]]:
+    def reset(self, *, seed: int) -> ScenarioReset[Game2048State]:
         """Create a fresh 2048 episode from the configured board.
 
         Parameters
@@ -144,9 +127,9 @@ class FixedBoardScenario:
 
         Returns
         -------
-        tuple[Game2048State, dict[str, object]]
-            Canonical initial state and public-safe metadata describing the
-            configured board, score, and move count.
+        ScenarioReset[Game2048State]
+            Structured reset payload describing the configured board, score,
+            and move count.
         """
         state = Game2048State(
             board=self.initial_board,
@@ -155,14 +138,17 @@ class FixedBoardScenario:
             target_value=self.target_value,
             rng_state=self.chance_model.initial_rng_state(seed=seed),
         )
-        return state, {
-            "scenario": "fixed_board",
-            "size": state.size,
-            "target_value": state.target_value,
-            "initial_board": state.board,
-            "initial_score": state.score,
-            "initial_move_count": state.move_count,
-        }
+        return ScenarioReset(
+            initial_state=state,
+            reset_info={
+                "scenario": "fixed_board",
+                "size": state.size,
+                "target_value": state.target_value,
+                "initial_board": state.board,
+                "initial_score": state.score,
+                "initial_move_count": state.move_count,
+            },
+        )
 
 
 def normalize_initial_board(*, board: Sequence[Sequence[int]]) -> Board:

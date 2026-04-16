@@ -9,7 +9,7 @@ from rlvr_games.games.game2048.engine import (
     apply_move,
     max_tile,
 )
-from rlvr_games.games.game2048.state import Game2048State
+from rlvr_games.games.game2048.state import Game2048State, public_game2048_metadata
 
 _ACTION_ALIASES = {
     "u": MoveDirection.UP,
@@ -99,6 +99,56 @@ class Game2048Backend:
             Legal direction labels in canonical order.
         """
         return list(state.legal_actions)
+
+    def apply_reset_spawn(
+        self,
+        state: Game2048State,
+    ) -> tuple[Game2048State, dict[str, object]]:
+        """Apply one authoritative reset-time tile spawn.
+
+        Parameters
+        ----------
+        state : Game2048State
+            Canonical state before the reset-time spawn.
+
+        Returns
+        -------
+        tuple[Game2048State, dict[str, object]]
+            Updated canonical state and public-safe metadata describing the
+            spawned tile and resulting board.
+
+        Raises
+        ------
+        InvalidActionError
+            If the supplied state cannot accept another spawned tile.
+        """
+        if state.max_tile >= state.target_value:
+            raise InvalidActionError(
+                "2048 reset-time spawns cannot continue from a winning state."
+            )
+        if state.empty_cell_count == 0:
+            raise InvalidActionError("2048 reset-time spawns require an empty cell.")
+
+        spawn_transition = self.chance_model.spawn_tile(
+            board=state.board,
+            rng_state=state.rng_state,
+        )
+        next_state = Game2048State(
+            board=spawn_transition.board,
+            score=state.score,
+            move_count=state.move_count,
+            target_value=state.target_value,
+            rng_state=spawn_transition.rng_state,
+        )
+        event_info: dict[str, object] = {
+            "spawned_tile": {
+                "row": spawn_transition.spawned_tile.row,
+                "col": spawn_transition.spawned_tile.col,
+                "value": spawn_transition.spawned_tile.value,
+            },
+            **public_game2048_metadata(state=next_state),
+        }
+        return next_state, event_info
 
     def apply_action(
         self,

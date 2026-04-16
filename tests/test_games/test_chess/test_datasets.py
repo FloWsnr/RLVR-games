@@ -109,8 +109,12 @@ def test_chess_puzzle_dataset_scenario_samples_deterministically(
         split=DatasetSplit.TRAIN,
     )
 
-    state_a, info_a = scenario.reset(seed=0)
-    state_b, info_b = scenario.reset(seed=0)
+    reset_a = scenario.reset(seed=0)
+    reset_b = scenario.reset(seed=0)
+    state_a = reset_a.initial_state
+    state_b = reset_b.initial_state
+    info_a = reset_a.reset_info
+    info_b = reset_b.reset_info
 
     assert state_a.fen == state_b.fen
     assert info_a == info_b

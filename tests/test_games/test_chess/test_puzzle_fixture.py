@@ -29,7 +29,9 @@ def test_checked_in_lichess_fixture_loads_via_puzzle_scenario() -> None:
         split=DatasetSplit.TRAIN,
     )
 
-    state, info = scenario.reset(seed=0)
+    reset = scenario.reset(seed=0)
+    state = reset.initial_state
+    info = reset.reset_info
 
     assert info == {
         "scenario": "dataset_puzzle",

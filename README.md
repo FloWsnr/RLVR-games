@@ -29,6 +29,8 @@ game composes that generic environment out of a small set of collaborators:
 - `inspect_canonical_state_fn`: returns a privileged canonical-state summary
   for debugging and tooling
 - `RewardFn`: scores accepted environment steps
+- `ResetEventPolicy` (optional): applies authoritative reset-time events such
+  as dealer actions or chance outcomes before the first observation
 - `AutoAdvancePolicy` (optional): applies internal verifier-backed moves such
   as opponent replies until control returns to the agent
 
@@ -64,9 +66,9 @@ future action-masking experiments, but they are not injected into the default
 observation or action context.
 
 The same split now applies to trajectory metadata: `reset_info`,
-`TrajectoryStep.info`, and `RecordedTransition.info` stay public-safe, while
-their `debug_*` counterparts retain privileged canonical-state traces for
-offline debugging and analysis.
+`trajectory.reset_events`, `TrajectoryStep.info`, and `RecordedTransition.info`
+stay public-safe, while their `debug_*` counterparts retain privileged
+canonical-state traces for offline debugging and analysis.
 
 ## Architectural Boundaries
 

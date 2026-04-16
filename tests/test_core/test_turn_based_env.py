@@ -1,10 +1,10 @@
 """Generic turn-based env tests."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pytest
 
-from rlvr_games.core import AutoAction, EpisodeBoundary
+from rlvr_games.core import AppliedResetEvent, AutoAction, EpisodeBoundary
 from rlvr_games.core.exceptions import EnvironmentNotResetError
 from rlvr_games.core.protocol import GameBackend
 from rlvr_games.core.types import EpisodeConfig
@@ -75,6 +75,37 @@ class CounterSecondPlayerAutoAdvancePolicy(CounterAutoAdvancePolicy):
         return state.value % 2 == 1
 
 
+@dataclass(slots=True)
+class CounterResetBoostPolicy:
+    """Apply a fixed number of reset-time counter increments."""
+
+    event_count: int
+    _applied_count: int = field(init=False, default=0, repr=False)
+
+    def reset(self, *, initial_state: CounterState) -> None:
+        """Start a fresh reset-time event sequence."""
+        del initial_state
+        self._applied_count = 0
+
+    def apply_next_event(
+        self,
+        *,
+        state: CounterState,
+    ) -> AppliedResetEvent[CounterState] | None:
+        """Return one reset-time increment until the configured limit."""
+        if self._applied_count >= self.event_count:
+            return None
+
+        next_state = CounterState(value=state.value + 1)
+        self._applied_count += 1
+        return AppliedResetEvent(
+            source="chance",
+            label="increment",
+            next_state=next_state,
+            info={"value": next_state.value},
+        )
+
+
 def test_step_requires_reset() -> None:
     env = make_counter_env(
         backend=CounterBackend(),
@@ -123,17 +154,33 @@ def test_reset_can_auto_advance_before_the_first_agent_turn() -> None:
     )
 
     observation, info = env.reset(seed=8)
-    initial_transitions = info["initial_transitions"]
 
     assert observation.metadata["value"] == 1
     assert env.state.value == 1
-    assert info["auto_advanced"] is True
-    assert info["transition_count"] == 1
-    assert info["transition_count_delta"] == 1
-    assert isinstance(initial_transitions, tuple)
-    assert len(initial_transitions) == 1
-    assert initial_transitions[0]["source"] == "opponent"
+    assert info == {"scenario": "counter", "seed": 8}
+    assert len(env.trajectory.reset_events) == 1
+    assert env.trajectory.reset_events[0].source == "opponent"
+    assert env.trajectory.reset_events[0].label == "1"
+    assert env.trajectory.reset_events[0].debug_info["value"] == 1
     assert env.trajectory.initial_observation.metadata["value"] == 1
+
+
+def test_reset_event_policy_records_reset_history_before_the_first_agent_turn() -> None:
+    env = make_counter_env(
+        backend=CounterBackend(),
+        config=EpisodeConfig(),
+        reset_event_policy=CounterResetBoostPolicy(event_count=2),
+    )
+
+    observation, info = env.reset(seed=12)
+
+    assert observation.metadata["value"] == 2
+    assert env.state.value == 2
+    assert info == {"scenario": "counter", "seed": 12}
+    assert len(env.trajectory.reset_events) == 2
+    assert env.trajectory.reset_events[0].source == "chance"
+    assert env.trajectory.reset_events[0].label == "increment"
+    assert env.trajectory.reset_events[1].debug_info["value"] == 2
 
 
 def test_step_can_auto_advance_internal_transitions_before_returning() -> None:

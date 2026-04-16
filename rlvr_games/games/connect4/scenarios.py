@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from random import Random
 
+from rlvr_games.core.trajectory import ScenarioReset
 from rlvr_games.games.connect4.state import (
     Board,
     Connect4State,
@@ -65,7 +66,7 @@ class RandomPositionScenario:
         if self.max_start_moves > self.rows * self.columns:
             raise ValueError("Connect 4 max_start_moves cannot exceed board capacity.")
 
-    def reset(self, *, seed: int) -> tuple[Connect4State, dict[str, object]]:
+    def reset(self, *, seed: int) -> ScenarioReset[Connect4State]:
         """Create a fresh random Connect 4 episode.
 
         Parameters
@@ -75,14 +76,13 @@ class RandomPositionScenario:
 
         Returns
         -------
-        tuple[Connect4State, dict[str, object]]
-            Canonical initial state and reset metadata describing the sampled
-            opening sequence.
+        ScenarioReset[Connect4State]
+            Structured reset payload describing the sampled opening sequence.
         """
         rng = Random(seed)
         board = make_empty_board(rows=self.rows, columns=self.columns)
         requested_start_moves = rng.randint(self.min_start_moves, self.max_start_moves)
-        opening_actions: list[str] = []
+        applied_start_moves = 0
 
         for _ in range(requested_start_moves):
             state = Connect4State(
@@ -98,23 +98,24 @@ class RandomPositionScenario:
                 column=chosen_column,
                 player=state.current_player,
             )
-            opening_actions.append(str(chosen_column + 1))
+            applied_start_moves += 1
 
         state = Connect4State(
             board=board,
             connect_length=self.connect_length,
         )
-        return state, {
-            "scenario": "random_position",
-            "seed": seed,
-            "rows": state.rows,
-            "columns": state.columns,
-            "connect_length": state.connect_length,
-            "requested_start_moves": requested_start_moves,
-            "applied_start_moves": len(opening_actions),
-            "opening_actions": tuple(opening_actions),
-            "initial_board": state.board,
-        }
+        return ScenarioReset(
+            initial_state=state,
+            reset_info={
+                "scenario": "random_position",
+                "seed": seed,
+                "rows": state.rows,
+                "columns": state.columns,
+                "connect_length": state.connect_length,
+                "applied_start_moves": applied_start_moves,
+                "initial_board": state.board,
+            },
+        )
 
 
 @dataclass(slots=True)
@@ -136,7 +137,7 @@ class FixedBoardScenario:
         """Normalize the configured starting board."""
         self.initial_board = normalize_board(rows=self.initial_board)
 
-    def reset(self, *, seed: int) -> tuple[Connect4State, dict[str, object]]:
+    def reset(self, *, seed: int) -> ScenarioReset[Connect4State]:
         """Create a fresh Connect 4 episode from the configured board.
 
         Parameters
@@ -146,22 +147,24 @@ class FixedBoardScenario:
 
         Returns
         -------
-        tuple[Connect4State, dict[str, object]]
-            Canonical initial state and metadata describing the configured
-            board.
+        ScenarioReset[Connect4State]
+            Structured reset payload describing the configured board.
         """
         state = Connect4State(
             board=self.initial_board,
             connect_length=self.connect_length,
         )
-        return state, {
-            "scenario": "fixed_board",
-            "seed": seed,
-            "rows": state.rows,
-            "columns": state.columns,
-            "connect_length": state.connect_length,
-            "initial_board": state.board,
-        }
+        return ScenarioReset(
+            initial_state=state,
+            reset_info={
+                "scenario": "fixed_board",
+                "seed": seed,
+                "rows": state.rows,
+                "columns": state.columns,
+                "connect_length": state.connect_length,
+                "initial_board": state.board,
+            },
+        )
 
 
 def normalize_initial_board(*, board: Board) -> Board:

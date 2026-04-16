@@ -19,6 +19,7 @@ from rlvr_games.games.game2048.engine import (
     spawn_outcomes,
 )
 from rlvr_games.games.game2048.factory import make_game2048_env
+from rlvr_games.games.game2048.reset_events import Game2048StartTilePolicy
 from rlvr_games.games.game2048.render import (
     Game2048AsciiBoardFormatter,
     Game2048ImageRenderer,
@@ -50,6 +51,7 @@ __all__ = [
     "Game2048ImageRenderer",
     "Game2048ObservationRenderer",
     "Game2048Outcome",
+    "Game2048StartTilePolicy",
     "Game2048State",
     "inspect_game2048_state",
     "MergeSummary",

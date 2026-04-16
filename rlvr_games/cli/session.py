@@ -419,6 +419,22 @@ def _write_trajectory(output_stream: TextIO, env: Environment[Any, Any]) -> None
     env : Environment[Any, Any]
         Active environment whose trajectory should be summarized.
     """
+    _write_line(
+        output_stream,
+        f"Reset events: {len(env.trajectory.reset_events)}",
+    )
+    for event_index, event in enumerate(
+        env.trajectory.reset_events,
+        start=1,
+    ):
+        info_text = _format_json(event.info)
+        _write_line(
+            output_stream,
+            (
+                f"reset[{event_index}]. source={event.source!r} "
+                f"label={event.label!r} info={info_text}"
+            ),
+        )
     _write_line(output_stream, f"Trajectory steps: {len(env.trajectory.steps)}")
     for turn_index, step in enumerate(env.trajectory.steps, start=1):
         info_text = _format_json(step.info)

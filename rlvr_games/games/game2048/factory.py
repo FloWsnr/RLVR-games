@@ -8,6 +8,7 @@ from rlvr_games.core.types import EpisodeConfig
 from rlvr_games.games.game2048.actions import Game2048Action
 from rlvr_games.games.game2048.backend import Game2048Backend
 from rlvr_games.games.game2048.chance import Game2048ChanceModel
+from rlvr_games.games.game2048.reset_events import Game2048StartTilePolicy
 from rlvr_games.games.game2048.render import (
     Game2048AsciiBoardFormatter,
     Game2048ImageRenderer,
@@ -65,12 +66,19 @@ def make_game2048_env(
         and supplied reward function.
     """
     chance_model = Game2048ChanceModel()
+    backend = Game2048Backend(chance_model=chance_model)
+    reset_event_policy: Game2048StartTilePolicy | None = None
     if initial_board is None:
+        start_tile_count = 2
         scenario = RandomStartScenario(
             size=size,
             target_value=target_value,
-            start_tile_count=2,
+            start_tile_count=start_tile_count,
             chance_model=chance_model,
+        )
+        reset_event_policy = Game2048StartTilePolicy(
+            backend=backend,
+            start_tile_count=start_tile_count,
         )
     else:
         normalized_board = normalize_initial_board(board=initial_board)
@@ -92,7 +100,7 @@ def make_game2048_env(
         image_renderer = Game2048ImageRenderer(size=image_size)
 
     return TurnBasedEnv(
-        backend=Game2048Backend(chance_model=chance_model),
+        backend=backend,
         scenario=scenario,
         renderer=Game2048ObservationRenderer(
             board_formatter=Game2048AsciiBoardFormatter(),
@@ -101,4 +109,5 @@ def make_game2048_env(
         inspect_canonical_state_fn=inspect_game2048_state,
         reward_fn=reward_fn,
         config=config,
+        reset_event_policy=reset_event_policy,
     )

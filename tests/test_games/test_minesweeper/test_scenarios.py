@@ -12,7 +12,9 @@ FIXED_BOARD = ("*..", "...", "..*")
 def test_random_board_scenario_is_seeded_and_starts_with_pending_layout() -> None:
     scenario = RandomBoardScenario(rows=3, columns=3, mine_count=2)
 
-    state, info = scenario.reset(seed=11)
+    reset = scenario.reset(seed=11)
+    state = reset.initial_state
+    info = reset.reset_info
 
     assert state.hidden_board is None
     assert state.has_pending_mines is True
@@ -31,7 +33,9 @@ def test_fixed_board_scenario_uses_the_supplied_hidden_layout() -> None:
         hidden_board=normalize_initial_board(board=FIXED_BOARD)
     )
 
-    state, info = scenario.reset(seed=23)
+    reset = scenario.reset(seed=23)
+    state = reset.initial_state
+    info = reset.reset_info
 
     assert state.hidden_board == (
         (True, False, False),

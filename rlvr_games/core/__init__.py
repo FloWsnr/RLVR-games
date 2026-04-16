@@ -11,6 +11,7 @@ from rlvr_games.core.protocol import (
     AutoAdvancePolicy,
     Environment,
     ImageRenderer,
+    ResetEventPolicy,
     TextRenderer,
 )
 from rlvr_games.core.rewards import ZeroReward
@@ -19,8 +20,11 @@ from rlvr_games.core.rollout import (
     build_action_context,
 )
 from rlvr_games.core.trajectory import (
+    AppliedResetEvent,
     EpisodeTrajectory,
+    RecordedResetEvent,
     RecordedTransition,
+    ScenarioReset,
     TrajectoryStep,
 )
 from rlvr_games.core.types import (
@@ -37,6 +41,7 @@ from rlvr_games.core.types import (
 
 __all__ = [
     "ActionContext",
+    "AppliedResetEvent",
     "AutoAction",
     "AutoAdvancePolicy",
     "Environment",
@@ -51,9 +56,12 @@ __all__ = [
     "InvalidActionPolicy",
     "Observation",
     "ParseResult",
+    "RecordedResetEvent",
     "RecordedTransition",
     "RenderedImage",
+    "ResetEventPolicy",
     "RLVRGamesError",
+    "ScenarioReset",
     "StepResult",
     "TextRenderer",
     "TrajectoryStep",

@@ -2,7 +2,11 @@
 
 from typing import Any, Protocol, TypeVar
 
-from rlvr_games.core.trajectory import EpisodeTrajectory
+from rlvr_games.core.trajectory import (
+    AppliedResetEvent,
+    EpisodeTrajectory,
+    ScenarioReset,
+)
 from rlvr_games.core.types import (
     AutoAction,
     EpisodeBoundary,
@@ -16,13 +20,14 @@ BackendStateT = TypeVar("BackendStateT")
 BackendActionT = TypeVar("BackendActionT")
 EnvStateT = TypeVar("EnvStateT", covariant=True)
 EnvActionT = TypeVar("EnvActionT")
-ScenarioStateT = TypeVar("ScenarioStateT", covariant=True)
+ScenarioStateT = TypeVar("ScenarioStateT")
 RendererStateT = TypeVar("RendererStateT", contravariant=True)
 RewardStateT = TypeVar("RewardStateT", contravariant=True)
 RewardActionT = TypeVar("RewardActionT", contravariant=True)
 RenderInputT = TypeVar("RenderInputT", contravariant=True)
 AutoStateT = TypeVar("AutoStateT")
 AutoActionT = TypeVar("AutoActionT")
+ResetStateT = TypeVar("ResetStateT")
 
 
 class GameBackend(Protocol[BackendStateT, BackendActionT]):
@@ -227,7 +232,8 @@ class AutoAdvancePolicy(Protocol[AutoStateT, AutoActionT]):
         Parameters
         ----------
         initial_state : AutoStateT
-            Canonical state returned by the scenario at reset time.
+            Canonical state after any reset-time events have been resolved and
+            before auto-advance begins.
         """
         ...
 
@@ -287,10 +293,50 @@ class AutoAdvancePolicy(Protocol[AutoStateT, AutoActionT]):
         ...
 
 
+class ResetEventPolicy(Protocol[ResetStateT]):
+    """Protocol for reset-time events before the first agent action.
+
+    Reset-event policies let an environment apply authoritative non-agent
+    events such as chance spawns, dealer actions, or forced opening moves
+    after the scenario chooses a canonical starting state and before the first
+    observation is returned to the agent.
+    """
+
+    def reset(self, *, initial_state: ResetStateT) -> None:
+        """Initialize policy state for a fresh episode.
+
+        Parameters
+        ----------
+        initial_state : ResetStateT
+            Canonical state returned by the scenario at reset time.
+        """
+        ...
+
+    def apply_next_event(
+        self,
+        *,
+        state: ResetStateT,
+    ) -> AppliedResetEvent[ResetStateT] | None:
+        """Apply the next reset-time event, if one remains.
+
+        Parameters
+        ----------
+        state : ResetStateT
+            Current canonical state before the next reset-time event.
+
+        Returns
+        -------
+        AppliedResetEvent[ResetStateT] | None
+            Applied reset-time event and the resulting state, or `None` when
+            reset-time event resolution is complete.
+        """
+        ...
+
+
 class Scenario(Protocol[ScenarioStateT]):
     """Protocol for episode initialization logic."""
 
-    def reset(self, *, seed: int) -> tuple[ScenarioStateT, dict[str, Any]]:
+    def reset(self, *, seed: int) -> ScenarioReset[ScenarioStateT]:
         """Create a fresh initial state for a new episode.
 
         Parameters
@@ -300,9 +346,9 @@ class Scenario(Protocol[ScenarioStateT]):
 
         Returns
         -------
-        tuple[ScenarioStateT, dict[str, Any]]
-            The initial canonical state and reset metadata describing the
-            generated episode.
+        ScenarioReset[ScenarioStateT]
+            Structured reset payload containing the initial canonical state
+            and public-safe reset metadata for the episode setup.
         """
         ...
 

@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Sequence
 
+from rlvr_games.core.trajectory import ScenarioReset
 from rlvr_games.games.minesweeper.engine import (
     MineBoard,
     count_mines,
@@ -44,7 +45,7 @@ class RandomBoardScenario:
         if self.mine_count >= self.rows * self.columns:
             raise ValueError("mine_count must leave at least one safe cell.")
 
-    def reset(self, *, seed: int) -> tuple[MinesweeperState, dict[str, object]]:
+    def reset(self, *, seed: int) -> ScenarioReset[MinesweeperState]:
         """Create a fresh random Minesweeper episode.
 
         Parameters
@@ -54,8 +55,9 @@ class RandomBoardScenario:
 
         Returns
         -------
-        tuple[MinesweeperState, dict[str, object]]
-            Canonical initial state and public-safe reset metadata.
+        ScenarioReset[MinesweeperState]
+            Structured reset payload with the canonical initial state and
+            public-safe metadata.
         """
         state = MinesweeperState(
             rows=self.rows,
@@ -65,13 +67,16 @@ class RandomBoardScenario:
             move_count=0,
             placement_seed=seed,
         )
-        return state, {
-            "scenario": "random_board",
-            "rows": self.rows,
-            "columns": self.columns,
-            "mine_count": self.mine_count,
-            "pending_mine_layout": True,
-        }
+        return ScenarioReset(
+            initial_state=state,
+            reset_info={
+                "scenario": "random_board",
+                "rows": self.rows,
+                "columns": self.columns,
+                "mine_count": self.mine_count,
+                "pending_mine_layout": True,
+            },
+        )
 
 
 @dataclass(slots=True)
@@ -90,7 +95,7 @@ class FixedBoardScenario:
         """Normalize the configured hidden board."""
         self.hidden_board = normalize_mine_board(board=self.hidden_board)
 
-    def reset(self, *, seed: int) -> tuple[MinesweeperState, dict[str, object]]:
+    def reset(self, *, seed: int) -> ScenarioReset[MinesweeperState]:
         """Create a fresh fixed-layout Minesweeper episode.
 
         Parameters
@@ -101,8 +106,9 @@ class FixedBoardScenario:
 
         Returns
         -------
-        tuple[MinesweeperState, dict[str, object]]
-            Canonical initial state and reset metadata.
+        ScenarioReset[MinesweeperState]
+            Structured reset payload with the canonical initial state and
+            metadata.
         """
         del seed
         state = MinesweeperState(
@@ -113,13 +119,16 @@ class FixedBoardScenario:
             move_count=0,
             placement_seed=None,
         )
-        return state, {
-            "scenario": "fixed_board",
-            "rows": state.rows,
-            "columns": state.columns,
-            "mine_count": state.mine_count,
-            "pending_mine_layout": False,
-        }
+        return ScenarioReset(
+            initial_state=state,
+            reset_info={
+                "scenario": "fixed_board",
+                "rows": state.rows,
+                "columns": state.columns,
+                "mine_count": state.mine_count,
+                "pending_mine_layout": False,
+            },
+        )
 
 
 def normalize_initial_board(

@@ -2,10 +2,10 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 import chess
 
+from rlvr_games.core.trajectory import ScenarioReset
 from rlvr_games.datasets import DatasetSplit, ParquetScenarioDataset
 from rlvr_games.games.chess.datasets import (
     ChessPuzzleRecord,
@@ -29,7 +29,7 @@ class StartingPositionScenario:
 
     initial_fen: str = STANDARD_START_FEN
 
-    def reset(self, *, seed: int) -> tuple[ChessState, dict[str, Any]]:
+    def reset(self, *, seed: int) -> ScenarioReset[ChessState]:
         """Create a fresh chess episode from the configured starting position.
 
         Parameters
@@ -40,9 +40,9 @@ class StartingPositionScenario:
 
         Returns
         -------
-        tuple[ChessState, dict[str, Any]]
-            Canonical initial chess state and metadata describing the scenario
-            type, normalized FEN, and supplied seed.
+        ScenarioReset[ChessState]
+            Structured reset payload describing the scenario type, normalized
+            FEN, and supplied seed.
 
         Raises
         ------
@@ -61,13 +61,13 @@ class StartingPositionScenario:
         if normalized_fen != STANDARD_START_FEN:
             scenario_name = "fen_position"
 
-        return (
-            ChessState.from_board(
+        return ScenarioReset(
+            initial_state=ChessState.from_board(
                 board=board,
                 repetition_counts={repetition_key_from_board(board): 1},
                 metadata={},
             ),
-            {
+            reset_info={
                 "scenario": scenario_name,
                 "initial_fen": normalized_fen,
                 "seed": seed,
@@ -110,7 +110,7 @@ class ChessPuzzleDatasetScenario:
         if self._dataset.manifest.game != "chess":
             raise ValueError("ChessPuzzleDatasetScenario requires a chess manifest.")
 
-    def reset(self, *, seed: int) -> tuple[ChessState, dict[str, Any]]:
+    def reset(self, *, seed: int) -> ScenarioReset[ChessState]:
         """Sample one puzzle record and create a fresh chess episode.
 
         Parameters
@@ -120,9 +120,8 @@ class ChessPuzzleDatasetScenario:
 
         Returns
         -------
-        tuple[ChessState, dict[str, Any]]
-            Canonical initial puzzle state and reset metadata describing the
-            sampled record.
+        ScenarioReset[ChessState]
+            Structured reset payload describing the sampled record.
         """
         record = self._dataset.sample_record(split=self.split, seed=seed)
         board = chess.Board(record.presented_fen)
@@ -140,13 +139,13 @@ class ChessPuzzleDatasetScenario:
             "source_url": record.source_url,
             **record.metadata,
         }
-        return (
-            ChessState.from_board(
+        return ScenarioReset(
+            initial_state=ChessState.from_board(
                 board=board,
                 repetition_counts={repetition_key_from_board(board): 1},
                 metadata=state_metadata,
             ),
-            {
+            reset_info={
                 "scenario": "dataset_puzzle",
                 "dataset": record.dataset,
                 "split": self.split.value,

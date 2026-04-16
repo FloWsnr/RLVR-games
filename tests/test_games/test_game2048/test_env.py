@@ -11,6 +11,7 @@ from rlvr_games.games.game2048 import (
     Game2048Backend,
     Game2048ChanceModel,
     Game2048ObservationRenderer,
+    Game2048StartTilePolicy,
     RandomStartScenario,
     TargetTileReward,
 )
@@ -105,8 +106,9 @@ def test_terminal_reset_marks_episode_finished_and_rejects_steps() -> None:
 
 def test_env_records_trajectory_with_real_backend() -> None:
     chance_model = Game2048ChanceModel()
+    backend = Game2048Backend(chance_model=chance_model)
     env = TurnBasedEnv(
-        backend=Game2048Backend(chance_model=chance_model),
+        backend=backend,
         scenario=RandomStartScenario(
             size=4,
             target_value=2048,
@@ -117,6 +119,10 @@ def test_env_records_trajectory_with_real_backend() -> None:
         inspect_canonical_state_fn=inspect_game2048_state,
         reward_fn=TargetTileReward(),
         config=EpisodeConfig(),
+        reset_event_policy=Game2048StartTilePolicy(
+            backend=backend,
+            start_tile_count=2,
+        ),
     )
     observation, info = env.reset(seed=0)
     initial_debug_reset_info = dict(env.trajectory.debug_reset_info)
@@ -125,8 +131,12 @@ def test_env_records_trajectory_with_real_backend() -> None:
     result = env.step("left")
 
     assert "seed" not in info
+    assert info["start_tile_count"] == 2
     assert "2048 board:" in (observation.text or "")
     assert initial_debug_reset_info["rng_state"] == reset_debug_state["rng_state"]
+    assert len(env.trajectory.reset_events) == 2
+    assert env.trajectory.reset_events[0].source == "chance"
+    assert env.trajectory.reset_events[0].debug_info["rng_state"] != ()
     assert result.reward == 0.0
     assert result.accepted is True
     assert len(env.trajectory.steps) == 1

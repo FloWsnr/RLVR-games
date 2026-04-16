@@ -16,11 +16,15 @@ def test_random_position_scenario_is_deterministic_and_non_terminal() -> None:
         max_start_moves=6,
     )
 
-    first_state, first_info = scenario.reset(seed=19)
-    second_state, second_info = scenario.reset(seed=19)
+    first_reset = scenario.reset(seed=19)
+    second_reset = scenario.reset(seed=19)
+    first_state = first_reset.initial_state
+    second_state = second_reset.initial_state
+    first_info = first_reset.reset_info
+    second_info = second_reset.reset_info
 
     assert first_state.board == second_state.board
-    assert first_info["opening_actions"] == second_info["opening_actions"]
+    assert first_info == second_info
     assert first_state.is_terminal is False
     assert first_info["applied_start_moves"] == 6
 
@@ -31,7 +35,9 @@ def test_fixed_board_scenario_preserves_board() -> None:
         connect_length=4,
     )
 
-    state, info = scenario.reset(seed=7)
+    reset = scenario.reset(seed=7)
+    state = reset.initial_state
+    info = reset.reset_info
 
     assert state.board == PRE_WIN_BOARD
     assert info["scenario"] == "fixed_board"
