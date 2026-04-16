@@ -9,7 +9,7 @@ Run this skill after each larger task or change. A meaningful change is any non-
 
 ## Goal
 
-Use a separate review agent to challenge the latest change before handoff. The review should be independent and skeptical, with the primary goal of finding bugs, regressions, weak assumptions, and missing coverage.
+Use a separate review agent to challenge the latest change before handoff. The review should be independent and skeptical, with the primary goal of finding bugs, regressions, weak assumptions, and missing coverage. Reviewing takes time. Make sure to let the agent finish its work, don't abort it early.
 
 ## Required Workflow
 
