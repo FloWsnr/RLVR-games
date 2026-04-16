@@ -116,6 +116,7 @@ uv run rlvr-games play connect4 --seed 0
 uv run rlvr-games play connect4 --seed 0 --reward solver-move-dense --opponent solver
 uv run rlvr-games play 2048 --seed 0
 uv run rlvr-games play minesweeper --seed 0
+uv run rlvr-games play yahtzee --seed 0
 ```
 
 
