@@ -42,9 +42,17 @@ Implemented games:
 - 2048
 - Connect 4
 - Minesweeper
+- Yahtzee
+  - v1 scope: 13 turns with up to 3 rolls per turn
+  - v1 intentionally excludes the upper-section bonus, extra Yahtzee bonus, and joker-rule behavior
 
 Possible next additions:
 
+- Sokoban
+- Mastermind
+- Wordle
+- Kuhn Poker
+- Leduc Poker
 - Checkers
 - Go
 
