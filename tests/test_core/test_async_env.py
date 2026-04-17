@@ -188,6 +188,134 @@ def test_async_env_pool_reset_and_step_across_multiple_slots() -> None:
             assert result.turn.action_context.turn_index == 1
 
 
+def test_async_env_pool_runs_staggered_multi_step_lifecycle() -> None:
+    with AsyncEnvPool(
+        env_factories=(
+            _build_counter_env,
+            _build_counter_env,
+            _build_counter_env,
+        )
+    ) as pool:
+        pool.reset_all(seeds=(1, 2, 3))
+        assert pool.pending_slot_ids == (0, 1, 2)
+
+        reset_results: dict[int, AsyncResetResult] = {}
+        while len(reset_results) < 3:
+            ready_results = pool.recv_ready(max_results=3, timeout_seconds=5.0)
+            for result in ready_results:
+                assert isinstance(result, AsyncResetResult)
+                reset_results[result.slot_id] = result
+
+        assert pool.pending_slot_ids == ()
+        assert tuple(sorted(reset_results)) == (0, 1, 2)
+        for result in reset_results.values():
+            assert result.episode_index == 0
+            assert result.episode_finished is False
+            assert result.turn is not None
+            assert result.turn.action_context.turn_index == 0
+            assert result.observation.text == "value=0"
+            text_part = result.turn.messages[0].content[0]
+            assert isinstance(text_part, TextMessagePart)
+            assert text_part.text == "Observation:\nvalue=0"
+
+        for slot_id in range(3):
+            pool.step(slot_id=slot_id, raw_action="1")
+        assert pool.pending_slot_ids == (0, 1, 2)
+
+        first_round_results: dict[int, AsyncStepResult] = {}
+        while len(first_round_results) < 3:
+            ready_results = pool.recv_ready(max_results=3, timeout_seconds=5.0)
+            for result in ready_results:
+                assert isinstance(result, AsyncStepResult)
+                first_round_results[result.slot_id] = result
+
+        assert pool.pending_slot_ids == ()
+        assert tuple(sorted(first_round_results)) == (0, 1, 2)
+        for result in first_round_results.values():
+            assert result.episode_index == 0
+            assert result.episode_finished is False
+            assert result.step_result.accepted is True
+            assert result.step_result.terminated is False
+            assert result.step_result.truncated is False
+            assert result.step_result.observation.text == "value=1"
+            assert result.turn is not None
+            assert result.turn.action_context.turn_index == 1
+            text_part = result.turn.messages[0].content[0]
+            assert isinstance(text_part, TextMessagePart)
+            assert text_part.text == "Observation:\nvalue=1"
+
+        pool.step(slot_id=0, raw_action="1")
+        pool.step(slot_id=1, raw_action="1")
+        assert pool.pending_slot_ids == (0, 1)
+
+        second_round_results: dict[int, AsyncStepResult] = {}
+        while len(second_round_results) < 2:
+            ready_results = pool.recv_ready(max_results=2, timeout_seconds=5.0)
+            for result in ready_results:
+                assert isinstance(result, AsyncStepResult)
+                second_round_results[result.slot_id] = result
+
+        assert pool.pending_slot_ids == ()
+        assert tuple(sorted(second_round_results)) == (0, 1)
+        for result in second_round_results.values():
+            assert result.episode_index == 0
+            assert result.episode_finished is False
+            assert result.step_result.observation.text == "value=2"
+            assert result.turn is not None
+            assert result.turn.action_context.turn_index == 2
+            text_part = result.turn.messages[0].content[0]
+            assert isinstance(text_part, TextMessagePart)
+            assert text_part.text == "Observation:\nvalue=2"
+
+        pool.step(slot_id=0, raw_action="1")
+        assert pool.pending_slot_ids == (0,)
+
+        third_round_terminal = pool.recv(timeout_seconds=5.0)
+        assert isinstance(third_round_terminal, AsyncStepResult)
+        assert third_round_terminal.slot_id == 0
+        assert third_round_terminal.episode_index == 0
+        assert third_round_terminal.episode_finished is True
+        assert third_round_terminal.step_result.accepted is True
+        assert third_round_terminal.step_result.terminated is True
+        assert third_round_terminal.step_result.truncated is False
+        assert third_round_terminal.step_result.observation.text == "value=3"
+        assert third_round_terminal.turn is None
+        assert pool.pending_slot_ids == ()
+
+        pool.step(slot_id=1, raw_action="1")
+        pool.step(slot_id=2, raw_action="1")
+        assert pool.pending_slot_ids == (1, 2)
+
+        final_round_results: dict[int, AsyncStepResult] = {}
+        while len(final_round_results) < 2:
+            ready_results = pool.recv_ready(max_results=2, timeout_seconds=5.0)
+            for result in ready_results:
+                assert isinstance(result, AsyncStepResult)
+                final_round_results[result.slot_id] = result
+
+        assert pool.pending_slot_ids == ()
+        assert tuple(sorted(final_round_results)) == (1, 2)
+
+        slot_one_result = final_round_results[1]
+        assert slot_one_result.episode_index == 0
+        assert slot_one_result.episode_finished is True
+        assert slot_one_result.step_result.terminated is True
+        assert slot_one_result.step_result.observation.text == "value=3"
+        assert slot_one_result.turn is None
+
+        slot_two_result = final_round_results[2]
+        assert slot_two_result.episode_index == 0
+        assert slot_two_result.episode_finished is False
+        assert slot_two_result.step_result.terminated is False
+        assert slot_two_result.step_result.truncated is False
+        assert slot_two_result.step_result.observation.text == "value=2"
+        assert slot_two_result.turn is not None
+        assert slot_two_result.turn.action_context.turn_index == 2
+        text_part = slot_two_result.turn.messages[0].content[0]
+        assert isinstance(text_part, TextMessagePart)
+        assert text_part.text == "Observation:\nvalue=2"
+
+
 def test_async_env_pool_propagates_invalid_action_errors_and_slot_stays_usable() -> (
     None
 ):
