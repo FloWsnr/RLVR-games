@@ -32,7 +32,7 @@ from rlvr_games.core.protocol import (
     TextRenderer,
 )
 from rlvr_games.core.rewards import ZeroReward
-from rlvr_games.core.rollout import build_action_context
+from rlvr_games.core.rollout import PreparedTurn, build_action_context, prepare_turn
 from rlvr_games.core.trajectory import (
     AppliedResetEvent,
     EpisodeTrajectory,
@@ -58,6 +58,7 @@ __all__ = [
     "AgentContextProjector",
     "AgentVisibleEvent",
     "PublicResetEvent",
+    "PreparedTurn",
     "ProjectedActionContext",
     "AppliedResetEvent",
     "AutoAction",
@@ -94,4 +95,5 @@ __all__ = [
     "TurnBasedEnv",
     "ZeroReward",
     "build_action_context",
+    "prepare_turn",
 ]
