@@ -18,10 +18,15 @@ environment-first RLVR framework built around executable game verifiers.
 ## Architecture
 
 - `rlvr_games/core/` holds the generic environment abstractions, trajectory
-  machinery, rewards, protocols, and types.
+  machinery, rollout helpers, trainer-facing message adapters, async rollout
+  helpers, rewards, protocols, and types.
 - `rlvr_games/games/<game>/` holds game-specific backend logic, scenarios,
   rendering, rewards, state types, and factory wiring.
 - `rlvr_games/datasets/` holds shared offline dataset utilities.
+- `rlvr_games/task_specs/` holds shared YAML task-spec parsing, validation,
+  registry, and environment-construction helpers.
+- `config/games/<game>/` holds checked-in example task specs for reproducible
+  training and evaluation setups.
 - `rlvr_games/cli/` is a thin interactive debug shell over the environments.
   Keep it small.
 - Offline tooling such as dataset preparation or engine installation should
@@ -35,6 +40,10 @@ environment-first RLVR framework built around executable game verifiers.
 - Keep canonical state and executable game logic authoritative.
 - Keep game-specific behavior out of the generic core unless multiple games
   clearly need it.
+- Put trainer-facing chat formatting in observation message adapters and rollout
+  helpers, not in renderers, scenarios, or backends.
+- Prefer validated task specs for reproducible environment setups instead of
+  growing ad hoc CLI-only configuration paths.
 - Add new games under `rlvr_games/games/<game>/` with the same separation of
   concerns as the existing games.
 - Keep fixtures and rendered assets near the game that owns them.
@@ -44,6 +53,8 @@ environment-first RLVR framework built around executable game verifiers.
 - Add focused pytest coverage for parsing, illegal actions, rewards, terminal
   behavior, truncation behavior, rendering, and trajectory recording.
 - Prefer deterministic tests with explicit seeds.
+- When you add or change reusable environment setups, add or update example
+  task specs under `config/games/<game>/`.
 - Run the full validation stack before finishing: format & lint (`uv run ruff check`, `uv run ruff format`), static type
   checking (`uv run pyright`), and tests (`uv run pytest`).
 - Keep types explicit. Avoid unnecessary optional/default parameters when they

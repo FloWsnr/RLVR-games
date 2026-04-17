@@ -32,6 +32,9 @@ game composes that generic environment out of a small set of collaborators:
 - `AgentContextProjector` (optional): projects selected public-safe structured
   context, such as opening events, into the agent-facing action context while
   the environment keeps ownership of generic fields like turn index
+- `ObservationMessageAdapter`: converts rendered observations plus
+  `ActionContext` into trainer-facing chat messages without making the
+  renderer itself chat-specific
 - `ResetEventPolicy` (optional): applies authoritative reset-time events such
   as dealer actions or chance outcomes before the first observation
 - `AutoAdvancePolicy` (optional): applies internal verifier-backed moves such
@@ -78,9 +81,14 @@ canonical-state traces for offline debugging and analysis.
 ## Architectural Boundaries
 
 - `rlvr_games/core/` holds the reusable environment abstractions and trajectory
-  machinery.
+  machinery, rollout helpers, trainer-facing message adapters, and async pool
+  support.
 - `rlvr_games/games/<game>/` holds the actual game logic, rendering, scenarios,
   rewards, and factories.
+- `rlvr_games/task_specs/` holds shared YAML task-spec loading, validation, and
+  environment construction helpers.
+- `config/games/<game>/` holds checked-in example task specs for reproducible
+  environment setups.
 - `rlvr-games` is a thin interactive play/debug shell over the environments.
 - Dataset preprocessing and engine installation live in separate scripts rather
   than bloating the play CLI.
@@ -117,20 +125,87 @@ uv run rlvr-games play connect4 --seed 0 --reward solver-move-dense --opponent s
 uv run rlvr-games play 2048 --seed 0
 uv run rlvr-games play minesweeper --seed 0
 uv run rlvr-games play yahtzee --seed 0
+uv run rlvr-games play connect4 --task-spec config/games/connect4/solver_opponent.yaml --seed 0
 ```
 
+`--task-spec` lets the CLI load a fully authored environment configuration from
+YAML. When a task spec is supplied, conflicting environment overrides such as
+`--max-attempts`, `--image-size`, or `--invalid-action-policy` are rejected so
+the authored setup stays reproducible.
+
+## YAML Task Specs
+
+Task specs make training and evaluation setups explicit, versioned, and easy to
+reuse across the CLI and in-process rollouts. Checked-in examples live under
+`config/games/<game>/`.
+
+```yaml
+schema_version: 1
+id: connect4_solver_opponent
+game: connect4
+
+scenario:
+  kind: random_position
+  rows: 6
+  columns: 7
+  connect_length: 4
+  min_start_moves: 0
+  max_start_moves: 0
+
+reward:
+  kind: solver_move_dense
+  perspective: mover
+
+episode:
+  max_attempts: 42
+  max_transitions: 84
+
+observation:
+  include_images: false
+  image_size: 360
+
+control:
+  auto_advance:
+    kind: solver
+```
+
+Load one directly in Python:
+
+```python
+from pathlib import Path
+
+from rlvr_games.task_specs import load_environment_from_task_spec_path
+
+task_spec_path = Path("config/games/connect4/solver_opponent.yaml")
+env = load_environment_from_task_spec_path(path=task_spec_path)
+```
+
+Task specs are validated with Pydantic before the environment is built, and any
+relative paths inside the YAML are resolved relative to the task-spec file.
 
 ## Programmatic Rollouts
 
-The main in-process surface is the environment API. Every game follows the
-same shape:
+The main in-process surface is still the environment API, but the trainer-facing
+helpers now package action context and chat messages alongside each actionable
+turn:
 
 ```python
+from pathlib import Path
+
+from rlvr_games.core import prepare_turn
+from rlvr_games.task_specs import load_environment_from_task_spec_path
+
+env = load_environment_from_task_spec_path(
+    path=Path("config/games/connect4/solver_opponent.yaml")
+)
 observation, reset_info = env.reset(seed=0)
 
 while not env.episode_finished:
-    context = build_action_context(env=env)
-    raw_action = agent.act(observation, context)
+    turn = prepare_turn(env=env, observation=observation)
+    raw_action = agent.act(
+        messages=turn.messages,
+        action_context=turn.action_context,
+    )
     step_result = env.step(raw_action)
     observation = step_result.observation
 
@@ -144,6 +219,12 @@ agent-visible fields rather than constructing the full context itself. The
 projector receives detached public reset-event snapshots rather than the full
 debug trajectory.
 
+Every bundled game factory installs a default `ObservationMessageAdapter` so
+`prepare_turn(...)` and `env.messages_for_observation(...)` return structured
+trainer-facing chat messages without baking chat formatting into the renderer.
+If you need a different prompt surface, swap in a custom adapter or customize
+`DefaultObservationMessagePolicy`.
+
 Game-specific factories, scenarios, renderers, and rewards live under
 `rlvr_games/games/<game>/`. The important invariant is the same across games:
 the engine-backed canonical state is authoritative, observations are derived
@@ -156,13 +237,52 @@ The interactive CLI follows the same split: `state` and `show <key>` read from
 observation metadata, while `debug-state`, `debug-show <key>`, and
 `debug-legal` are explicit privileged debug commands.
 
+## Async Rollouts
+
+`AsyncEnvPool` provides a process-backed pool for parallel environment stepping.
+Each worker owns one live environment and returns results as soon as they are
+ready:
+
+```python
+from pathlib import Path
+
+from rlvr_games.core.async_env import AsyncEnvPool
+
+task_spec_path = Path("config/games/connect4/solver_opponent.yaml")
+
+with AsyncEnvPool.from_task_spec_paths(
+    task_spec_paths=(task_spec_path, task_spec_path),
+) as pool:
+    pool.reset_all(seeds=(0, 1))
+
+    first_result = pool.recv(timeout_seconds=5.0)
+    assert first_result.turn is not None
+
+    pool.step(slot_id=first_result.slot_id, raw_action="4")
+    next_result = pool.recv(timeout_seconds=5.0)
+```
+
+Reset and step results carry the worker `slot_id`, the per-slot
+`episode_index`, the raw env result payload, and an optional `PreparedTurn`
+containing the next action context plus trainer-facing messages. When a
+`PreparedTurn` is present, image payloads stay inside `turn.messages` so the
+transport copy of `observation` or `step_result.observation` does not duplicate
+them.
+
 ## Development
 
-Run the test suite with:
+Run the full validation stack before finishing:
 
 ```bash
+uv run ruff check
+uv run ruff format
+uv run pyright
 uv run pytest
 ```
+
+When you add a new feature or game, update the checked-in examples under
+`config/games/` as needed and keep both `README.md` and `AGENTS.md` aligned
+with the new user-facing or contributor-facing surfaces.
 
 ## License
 
