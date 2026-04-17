@@ -1,0 +1,28 @@
+schema_version: 1
+id: game2048_fixed_board_score_delta
+game: game2048
+
+scenario:
+  kind: fixed_board
+  board:
+    - [2, 0, 0, 0]
+    - [0, 2, 0, 0]
+    - [0, 0, 0, 0]
+    - [0, 0, 0, 0]
+  target_value: 1024
+  initial_score: 4
+  initial_move_count: 1
+
+reward:
+  kind: score_delta
+
+episode:
+  max_attempts: 50
+  max_transitions: 50
+
+observation:
+  include_images: false
+  image_size: 360
+
+metadata:
+  tags: [example, dense]

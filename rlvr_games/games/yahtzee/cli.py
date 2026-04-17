@@ -4,7 +4,11 @@ from argparse import ArgumentParser, Namespace
 from enum import StrEnum
 from typing import Any
 
-from rlvr_games.cli.common import build_episode_config
+from rlvr_games.cli.common import (
+    COMMON_TASK_SPEC_DISALLOWED_ARGUMENT_NAMES,
+    build_environment_from_task_spec_argument,
+    build_episode_config,
+)
 from rlvr_games.cli.specs import GameCliSpec
 from rlvr_games.core.protocol import Environment, RewardFn
 from rlvr_games.core.types import StepResult
@@ -54,6 +58,16 @@ def build_yahtzee_environment(
     Environment[Any, Any]
         Fully configured Yahtzee environment.
     """
+    task_spec_environment = build_environment_from_task_spec_argument(
+        args=args,
+        parser=parser,
+        expected_game="yahtzee",
+        disallowed_argument_names=COMMON_TASK_SPEC_DISALLOWED_ARGUMENT_NAMES
+        + ("reward",),
+    )
+    if task_spec_environment is not None:
+        return task_spec_environment
+
     return make_yahtzee_env(
         initial_state=None,
         reward_fn=build_yahtzee_reward(args=args),

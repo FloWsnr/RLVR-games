@@ -3,7 +3,11 @@
 from argparse import ArgumentParser, ArgumentTypeError, Namespace
 from typing import Any
 
-from rlvr_games.cli.common import build_episode_config
+from rlvr_games.cli.common import (
+    COMMON_TASK_SPEC_DISALLOWED_ARGUMENT_NAMES,
+    build_environment_from_task_spec_argument,
+    build_episode_config,
+)
 from rlvr_games.cli.specs import GameCliSpec
 from rlvr_games.core.protocol import Environment
 from rlvr_games.core.types import StepResult
@@ -53,6 +57,19 @@ def build_game2048_environment(
     Environment[Any, Any]
         Fully configured 2048 environment.
     """
+    task_spec_environment = build_environment_from_task_spec_argument(
+        args=args,
+        parser=parser,
+        expected_game="game2048",
+        disallowed_argument_names=COMMON_TASK_SPEC_DISALLOWED_ARGUMENT_NAMES
+        + (
+            "board",
+            "target_value",
+        ),
+    )
+    if task_spec_environment is not None:
+        return task_spec_environment
+
     initial_board = args.board
     board_size = STANDARD_2048_SIZE
     if initial_board is not None:
@@ -64,6 +81,7 @@ def build_game2048_environment(
         initial_board=initial_board,
         initial_score=0,
         initial_move_count=0,
+        start_tile_count=2,
         reward_fn=TargetTileReward(),
         config=build_episode_config(args=args, parser=parser),
         include_images=args.image_output_dir is not None,

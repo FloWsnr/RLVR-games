@@ -5,7 +5,11 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from rlvr_games.cli.common import build_episode_config
+from rlvr_games.cli.common import (
+    COMMON_TASK_SPEC_DISALLOWED_ARGUMENT_NAMES,
+    build_environment_from_task_spec_argument,
+    build_episode_config,
+)
 from rlvr_games.cli.specs import GameCliSpec
 from rlvr_games.core.protocol import Environment, RewardFn
 from rlvr_games.core.types import StepResult
@@ -86,7 +90,6 @@ def register_chess_arguments(parser: ArgumentParser) -> None:
     parser.add_argument(
         "--reward",
         choices=tuple(kind.value for kind in ChessRewardKind),
-        required=True,
     )
     parser.add_argument("--stockfish-path", type=Path)
     parser.add_argument("--engine-depth", type=int)
@@ -111,6 +114,31 @@ def build_chess_environment(
     Environment[Any, Any]
         Fully configured chess environment.
     """
+    task_spec_environment = build_environment_from_task_spec_argument(
+        args=args,
+        parser=parser,
+        expected_game="chess",
+        disallowed_argument_names=COMMON_TASK_SPEC_DISALLOWED_ARGUMENT_NAMES
+        + (
+            "scenario",
+            "fen",
+            "dataset_manifest",
+            "dataset_split",
+            "renderer",
+            "image_coordinates",
+            "orientation",
+            "reward",
+            "stockfish_path",
+            "engine_depth",
+            "engine_mate_score",
+        ),
+    )
+    if task_spec_environment is not None:
+        return task_spec_environment
+
+    if args.reward is None:
+        parser.error("--reward is required unless --task-spec is supplied.")
+
     scenario = build_chess_scenario(args=args, parser=parser)
     reward_fn = build_chess_reward(args=args, parser=parser)
     return make_chess_env(

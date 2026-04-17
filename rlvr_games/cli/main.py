@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 import sys
 from typing import Sequence
 
-from rlvr_games.cli.common import add_common_play_arguments
+from rlvr_games.cli.common import add_common_play_arguments, ensure_argument_tracking
 from rlvr_games.cli.registry import PLAY_GAME_SPECS
 from rlvr_games.cli.session import run_play_session
 from rlvr_games.cli.specs import GameCliSpec
@@ -19,9 +19,11 @@ def build_parser() -> ArgumentParser:
         Configured parser supporting interactive play commands.
     """
     parser = ArgumentParser(prog="rlvr-games")
+    ensure_argument_tracking(parser)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     play_parser = subparsers.add_parser("play")
+    ensure_argument_tracking(play_parser)
     play_subparsers = play_parser.add_subparsers(dest="game", required=True)
     for game_spec in PLAY_GAME_SPECS:
         game_parser = play_subparsers.add_parser(game_spec.name)

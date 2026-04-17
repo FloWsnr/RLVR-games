@@ -4,7 +4,11 @@ from argparse import ArgumentParser, ArgumentTypeError, Namespace
 from enum import StrEnum
 from typing import Any
 
-from rlvr_games.cli.common import build_episode_config
+from rlvr_games.cli.common import (
+    COMMON_TASK_SPEC_DISALLOWED_ARGUMENT_NAMES,
+    build_environment_from_task_spec_argument,
+    build_episode_config,
+)
 from rlvr_games.cli.specs import GameCliSpec
 from rlvr_games.core.protocol import Environment, RewardFn
 from rlvr_games.core.types import StepResult
@@ -46,6 +50,22 @@ def build_minesweeper_environment(
     parser: ArgumentParser,
 ) -> Environment[Any, Any]:
     """Construct a Minesweeper environment from parsed CLI arguments."""
+    task_spec_environment = build_environment_from_task_spec_argument(
+        args=args,
+        parser=parser,
+        expected_game="minesweeper",
+        disallowed_argument_names=COMMON_TASK_SPEC_DISALLOWED_ARGUMENT_NAMES
+        + (
+            "rows",
+            "columns",
+            "mines",
+            "reward",
+            "board",
+        ),
+    )
+    if task_spec_environment is not None:
+        return task_spec_environment
+
     initial_board = args.board
     rows = args.rows
     columns = args.columns

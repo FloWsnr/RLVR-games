@@ -1,0 +1,25 @@
+schema_version: 1
+id: minesweeper_random_board_outcome
+game: minesweeper
+
+scenario:
+  kind: random_board
+  rows: 9
+  columns: 9
+  mine_count: 10
+
+reward:
+  kind: outcome
+  win_reward: 1.0
+  loss_reward: -1.0
+
+episode:
+  max_attempts: 100
+  max_transitions: 100
+
+observation:
+  include_images: false
+  image_size: 240
+
+metadata:
+  tags: [example, baseline]

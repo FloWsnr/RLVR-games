@@ -1,0 +1,29 @@
+schema_version: 1
+id: connect4_random_start_terminal
+game: connect4
+
+scenario:
+  kind: random_position
+  rows: 6
+  columns: 7
+  connect_length: 4
+  min_start_moves: 0
+  max_start_moves: 4
+
+reward:
+  kind: terminal_outcome
+  perspective: mover
+  win_reward: 1.0
+  draw_reward: 0.0
+  loss_reward: -1.0
+
+episode:
+  max_attempts: 50
+  max_transitions: 50
+
+observation:
+  include_images: false
+  image_size: 360
+
+metadata:
+  tags: [example, baseline]

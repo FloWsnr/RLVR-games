@@ -1,0 +1,30 @@
+schema_version: 1
+id: connect4_solver_opponent
+game: connect4
+
+scenario:
+  kind: random_position
+  rows: 6
+  columns: 7
+  connect_length: 4
+  min_start_moves: 0
+  max_start_moves: 0
+
+reward:
+  kind: solver_move_dense
+  perspective: mover
+
+episode:
+  max_attempts: 42
+  max_transitions: 84
+
+observation:
+  include_images: false
+  image_size: 360
+
+control:
+  auto_advance:
+    kind: solver
+
+metadata:
+  tags: [example, solver]

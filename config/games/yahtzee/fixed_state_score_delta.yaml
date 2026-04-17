@@ -1,0 +1,26 @@
+schema_version: 1
+id: yahtzee_fixed_state_score_delta
+game: yahtzee
+
+scenario:
+  kind: fixed_state
+  awaiting_roll: false
+  dice: [1, 1, 1, 2, 3]
+  rolls_used_in_turn: 1
+  category_scores:
+    chance: 12
+  rng_seed: 7
+
+reward:
+  kind: score_delta
+
+episode:
+  max_attempts: 20
+  max_transitions: 40
+
+observation:
+  include_images: false
+  image_size: 360
+
+metadata:
+  tags: [example, dense]

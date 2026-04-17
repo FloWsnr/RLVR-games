@@ -1,0 +1,23 @@
+schema_version: 1
+id: game2048_random_start_target_tile
+game: game2048
+
+scenario:
+  kind: random_start
+  size: 4
+  target_value: 2048
+  start_tile_count: 2
+
+reward:
+  kind: target_tile
+
+episode:
+  max_attempts: 200
+  max_transitions: 200
+
+observation:
+  include_images: false
+  image_size: 360
+
+metadata:
+  tags: [example, baseline]

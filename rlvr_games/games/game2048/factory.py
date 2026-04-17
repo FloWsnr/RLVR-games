@@ -45,6 +45,7 @@ def make_game2048_env(
     initial_board: Sequence[Sequence[int]] | None,
     initial_score: int,
     initial_move_count: int,
+    start_tile_count: int = 2,
     reward_fn: RewardFn[Game2048State, Game2048Action],
     config: EpisodeConfig,
     include_images: bool,
@@ -66,6 +67,9 @@ def make_game2048_env(
         Starting score used only when `initial_board` is supplied.
     initial_move_count : int
         Starting move count used only when `initial_board` is supplied.
+    start_tile_count : int
+        Number of tiles to spawn at reset when `initial_board` is not
+        supplied. Ignored for fixed-board starts.
     reward_fn : RewardFn[Game2048State, Game2048Action]
         Reward function used to score verified transitions.
     config : EpisodeConfig
@@ -89,7 +93,6 @@ def make_game2048_env(
     backend = Game2048Backend(chance_model=chance_model)
     reset_event_policy: Game2048StartTilePolicy | None = None
     if initial_board is None:
-        start_tile_count = 2
         scenario = RandomStartScenario(
             size=size,
             target_value=target_value,

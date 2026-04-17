@@ -1,0 +1,34 @@
+schema_version: 1
+id: chess_puzzle_dense_example
+game: chess
+
+scenario:
+  kind: dataset_puzzle
+  manifest_path: ../../../tests/test_games/test_chess/fixtures/lichess_puzzles_subset/manifest.json
+  split: train
+
+reward:
+  kind: puzzle_dense
+  correct_move_reward: 1.0
+  incorrect_move_reward: -1.0
+
+episode:
+  max_attempts: 20
+  max_transitions: 20
+  invalid_action:
+    mode: penalize-truncate
+    penalty: -1.0
+
+observation:
+  text_renderer: unicode
+  include_images: false
+  image_size: 360
+  image_coordinates: true
+  orientation: white
+
+control:
+  auto_advance:
+    kind: puzzle_solution
+
+metadata:
+  tags: [example, puzzle]

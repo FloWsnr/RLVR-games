@@ -1,0 +1,20 @@
+schema_version: 1
+id: yahtzee_standard_game_final_score
+game: yahtzee
+
+scenario:
+  kind: standard_game
+
+reward:
+  kind: final_score
+
+episode:
+  max_attempts: 100
+  max_transitions: 200
+
+observation:
+  include_images: false
+  image_size: 360
+
+metadata:
+  tags: [example, baseline]

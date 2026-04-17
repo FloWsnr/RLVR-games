@@ -1,0 +1,25 @@
+schema_version: 1
+id: minesweeper_fixed_board_dense
+game: minesweeper
+
+scenario:
+  kind: fixed_board
+  board:
+    - "*.."
+    - "..."
+    - "..*"
+
+reward:
+  kind: safe_reveal_count_dense
+  mine_penalty: -1.0
+
+episode:
+  max_attempts: 20
+  max_transitions: 20
+
+observation:
+  include_images: false
+  image_size: 240
+
+metadata:
+  tags: [example, dense]

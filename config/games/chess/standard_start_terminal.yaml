@@ -1,0 +1,30 @@
+schema_version: 1
+id: chess_standard_start_terminal
+game: chess
+
+scenario:
+  kind: starting_position
+
+reward:
+  kind: terminal_outcome
+  perspective: white
+  win_reward: 1.0
+  draw_reward: 0.0
+  loss_reward: -1.0
+
+episode:
+  max_attempts: 200
+  max_transitions: 200
+  invalid_action:
+    mode: penalize-continue
+    penalty: -1.0
+
+observation:
+  text_renderer: ascii
+  include_images: false
+  image_size: 360
+  image_coordinates: false
+  orientation: white
+
+metadata:
+  tags: [example, baseline]
