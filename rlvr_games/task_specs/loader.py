@@ -1,35 +1,31 @@
 """YAML-backed task specifications for RLVR environments."""
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, StrictStr, field_validator
 import yaml
 
 from rlvr_games.core.protocol import Environment
-from rlvr_games.core.task_spec_base import (
-    TASK_SPEC_SCHEMA_VERSION,
-    TaskSpec,
-    TaskSpecHeader,
-    optional_bool,
-    optional_float,
-    optional_int,
-    optional_mapping,
-    optional_path,
-    optional_string,
-    parse_episode_config,
-    parse_metadata,
-    parse_task_spec_header,
-    reject_unknown_keys,
-    required_float,
-    required_int,
-    required_string,
-    required_string_sequence,
-    require_mapping,
-    require_nested_sequence,
-    require_string_sequence,
-    resolve_task_spec_path,
-)
+from rlvr_games.core.task_spec_base import TASK_SPEC_SCHEMA_VERSION, TaskSpec
 from rlvr_games.task_specs.registry import get_task_spec_handler
+
+
+class _TaskSpecDispatchModel(BaseModel):
+    """Minimal model used to route authored mappings to one game parser."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    game: StrictStr
+
+    @field_validator("game")
+    @classmethod
+    def validate_game(cls, value: str) -> str:
+        """Validate that the authored game name is non-empty."""
+        if not value:
+            raise ValueError("Task specification field 'game' must be non-empty.")
+        return value
 
 
 def load_task_spec(*, path: Path) -> TaskSpec:
@@ -70,9 +66,11 @@ def task_spec_from_mapping(
     TaskSpec
         Parsed game-specific task specification.
     """
-    mapping = require_mapping(payload, context="task specification")
-    game = required_string(mapping, "game", context="task specification")
-    return get_task_spec_handler(game=game).parse_mapping(
+    if not isinstance(payload, Mapping):
+        raise TypeError("task specification must be a mapping.")
+    mapping = dict(payload)
+    dispatch = _TaskSpecDispatchModel.model_validate(mapping)
+    return get_task_spec_handler(game=dispatch.game).parse_mapping(
         payload=mapping,
         base_dir=base_dir,
     )
@@ -122,27 +120,8 @@ def load_environment_from_task_spec_path(
 __all__ = [
     "TASK_SPEC_SCHEMA_VERSION",
     "TaskSpec",
-    "TaskSpecHeader",
     "build_environment_from_task_spec",
     "load_environment_from_task_spec_path",
     "load_task_spec",
-    "optional_bool",
-    "optional_float",
-    "optional_int",
-    "optional_mapping",
-    "optional_path",
-    "optional_string",
-    "parse_episode_config",
-    "parse_metadata",
-    "parse_task_spec_header",
-    "reject_unknown_keys",
-    "required_float",
-    "required_int",
-    "required_string",
-    "required_string_sequence",
-    "require_mapping",
-    "require_nested_sequence",
-    "require_string_sequence",
-    "resolve_task_spec_path",
     "task_spec_from_mapping",
 ]

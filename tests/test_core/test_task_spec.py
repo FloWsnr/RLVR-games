@@ -6,21 +6,23 @@ from pathlib import Path
 import sys
 
 from _pytest.monkeypatch import MonkeyPatch
+from pydantic import ValidationError
 import pytest
 
 from rlvr_games.cli.common import add_common_play_arguments
 from rlvr_games.cli.main import build_parser, run_cli
+from rlvr_games.core.types import InvalidActionMode, Observation
 from rlvr_games.games.connect4.cli import (
     build_connect4_environment,
     register_connect4_arguments,
 )
+from rlvr_games.games.connect4.task_spec import Connect4TaskSpec
 from rlvr_games.task_specs import (
     TASK_SPEC_SCHEMA_VERSION,
     build_environment_from_task_spec,
     load_environment_from_task_spec_path,
     load_task_spec,
 )
-from rlvr_games.core.types import Observation
 
 
 def example_task_spec_paths() -> tuple[Path, ...]:
@@ -453,6 +455,32 @@ def test_load_task_spec_rejects_unknown_top_level_fields(tmp_path: Path) -> None
         load_task_spec(path=task_spec_path)
 
 
+def test_load_task_spec_rejects_task_id_alias(tmp_path: Path) -> None:
+    task_spec_path = tmp_path / "bad_task_id.yaml"
+    task_spec_path.write_text(
+        "\n".join(
+            (
+                "schema_version: 1",
+                "task_id: bad_spec",
+                "game: connect4",
+                "scenario:",
+                "  kind: random_position",
+                "reward:",
+                "  kind: terminal_outcome",
+                "  perspective: mover",
+                "  win_reward: 1.0",
+                "  draw_reward: 0.0",
+                "  loss_reward: -1.0",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="unsupported fields: task_id"):
+        load_task_spec(path=task_spec_path)
+
+
 def test_load_task_spec_rejects_incompatible_chess_configuration(
     tmp_path: Path,
 ) -> None:
@@ -474,6 +502,36 @@ def test_load_task_spec_rejects_incompatible_chess_configuration(
     )
 
     with pytest.raises(ValueError, match="puzzle rewards require"):
+        load_task_spec(path=task_spec_path)
+
+
+def test_load_task_spec_rejects_incomplete_invalid_action_block(
+    tmp_path: Path,
+) -> None:
+    task_spec_path = tmp_path / "bad_invalid_action.yaml"
+    task_spec_path.write_text(
+        "\n".join(
+            (
+                "schema_version: 1",
+                "id: bad_invalid_action",
+                "game: connect4",
+                "scenario:",
+                "  kind: random_position",
+                "reward:",
+                "  kind: terminal_outcome",
+                "  perspective: mover",
+                "  win_reward: 1.0",
+                "  draw_reward: 0.0",
+                "  loss_reward: -1.0",
+                "episode:",
+                "  invalid_action: {}",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match="invalid_action"):
         load_task_spec(path=task_spec_path)
 
 
@@ -501,6 +559,118 @@ def test_load_task_spec_rejects_top_level_control_for_game_without_control(
     )
 
     with pytest.raises(ValueError, match="unsupported fields"):
+        load_task_spec(path=task_spec_path)
+
+
+def test_load_task_spec_allows_null_defaultable_sections(tmp_path: Path) -> None:
+    task_spec_path = tmp_path / "null_defaults.yaml"
+    task_spec_path.write_text(
+        "\n".join(
+            (
+                "schema_version: 1",
+                "id: null_defaults",
+                "game: connect4",
+                "scenario:",
+                "  kind: random_position",
+                "reward:",
+                "  kind: terminal_outcome",
+                "  perspective: mover",
+                "  win_reward: 1.0",
+                "  draw_reward: 0.0",
+                "  loss_reward: -1.0",
+                "episode: null",
+                "observation: null",
+                "control: null",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    task_spec = load_task_spec(path=task_spec_path)
+
+    assert isinstance(task_spec, Connect4TaskSpec)
+    assert task_spec.episode_config.max_attempts is None
+    assert task_spec.episode_config.max_transitions is None
+    assert (
+        task_spec.episode_config.invalid_action_policy.mode == InvalidActionMode.RAISE
+    )
+    assert task_spec.observation.include_images is False
+    assert task_spec.observation.image_size == 360
+    assert task_spec.control.auto_advance is None
+
+
+@pytest.mark.parametrize(
+    ("file_name", "task_spec_lines"),
+    (
+        (
+            "bad_chess_manifest_path.yaml",
+            (
+                "schema_version: 1",
+                "id: bad_chess_manifest_path",
+                "game: chess",
+                "scenario:",
+                "  kind: dataset_puzzle",
+                '  manifest_path: ""',
+                "reward:",
+                "  kind: puzzle_sparse",
+                "  success_reward: 1.0",
+                "  incorrect_move_reward: -1.0",
+                "",
+            ),
+        ),
+        (
+            "bad_chess_reward_engine_path.yaml",
+            (
+                "schema_version: 1",
+                "id: bad_chess_reward_engine_path",
+                "game: chess",
+                "scenario:",
+                "  kind: starting_position",
+                "reward:",
+                "  kind: engine_eval_dense",
+                "  perspective: mover",
+                "  engine:",
+                '    path: ""',
+                "    depth: 1",
+                "    mate_score: 100",
+                "",
+            ),
+        ),
+        (
+            "bad_chess_auto_advance_engine_path.yaml",
+            (
+                "schema_version: 1",
+                "id: bad_chess_auto_advance_engine_path",
+                "game: chess",
+                "scenario:",
+                "  kind: starting_position",
+                "reward:",
+                "  kind: terminal_outcome",
+                "  perspective: white",
+                "  win_reward: 1.0",
+                "  draw_reward: 0.0",
+                "  loss_reward: -1.0",
+                "control:",
+                "  auto_advance:",
+                "    kind: stockfish",
+                "    engine:",
+                '      path: ""',
+                "      depth: 1",
+                "",
+            ),
+        ),
+    ),
+)
+def test_load_task_spec_rejects_empty_chess_path_fields(
+    tmp_path: Path,
+    file_name: str,
+    task_spec_lines: tuple[str, ...],
+) -> None:
+    task_spec_path = tmp_path / file_name
+    task_spec_path.write_text("\n".join(task_spec_lines), encoding="utf-8")
+
+    with pytest.raises(ValidationError, match="must be non-empty"):
         load_task_spec(path=task_spec_path)
 
 

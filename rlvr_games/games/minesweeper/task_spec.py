@@ -2,21 +2,16 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr
 
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.task_spec_base import (
+    NumericScalar,
     TaskSpec,
-    optional_bool,
-    optional_int,
-    optional_mapping,
-    parse_task_spec_header,
-    reject_unknown_keys,
-    required_float,
-    required_int,
-    required_string,
-    require_mapping,
-    require_nested_sequence,
+    TaskSpecModel,
+    validate_task_spec_model,
 )
 from rlvr_games.games.minesweeper.actions import MinesweeperAction
 from rlvr_games.games.minesweeper.factory import make_minesweeper_env
@@ -103,49 +98,132 @@ class MinesweeperTaskSpec(TaskSpec):
         return "minesweeper"
 
 
+class _MinesweeperYamlModel(BaseModel):
+    """Base model for authored Minesweeper YAML fragments."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class MinesweeperRandomBoardScenarioModel(_MinesweeperYamlModel):
+    """Authored random-board scenario block."""
+
+    kind: Literal["random_board"] = "random_board"
+    rows: StrictInt = STANDARD_MINESWEEPER_ROWS
+    columns: StrictInt = STANDARD_MINESWEEPER_COLUMNS
+    mine_count: StrictInt = STANDARD_MINESWEEPER_MINE_COUNT
+
+    def to_runtime(self) -> MinesweeperRandomBoardScenarioTaskSpec:
+        """Convert the authored scenario into the runtime dataclass."""
+        return MinesweeperRandomBoardScenarioTaskSpec(
+            rows=self.rows,
+            columns=self.columns,
+            mine_count=self.mine_count,
+        )
+
+
+class MinesweeperFixedBoardScenarioModel(_MinesweeperYamlModel):
+    """Authored fixed-board scenario block."""
+
+    kind: Literal["fixed_board"] = "fixed_board"
+    board: tuple[StrictStr | tuple[StrictBool | StrictInt | StrictStr, ...], ...]
+
+    def to_runtime(self) -> MinesweeperFixedBoardScenarioTaskSpec:
+        """Convert the authored scenario into the runtime dataclass."""
+        return MinesweeperFixedBoardScenarioTaskSpec(
+            board=normalize_initial_board(board=self.board)
+        )
+
+
+MinesweeperScenarioModel = Annotated[
+    MinesweeperRandomBoardScenarioModel | MinesweeperFixedBoardScenarioModel,
+    Field(discriminator="kind"),
+]
+
+
+class MinesweeperOutcomeRewardModel(_MinesweeperYamlModel):
+    """Authored outcome reward block."""
+
+    kind: Literal["outcome"] = "outcome"
+    win_reward: NumericScalar
+    loss_reward: NumericScalar
+
+    def to_runtime(self) -> MinesweeperOutcomeRewardTaskSpec:
+        """Convert the authored reward into the runtime dataclass."""
+        return MinesweeperOutcomeRewardTaskSpec(
+            win_reward=float(self.win_reward),
+            loss_reward=float(self.loss_reward),
+        )
+
+
+class MinesweeperSafeRevealRewardModel(_MinesweeperYamlModel):
+    """Authored dense safe-reveal reward block."""
+
+    kind: Literal["safe_reveal_count_dense"] = "safe_reveal_count_dense"
+    mine_penalty: NumericScalar
+
+    def to_runtime(self) -> MinesweeperSafeRevealRewardTaskSpec:
+        """Convert the authored reward into the runtime dataclass."""
+        return MinesweeperSafeRevealRewardTaskSpec(
+            mine_penalty=float(self.mine_penalty)
+        )
+
+
+MinesweeperRewardModel = Annotated[
+    MinesweeperOutcomeRewardModel | MinesweeperSafeRevealRewardModel,
+    Field(discriminator="kind"),
+]
+
+
+class MinesweeperObservationModel(_MinesweeperYamlModel):
+    """Authored observation block."""
+
+    include_images: StrictBool = False
+    image_size: StrictInt = 240
+
+    def to_runtime(self) -> MinesweeperObservationTaskSpec:
+        """Convert the authored observation block into the runtime dataclass."""
+        return MinesweeperObservationTaskSpec(
+            include_images=self.include_images,
+            image_size=self.image_size,
+        )
+
+
+class MinesweeperTaskSpecModel(TaskSpecModel):
+    """Authored top-level Minesweeper task specification."""
+
+    game: Literal["minesweeper"] = "minesweeper"
+    scenario: MinesweeperScenarioModel
+    reward: MinesweeperRewardModel
+    observation: MinesweeperObservationModel | None = None
+
+    def to_runtime(self) -> MinesweeperTaskSpec:
+        """Convert the authored model into the runtime task spec."""
+        observation = self.observation
+        if observation is None:
+            observation = MinesweeperObservationModel()
+        return MinesweeperTaskSpec(
+            schema_version=self.schema_version,
+            task_id=self.task_id,
+            episode_config=self.episode_config(),
+            metadata=self.metadata,
+            scenario=self.scenario.to_runtime(),
+            reward=self.reward.to_runtime(),
+            observation=observation.to_runtime(),
+        )
+
+
 def minesweeper_task_spec_from_mapping(
     *,
     payload: dict[str, object],
     base_dir: Path,
 ) -> MinesweeperTaskSpec:
     """Parse a Minesweeper task specification from a raw mapping."""
-    del base_dir
-    header = parse_task_spec_header(
+    task_spec = validate_task_spec_model(
+        model_type=MinesweeperTaskSpecModel,
         payload=payload,
-        expected_game="minesweeper",
-        allowed_top_level_keys=(
-            "schema_version",
-            "id",
-            "game",
-            "scenario",
-            "reward",
-            "episode",
-            "observation",
-            "metadata",
-        ),
+        base_dir=base_dir,
     )
-    scenario = _parse_minesweeper_scenario(
-        payload=require_mapping(
-            payload.get("scenario"), context="minesweeper scenario"
-        ),
-    )
-    reward = _parse_minesweeper_reward(
-        payload=require_mapping(payload.get("reward"), context="minesweeper reward"),
-    )
-    observation_payload = optional_mapping(
-        payload,
-        "observation",
-        context="minesweeper task specification",
-    )
-    return MinesweeperTaskSpec(
-        schema_version=header.schema_version,
-        task_id=header.task_id,
-        episode_config=header.episode_config,
-        metadata=header.metadata,
-        scenario=scenario,
-        reward=reward,
-        observation=_parse_minesweeper_observation(observation_payload),
-    )
+    return task_spec.to_runtime()
 
 
 def build_minesweeper_environment_from_task_spec(
@@ -181,125 +259,6 @@ def build_minesweeper_environment_from_task_spec(
         config=task_spec.episode_config,
         include_images=task_spec.observation.include_images,
         image_size=task_spec.observation.image_size,
-    )
-
-
-def _parse_minesweeper_scenario(
-    *,
-    payload: dict[str, object],
-) -> MinesweeperRandomBoardScenarioTaskSpec | MinesweeperFixedBoardScenarioTaskSpec:
-    kind = required_string(payload, "kind", context="minesweeper scenario")
-    if kind == "random_board":
-        reject_unknown_keys(
-            payload,
-            allowed_keys=("kind", "rows", "columns", "mine_count"),
-            context="minesweeper scenario",
-        )
-        return MinesweeperRandomBoardScenarioTaskSpec(
-            rows=(
-                STANDARD_MINESWEEPER_ROWS
-                if optional_int(payload, "rows", context="minesweeper scenario") is None
-                else required_int(payload, "rows", context="minesweeper scenario")
-            ),
-            columns=(
-                STANDARD_MINESWEEPER_COLUMNS
-                if optional_int(payload, "columns", context="minesweeper scenario")
-                is None
-                else required_int(payload, "columns", context="minesweeper scenario")
-            ),
-            mine_count=(
-                STANDARD_MINESWEEPER_MINE_COUNT
-                if optional_int(
-                    payload,
-                    "mine_count",
-                    context="minesweeper scenario",
-                )
-                is None
-                else required_int(
-                    payload,
-                    "mine_count",
-                    context="minesweeper scenario",
-                )
-            ),
-        )
-    if kind == "fixed_board":
-        reject_unknown_keys(
-            payload,
-            allowed_keys=("kind", "board"),
-            context="minesweeper scenario",
-        )
-        return MinesweeperFixedBoardScenarioTaskSpec(
-            board=normalize_initial_board(
-                board=cast(
-                    tuple[tuple[bool | str | int, ...], ...],
-                    require_nested_sequence(
-                        payload.get("board"),
-                        context="minesweeper fixed board",
-                    ),
-                )
-            )
-        )
-    raise ValueError(f"Unsupported Minesweeper scenario kind: {kind!r}.")
-
-
-def _parse_minesweeper_reward(
-    *,
-    payload: dict[str, object],
-) -> MinesweeperOutcomeRewardTaskSpec | MinesweeperSafeRevealRewardTaskSpec:
-    kind = required_string(payload, "kind", context="minesweeper reward")
-    if kind == "outcome":
-        reject_unknown_keys(
-            payload,
-            allowed_keys=("kind", "win_reward", "loss_reward"),
-            context="minesweeper reward",
-        )
-        return MinesweeperOutcomeRewardTaskSpec(
-            win_reward=required_float(
-                payload,
-                "win_reward",
-                context="minesweeper reward",
-            ),
-            loss_reward=required_float(
-                payload,
-                "loss_reward",
-                context="minesweeper reward",
-            ),
-        )
-    if kind == "safe_reveal_count_dense":
-        reject_unknown_keys(
-            payload,
-            allowed_keys=("kind", "mine_penalty"),
-            context="minesweeper reward",
-        )
-        return MinesweeperSafeRevealRewardTaskSpec(
-            mine_penalty=required_float(
-                payload,
-                "mine_penalty",
-                context="minesweeper reward",
-            )
-        )
-    raise ValueError(f"Unsupported Minesweeper reward kind: {kind!r}.")
-
-
-def _parse_minesweeper_observation(
-    payload: dict[str, object] | None,
-) -> MinesweeperObservationTaskSpec:
-    if payload is None:
-        return MinesweeperObservationTaskSpec()
-    reject_unknown_keys(
-        payload,
-        allowed_keys=("include_images", "image_size"),
-        context="minesweeper observation",
-    )
-    include_images = optional_bool(
-        payload,
-        "include_images",
-        context="minesweeper observation",
-    )
-    image_size = optional_int(payload, "image_size", context="minesweeper observation")
-    return MinesweeperObservationTaskSpec(
-        include_images=False if include_images is None else include_images,
-        image_size=240 if image_size is None else image_size,
     )
 
 

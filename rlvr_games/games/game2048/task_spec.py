@@ -2,20 +2,15 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.task_spec_base import (
     TaskSpec,
-    optional_bool,
-    optional_int,
-    optional_mapping,
-    parse_task_spec_header,
-    reject_unknown_keys,
-    required_int,
-    required_string,
-    require_mapping,
-    require_nested_sequence,
+    TaskSpecModel,
+    validate_task_spec_model,
 )
 from rlvr_games.games.game2048.actions import Game2048Action
 from rlvr_games.games.game2048.engine import is_power_of_two
@@ -108,47 +103,130 @@ class Game2048TaskSpec(TaskSpec):
         return "game2048"
 
 
+class _Game2048YamlModel(BaseModel):
+    """Base model for authored 2048 YAML fragments."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class Game2048RandomStartScenarioModel(_Game2048YamlModel):
+    """Authored random-start scenario block."""
+
+    kind: Literal["random_start"] = "random_start"
+    size: StrictInt = STANDARD_2048_SIZE
+    target_value: StrictInt = STANDARD_2048_TARGET
+    start_tile_count: StrictInt = STANDARD_START_TILE_COUNT
+
+    def to_runtime(self) -> Game2048RandomStartScenarioTaskSpec:
+        """Convert the authored scenario into the runtime dataclass."""
+        return Game2048RandomStartScenarioTaskSpec(
+            size=self.size,
+            target_value=self.target_value,
+            start_tile_count=self.start_tile_count,
+        )
+
+
+class Game2048FixedBoardScenarioModel(_Game2048YamlModel):
+    """Authored fixed-board scenario block."""
+
+    kind: Literal["fixed_board"] = "fixed_board"
+    board: tuple[tuple[StrictInt, ...], ...]
+    target_value: StrictInt = STANDARD_2048_TARGET
+    initial_score: StrictInt = 0
+    initial_move_count: StrictInt = 0
+
+    def to_runtime(self) -> Game2048FixedBoardScenarioTaskSpec:
+        """Convert the authored scenario into the runtime dataclass."""
+        return Game2048FixedBoardScenarioTaskSpec(
+            board=normalize_initial_board(board=self.board),
+            target_value=self.target_value,
+            initial_score=self.initial_score,
+            initial_move_count=self.initial_move_count,
+        )
+
+
+Game2048ScenarioModel = Annotated[
+    Game2048RandomStartScenarioModel | Game2048FixedBoardScenarioModel,
+    Field(discriminator="kind"),
+]
+
+
+class Game2048TargetTileRewardModel(_Game2048YamlModel):
+    """Authored target-tile reward block."""
+
+    kind: Literal["target_tile"] = "target_tile"
+
+    def to_runtime(self) -> Game2048TargetTileRewardTaskSpec:
+        """Convert the authored reward into the runtime dataclass."""
+        return Game2048TargetTileRewardTaskSpec()
+
+
+class Game2048ScoreDeltaRewardModel(_Game2048YamlModel):
+    """Authored score-delta reward block."""
+
+    kind: Literal["score_delta"] = "score_delta"
+
+    def to_runtime(self) -> Game2048ScoreDeltaRewardTaskSpec:
+        """Convert the authored reward into the runtime dataclass."""
+        return Game2048ScoreDeltaRewardTaskSpec()
+
+
+Game2048RewardModel = Annotated[
+    Game2048TargetTileRewardModel | Game2048ScoreDeltaRewardModel,
+    Field(discriminator="kind"),
+]
+
+
+class Game2048ObservationModel(_Game2048YamlModel):
+    """Authored observation block."""
+
+    include_images: StrictBool = False
+    image_size: StrictInt = 360
+
+    def to_runtime(self) -> Game2048ObservationTaskSpec:
+        """Convert the authored observation block into the runtime dataclass."""
+        return Game2048ObservationTaskSpec(
+            include_images=self.include_images,
+            image_size=self.image_size,
+        )
+
+
+class Game2048TaskSpecModel(TaskSpecModel):
+    """Authored top-level 2048 task specification."""
+
+    game: Literal["game2048"] = "game2048"
+    scenario: Game2048ScenarioModel
+    reward: Game2048RewardModel
+    observation: Game2048ObservationModel | None = None
+
+    def to_runtime(self) -> Game2048TaskSpec:
+        """Convert the authored model into the runtime task spec."""
+        observation = self.observation
+        if observation is None:
+            observation = Game2048ObservationModel()
+        return Game2048TaskSpec(
+            schema_version=self.schema_version,
+            task_id=self.task_id,
+            episode_config=self.episode_config(),
+            metadata=self.metadata,
+            scenario=self.scenario.to_runtime(),
+            reward=self.reward.to_runtime(),
+            observation=observation.to_runtime(),
+        )
+
+
 def game2048_task_spec_from_mapping(
     *,
     payload: dict[str, object],
     base_dir: Path,
 ) -> Game2048TaskSpec:
     """Parse a 2048 task specification from a raw mapping."""
-    del base_dir
-    header = parse_task_spec_header(
+    task_spec = validate_task_spec_model(
+        model_type=Game2048TaskSpecModel,
         payload=payload,
-        expected_game="game2048",
-        allowed_top_level_keys=(
-            "schema_version",
-            "id",
-            "game",
-            "scenario",
-            "reward",
-            "episode",
-            "observation",
-            "metadata",
-        ),
+        base_dir=base_dir,
     )
-    scenario = _parse_game2048_scenario(
-        payload=require_mapping(payload.get("scenario"), context="2048 scenario"),
-    )
-    reward = _parse_game2048_reward(
-        payload=require_mapping(payload.get("reward"), context="2048 reward"),
-    )
-    observation_payload = optional_mapping(
-        payload,
-        "observation",
-        context="2048 task specification",
-    )
-    return Game2048TaskSpec(
-        schema_version=header.schema_version,
-        task_id=header.task_id,
-        episode_config=header.episode_config,
-        metadata=header.metadata,
-        scenario=scenario,
-        reward=reward,
-        observation=_parse_game2048_observation(observation_payload),
-    )
+    return task_spec.to_runtime()
 
 
 def build_game2048_environment_from_task_spec(
@@ -189,138 +267,6 @@ def build_game2048_environment_from_task_spec(
         config=task_spec.episode_config,
         include_images=task_spec.observation.include_images,
         image_size=task_spec.observation.image_size,
-    )
-
-
-def _parse_game2048_scenario(
-    *,
-    payload: dict[str, object],
-) -> Game2048RandomStartScenarioTaskSpec | Game2048FixedBoardScenarioTaskSpec:
-    kind = required_string(payload, "kind", context="2048 scenario")
-    if kind == "random_start":
-        reject_unknown_keys(
-            payload,
-            allowed_keys=("kind", "size", "target_value", "start_tile_count"),
-            context="2048 scenario",
-        )
-        return Game2048RandomStartScenarioTaskSpec(
-            size=(
-                STANDARD_2048_SIZE
-                if optional_int(payload, "size", context="2048 scenario") is None
-                else required_int(payload, "size", context="2048 scenario")
-            ),
-            target_value=(
-                STANDARD_2048_TARGET
-                if optional_int(payload, "target_value", context="2048 scenario")
-                is None
-                else required_int(payload, "target_value", context="2048 scenario")
-            ),
-            start_tile_count=(
-                STANDARD_START_TILE_COUNT
-                if optional_int(
-                    payload,
-                    "start_tile_count",
-                    context="2048 scenario",
-                )
-                is None
-                else required_int(
-                    payload,
-                    "start_tile_count",
-                    context="2048 scenario",
-                )
-            ),
-        )
-    if kind == "fixed_board":
-        reject_unknown_keys(
-            payload,
-            allowed_keys=(
-                "kind",
-                "board",
-                "target_value",
-                "initial_score",
-                "initial_move_count",
-            ),
-            context="2048 scenario",
-        )
-        return Game2048FixedBoardScenarioTaskSpec(
-            board=normalize_initial_board(
-                board=cast(
-                    tuple[tuple[int, ...], ...],
-                    require_nested_sequence(
-                        payload.get("board"),
-                        context="2048 fixed board",
-                    ),
-                )
-            ),
-            target_value=(
-                STANDARD_2048_TARGET
-                if optional_int(payload, "target_value", context="2048 scenario")
-                is None
-                else required_int(payload, "target_value", context="2048 scenario")
-            ),
-            initial_score=(
-                0
-                if optional_int(payload, "initial_score", context="2048 scenario")
-                is None
-                else required_int(payload, "initial_score", context="2048 scenario")
-            ),
-            initial_move_count=(
-                0
-                if optional_int(
-                    payload,
-                    "initial_move_count",
-                    context="2048 scenario",
-                )
-                is None
-                else required_int(
-                    payload,
-                    "initial_move_count",
-                    context="2048 scenario",
-                )
-            ),
-        )
-    raise ValueError(f"Unsupported 2048 scenario kind: {kind!r}.")
-
-
-def _parse_game2048_reward(
-    *,
-    payload: dict[str, object],
-) -> Game2048TargetTileRewardTaskSpec | Game2048ScoreDeltaRewardTaskSpec:
-    kind = required_string(payload, "kind", context="2048 reward")
-    if kind == "target_tile":
-        reject_unknown_keys(
-            payload,
-            allowed_keys=("kind",),
-            context="2048 reward",
-        )
-        return Game2048TargetTileRewardTaskSpec()
-    if kind == "score_delta":
-        reject_unknown_keys(
-            payload,
-            allowed_keys=("kind",),
-            context="2048 reward",
-        )
-        return Game2048ScoreDeltaRewardTaskSpec()
-    raise ValueError(f"Unsupported 2048 reward kind: {kind!r}.")
-
-
-def _parse_game2048_observation(
-    payload: dict[str, object] | None,
-) -> Game2048ObservationTaskSpec:
-    if payload is None:
-        return Game2048ObservationTaskSpec()
-    reject_unknown_keys(
-        payload,
-        allowed_keys=("include_images", "image_size"),
-        context="2048 observation",
-    )
-    include_images = optional_bool(
-        payload, "include_images", context="2048 observation"
-    )
-    image_size = optional_int(payload, "image_size", context="2048 observation")
-    return Game2048ObservationTaskSpec(
-        include_images=False if include_images is None else include_images,
-        image_size=360 if image_size is None else image_size,
     )
 
 

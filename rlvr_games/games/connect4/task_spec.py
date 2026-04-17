@@ -2,21 +2,16 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr
 
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.task_spec_base import (
+    NumericScalar,
     TaskSpec,
-    optional_bool,
-    optional_int,
-    optional_mapping,
-    parse_task_spec_header,
-    reject_unknown_keys,
-    required_float,
-    required_int,
-    required_string,
-    require_mapping,
-    require_nested_sequence,
+    TaskSpecModel,
+    validate_task_spec_model,
 )
 from rlvr_games.games.connect4.actions import Connect4Action
 from rlvr_games.games.connect4.factory import make_connect4_env
@@ -150,54 +145,171 @@ class Connect4TaskSpec(TaskSpec):
             )
 
 
+class _Connect4YamlModel(BaseModel):
+    """Base model for authored Connect 4 YAML fragments."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class Connect4RandomPositionScenarioModel(_Connect4YamlModel):
+    """Authored random-position scenario block."""
+
+    kind: Literal["random_position"] = "random_position"
+    rows: StrictInt = STANDARD_CONNECT4_ROWS
+    columns: StrictInt = STANDARD_CONNECT4_COLUMNS
+    connect_length: StrictInt = STANDARD_CONNECT4_CONNECT_LENGTH
+    min_start_moves: StrictInt = 0
+    max_start_moves: StrictInt = DEFAULT_RANDOM_START_MAX_MOVES
+
+    def to_runtime(self) -> Connect4RandomPositionScenarioTaskSpec:
+        """Convert the authored scenario into the runtime dataclass."""
+        return Connect4RandomPositionScenarioTaskSpec(
+            rows=self.rows,
+            columns=self.columns,
+            connect_length=self.connect_length,
+            min_start_moves=self.min_start_moves,
+            max_start_moves=self.max_start_moves,
+        )
+
+
+class Connect4FixedBoardScenarioModel(_Connect4YamlModel):
+    """Authored fixed-board scenario block."""
+
+    kind: Literal["fixed_board"] = "fixed_board"
+    board: tuple[StrictStr | tuple[StrictStr, ...], ...]
+    connect_length: StrictInt = STANDARD_CONNECT4_CONNECT_LENGTH
+
+    def to_runtime(self) -> Connect4FixedBoardScenarioTaskSpec:
+        """Convert the authored scenario into the runtime dataclass."""
+        normalized_board = tuple(
+            tuple(row) if isinstance(row, str) else row for row in self.board
+        )
+        return Connect4FixedBoardScenarioTaskSpec(
+            board=normalize_initial_board(board=normalized_board),
+            connect_length=self.connect_length,
+        )
+
+
+Connect4ScenarioModel = Annotated[
+    Connect4RandomPositionScenarioModel | Connect4FixedBoardScenarioModel,
+    Field(discriminator="kind"),
+]
+
+
+class Connect4TerminalOutcomeRewardModel(_Connect4YamlModel):
+    """Authored terminal-outcome reward block."""
+
+    kind: Literal["terminal_outcome"] = "terminal_outcome"
+    perspective: Connect4RewardPerspective
+    win_reward: NumericScalar
+    draw_reward: NumericScalar
+    loss_reward: NumericScalar
+
+    def to_runtime(self) -> Connect4TerminalOutcomeRewardTaskSpec:
+        """Convert the authored reward into the runtime dataclass."""
+        return Connect4TerminalOutcomeRewardTaskSpec(
+            perspective=self.perspective,
+            win_reward=float(self.win_reward),
+            draw_reward=float(self.draw_reward),
+            loss_reward=float(self.loss_reward),
+        )
+
+
+class Connect4SolverMoveRewardModel(_Connect4YamlModel):
+    """Authored BitBully move-score reward block."""
+
+    kind: Literal["solver_move_dense"] = "solver_move_dense"
+    perspective: Connect4RewardPerspective
+
+    def to_runtime(self) -> Connect4SolverMoveRewardTaskSpec:
+        """Convert the authored reward into the runtime dataclass."""
+        return Connect4SolverMoveRewardTaskSpec(perspective=self.perspective)
+
+
+Connect4RewardModel = Annotated[
+    Connect4TerminalOutcomeRewardModel | Connect4SolverMoveRewardModel,
+    Field(discriminator="kind"),
+]
+
+
+class Connect4ObservationModel(_Connect4YamlModel):
+    """Authored observation block."""
+
+    include_images: StrictBool = False
+    image_size: StrictInt = 360
+
+    def to_runtime(self) -> Connect4ObservationTaskSpec:
+        """Convert the authored observation block into the runtime dataclass."""
+        return Connect4ObservationTaskSpec(
+            include_images=self.include_images,
+            image_size=self.image_size,
+        )
+
+
+class Connect4SolverAutoAdvanceModel(_Connect4YamlModel):
+    """Authored solver auto-advance block."""
+
+    kind: Literal["solver"] = "solver"
+
+    def to_runtime(self) -> Connect4SolverAutoAdvanceTaskSpec:
+        """Convert the authored auto-advance block into the runtime dataclass."""
+        return Connect4SolverAutoAdvanceTaskSpec()
+
+
+class Connect4ControlModel(_Connect4YamlModel):
+    """Authored control block."""
+
+    auto_advance: Connect4SolverAutoAdvanceModel | None = None
+
+    def to_runtime(self) -> Connect4ControlTaskSpec:
+        """Convert the authored control block into the runtime dataclass."""
+        auto_advance = self.auto_advance
+        return Connect4ControlTaskSpec(
+            auto_advance=None if auto_advance is None else auto_advance.to_runtime()
+        )
+
+
+class Connect4TaskSpecModel(TaskSpecModel):
+    """Authored top-level Connect 4 task specification."""
+
+    game: Literal["connect4"] = "connect4"
+    scenario: Connect4ScenarioModel
+    reward: Connect4RewardModel
+    observation: Connect4ObservationModel | None = None
+    control: Connect4ControlModel | None = None
+
+    def to_runtime(self) -> Connect4TaskSpec:
+        """Convert the authored model into the runtime task spec."""
+        observation = self.observation
+        if observation is None:
+            observation = Connect4ObservationModel()
+        control = self.control
+        if control is None:
+            control = Connect4ControlModel()
+        return Connect4TaskSpec(
+            schema_version=self.schema_version,
+            task_id=self.task_id,
+            episode_config=self.episode_config(),
+            metadata=self.metadata,
+            scenario=self.scenario.to_runtime(),
+            reward=self.reward.to_runtime(),
+            observation=observation.to_runtime(),
+            control=control.to_runtime(),
+        )
+
+
 def connect4_task_spec_from_mapping(
     *,
     payload: dict[str, object],
     base_dir: Path,
 ) -> Connect4TaskSpec:
     """Parse a Connect 4 task specification from a raw mapping."""
-    del base_dir
-    header = parse_task_spec_header(
+    task_spec = validate_task_spec_model(
+        model_type=Connect4TaskSpecModel,
         payload=payload,
-        expected_game="connect4",
-        allowed_top_level_keys=(
-            "schema_version",
-            "id",
-            "game",
-            "scenario",
-            "reward",
-            "episode",
-            "observation",
-            "control",
-            "metadata",
-        ),
+        base_dir=base_dir,
     )
-    scenario = _parse_connect4_scenario(
-        payload=require_mapping(payload.get("scenario"), context="connect4 scenario"),
-    )
-    reward = _parse_connect4_reward(
-        payload=require_mapping(payload.get("reward"), context="connect4 reward"),
-    )
-    observation_payload = optional_mapping(
-        payload,
-        "observation",
-        context="connect4 task specification",
-    )
-    control_payload = optional_mapping(
-        payload,
-        "control",
-        context="connect4 task specification",
-    )
-    return Connect4TaskSpec(
-        schema_version=header.schema_version,
-        task_id=header.task_id,
-        episode_config=header.episode_config,
-        metadata=header.metadata,
-        scenario=scenario,
-        reward=reward,
-        observation=_parse_connect4_observation(observation_payload),
-        control=_parse_connect4_control(control_payload),
-    )
+    return task_spec.to_runtime()
 
 
 def build_connect4_environment_from_task_spec(
@@ -227,218 +339,6 @@ def build_connect4_environment_from_task_spec(
             solver=solver,
         ),
     )
-
-
-def _parse_connect4_scenario(
-    *,
-    payload: dict[str, object],
-) -> Connect4RandomPositionScenarioTaskSpec | Connect4FixedBoardScenarioTaskSpec:
-    kind = required_string(payload, "kind", context="connect4 scenario")
-    if kind == "random_position":
-        reject_unknown_keys(
-            payload,
-            allowed_keys=(
-                "kind",
-                "rows",
-                "columns",
-                "connect_length",
-                "min_start_moves",
-                "max_start_moves",
-            ),
-            context="connect4 scenario",
-        )
-        return Connect4RandomPositionScenarioTaskSpec(
-            rows=(
-                STANDARD_CONNECT4_ROWS
-                if optional_int(payload, "rows", context="connect4 scenario") is None
-                else required_int(payload, "rows", context="connect4 scenario")
-            ),
-            columns=(
-                STANDARD_CONNECT4_COLUMNS
-                if optional_int(payload, "columns", context="connect4 scenario") is None
-                else required_int(payload, "columns", context="connect4 scenario")
-            ),
-            connect_length=(
-                STANDARD_CONNECT4_CONNECT_LENGTH
-                if optional_int(
-                    payload,
-                    "connect_length",
-                    context="connect4 scenario",
-                )
-                is None
-                else required_int(
-                    payload,
-                    "connect_length",
-                    context="connect4 scenario",
-                )
-            ),
-            min_start_moves=(
-                0
-                if optional_int(
-                    payload,
-                    "min_start_moves",
-                    context="connect4 scenario",
-                )
-                is None
-                else required_int(
-                    payload,
-                    "min_start_moves",
-                    context="connect4 scenario",
-                )
-            ),
-            max_start_moves=(
-                DEFAULT_RANDOM_START_MAX_MOVES
-                if optional_int(
-                    payload,
-                    "max_start_moves",
-                    context="connect4 scenario",
-                )
-                is None
-                else required_int(
-                    payload,
-                    "max_start_moves",
-                    context="connect4 scenario",
-                )
-            ),
-        )
-    if kind == "fixed_board":
-        reject_unknown_keys(
-            payload,
-            allowed_keys=("kind", "board", "connect_length"),
-            context="connect4 scenario",
-        )
-        board_payload = require_nested_sequence(
-            payload.get("board"),
-            context="connect4 fixed board",
-        )
-        return Connect4FixedBoardScenarioTaskSpec(
-            board=normalize_initial_board(
-                board=cast(tuple[tuple[str, ...], ...], board_payload)
-            ),
-            connect_length=(
-                STANDARD_CONNECT4_CONNECT_LENGTH
-                if optional_int(
-                    payload,
-                    "connect_length",
-                    context="connect4 scenario",
-                )
-                is None
-                else required_int(
-                    payload,
-                    "connect_length",
-                    context="connect4 scenario",
-                )
-            ),
-        )
-    raise ValueError(f"Unsupported Connect 4 scenario kind: {kind!r}.")
-
-
-def _parse_connect4_reward(
-    *,
-    payload: dict[str, object],
-) -> Connect4TerminalOutcomeRewardTaskSpec | Connect4SolverMoveRewardTaskSpec:
-    kind = required_string(payload, "kind", context="connect4 reward")
-    if kind == "terminal_outcome":
-        reject_unknown_keys(
-            payload,
-            allowed_keys=(
-                "kind",
-                "perspective",
-                "win_reward",
-                "draw_reward",
-                "loss_reward",
-            ),
-            context="connect4 reward",
-        )
-        return Connect4TerminalOutcomeRewardTaskSpec(
-            perspective=_parse_connect4_reward_perspective(
-                payload,
-                key="perspective",
-                context="connect4 reward",
-            ),
-            win_reward=required_float(
-                payload,
-                "win_reward",
-                context="connect4 reward",
-            ),
-            draw_reward=required_float(
-                payload,
-                "draw_reward",
-                context="connect4 reward",
-            ),
-            loss_reward=required_float(
-                payload,
-                "loss_reward",
-                context="connect4 reward",
-            ),
-        )
-    if kind == "solver_move_dense":
-        reject_unknown_keys(
-            payload,
-            allowed_keys=("kind", "perspective"),
-            context="connect4 reward",
-        )
-        perspective = _parse_connect4_reward_perspective(
-            payload,
-            key="perspective",
-            context="connect4 reward",
-        )
-        return Connect4SolverMoveRewardTaskSpec(perspective=perspective)
-    raise ValueError(f"Unsupported Connect 4 reward kind: {kind!r}.")
-
-
-def _parse_connect4_observation(
-    payload: dict[str, object] | None,
-) -> Connect4ObservationTaskSpec:
-    if payload is None:
-        return Connect4ObservationTaskSpec()
-    reject_unknown_keys(
-        payload,
-        allowed_keys=("include_images", "image_size"),
-        context="connect4 observation",
-    )
-    include_images = optional_bool(
-        payload,
-        "include_images",
-        context="connect4 observation",
-    )
-    image_size = optional_int(payload, "image_size", context="connect4 observation")
-    return Connect4ObservationTaskSpec(
-        include_images=False if include_images is None else include_images,
-        image_size=360 if image_size is None else image_size,
-    )
-
-
-def _parse_connect4_control(
-    payload: dict[str, object] | None,
-) -> Connect4ControlTaskSpec:
-    if payload is None:
-        return Connect4ControlTaskSpec()
-    reject_unknown_keys(
-        payload,
-        allowed_keys=("auto_advance",),
-        context="connect4 control",
-    )
-    auto_advance_payload = optional_mapping(
-        payload,
-        "auto_advance",
-        context="connect4 control",
-    )
-    if auto_advance_payload is None:
-        return Connect4ControlTaskSpec()
-    reject_unknown_keys(
-        auto_advance_payload,
-        allowed_keys=("kind",),
-        context="connect4 auto_advance",
-    )
-    kind = required_string(
-        auto_advance_payload,
-        "kind",
-        context="connect4 auto_advance",
-    )
-    if kind != "solver":
-        raise ValueError(f"Unsupported Connect 4 auto_advance kind: {kind!r}.")
-    return Connect4ControlTaskSpec(auto_advance=Connect4SolverAutoAdvanceTaskSpec())
 
 
 def _build_connect4_scenario(
@@ -509,18 +409,6 @@ def _is_standard_connect4_scenario(
         and len(scenario_spec.board[0]) == STANDARD_CONNECT4_COLUMNS
         and scenario_spec.connect_length == STANDARD_CONNECT4_CONNECT_LENGTH
     )
-
-
-def _parse_connect4_reward_perspective(
-    payload: dict[str, object],
-    *,
-    key: str,
-    context: str,
-) -> Connect4RewardPerspective:
-    perspective = required_string(payload, key, context=context)
-    if perspective not in ("x", "o", "mover"):
-        raise ValueError(f"{context} field {key!r} must be 'x', 'o', or 'mover'.")
-    return cast(Connect4RewardPerspective, perspective)
 
 
 __all__ = [

@@ -2,25 +2,26 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
+from typing import Annotated, Literal
 
 import chess
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictInt,
+    ValidationInfo,
+    field_validator,
+)
 
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.task_spec_base import (
+    NumericScalar,
     TaskSpec,
-    optional_bool,
-    optional_float,
-    optional_int,
-    optional_mapping,
-    optional_path,
-    optional_string,
-    parse_task_spec_header,
-    reject_unknown_keys,
-    required_float,
-    required_int,
-    required_string,
-    require_mapping,
+    TaskSpecModel,
+    resolve_path_from_context,
+    validate_task_spec_model,
 )
 from rlvr_games.datasets import DatasetSplit
 from rlvr_games.games.chess.actions import ChessAction
@@ -217,55 +218,281 @@ class ChessTaskSpec(TaskSpec):
             )
 
 
+class _ChessYamlModel(BaseModel):
+    """Base model for authored chess YAML fragments."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class ChessStartingPositionScenarioModel(_ChessYamlModel):
+    """Authored starting-position scenario block."""
+
+    kind: Literal["starting_position"] = "starting_position"
+    initial_fen: str = STANDARD_START_FEN
+
+    def to_runtime(self) -> ChessStartingPositionScenarioTaskSpec:
+        """Convert the authored scenario into the runtime dataclass."""
+        return ChessStartingPositionScenarioTaskSpec(initial_fen=self.initial_fen)
+
+
+class ChessPuzzleDatasetScenarioModel(_ChessYamlModel):
+    """Authored dataset-puzzle scenario block."""
+
+    kind: Literal["dataset_puzzle"] = "dataset_puzzle"
+    manifest_path: Path
+    split: DatasetSplit = DatasetSplit.TRAIN
+
+    @field_validator("manifest_path", mode="before")
+    @classmethod
+    def resolve_manifest_path(cls, value: object, info: ValidationInfo) -> object:
+        """Resolve dataset manifest paths relative to the authored YAML file."""
+        if not isinstance(value, str | Path):
+            return value
+        return resolve_path_from_context(
+            raw_path=value,
+            info=info,
+            context="chess scenario field 'manifest_path'",
+        )
+
+    def to_runtime(self) -> ChessPuzzleDatasetScenarioTaskSpec:
+        """Convert the authored scenario into the runtime dataclass."""
+        return ChessPuzzleDatasetScenarioTaskSpec(
+            manifest_path=self.manifest_path,
+            split=self.split,
+        )
+
+
+ChessScenarioModel = Annotated[
+    ChessStartingPositionScenarioModel | ChessPuzzleDatasetScenarioModel,
+    Field(discriminator="kind"),
+]
+
+
+class ChessTerminalOutcomeRewardModel(_ChessYamlModel):
+    """Authored terminal-outcome reward block."""
+
+    kind: Literal["terminal_outcome"] = "terminal_outcome"
+    perspective: ChessPerspective
+    win_reward: NumericScalar
+    draw_reward: NumericScalar
+    loss_reward: NumericScalar
+
+    def to_runtime(self) -> ChessTerminalOutcomeRewardTaskSpec:
+        """Convert the authored reward into the runtime dataclass."""
+        return ChessTerminalOutcomeRewardTaskSpec(
+            perspective=self.perspective,
+            win_reward=float(self.win_reward),
+            draw_reward=float(self.draw_reward),
+            loss_reward=float(self.loss_reward),
+        )
+
+
+class ChessPuzzleDenseRewardModel(_ChessYamlModel):
+    """Authored dense puzzle reward block."""
+
+    kind: Literal["puzzle_dense"] = "puzzle_dense"
+    correct_move_reward: NumericScalar = 1.0
+    incorrect_move_reward: NumericScalar = -1.0
+
+    def to_runtime(self) -> ChessPuzzleDenseRewardTaskSpec:
+        """Convert the authored reward into the runtime dataclass."""
+        return ChessPuzzleDenseRewardTaskSpec(
+            correct_move_reward=float(self.correct_move_reward),
+            incorrect_move_reward=float(self.incorrect_move_reward),
+        )
+
+
+class ChessPuzzleSparseRewardModel(_ChessYamlModel):
+    """Authored sparse puzzle reward block."""
+
+    kind: Literal["puzzle_sparse"] = "puzzle_sparse"
+    success_reward: NumericScalar = 1.0
+    incorrect_move_reward: NumericScalar = -1.0
+
+    def to_runtime(self) -> ChessPuzzleSparseRewardTaskSpec:
+        """Convert the authored reward into the runtime dataclass."""
+        return ChessPuzzleSparseRewardTaskSpec(
+            success_reward=float(self.success_reward),
+            incorrect_move_reward=float(self.incorrect_move_reward),
+        )
+
+
+class ChessEngineConfigModel(_ChessYamlModel):
+    """Authored engine configuration block."""
+
+    path: Path
+    depth: StrictInt
+    mate_score: StrictInt
+
+    @field_validator("path", mode="before")
+    @classmethod
+    def resolve_engine_path(cls, value: object, info: ValidationInfo) -> object:
+        """Resolve engine paths relative to the authored YAML file."""
+        if not isinstance(value, str | Path):
+            return value
+        return resolve_path_from_context(
+            raw_path=value,
+            info=info,
+            context="chess reward engine field 'path'",
+        )
+
+    def to_runtime(self) -> ChessEngineConfigTaskSpec:
+        """Convert the authored engine block into the runtime dataclass."""
+        return ChessEngineConfigTaskSpec(
+            path=self.path,
+            depth=self.depth,
+            mate_score=self.mate_score,
+        )
+
+
+class ChessEngineEvalRewardModel(_ChessYamlModel):
+    """Authored engine-eval reward block."""
+
+    kind: Literal["engine_eval_dense", "engine_eval_sparse"]
+    perspective: ChessRewardPerspective
+    engine: ChessEngineConfigModel
+
+    def to_runtime(self) -> ChessEngineEvalRewardTaskSpec:
+        """Convert the authored reward into the runtime dataclass."""
+        return ChessEngineEvalRewardTaskSpec(
+            kind=self.kind,
+            perspective=self.perspective,
+            engine=self.engine.to_runtime(),
+        )
+
+
+ChessRewardModel = Annotated[
+    ChessTerminalOutcomeRewardModel
+    | ChessPuzzleDenseRewardModel
+    | ChessPuzzleSparseRewardModel
+    | ChessEngineEvalRewardModel,
+    Field(discriminator="kind"),
+]
+
+
+class ChessObservationModel(_ChessYamlModel):
+    """Authored observation block."""
+
+    text_renderer: ChessTextRendererKind = ChessTextRendererKind.ASCII
+    include_images: StrictBool = False
+    image_size: StrictInt = 360
+    image_coordinates: StrictBool = False
+    orientation: ChessBoardOrientation = ChessBoardOrientation.WHITE
+
+    def to_runtime(self) -> ChessObservationTaskSpec:
+        """Convert the authored observation block into the runtime dataclass."""
+        return ChessObservationTaskSpec(
+            text_renderer=self.text_renderer,
+            include_images=self.include_images,
+            image_size=self.image_size,
+            image_coordinates=self.image_coordinates,
+            orientation=self.orientation,
+        )
+
+
+class ChessPuzzleAutoAdvanceModel(_ChessYamlModel):
+    """Authored puzzle-solution auto-advance block."""
+
+    kind: Literal["puzzle_solution"] = "puzzle_solution"
+
+    def to_runtime(self) -> ChessPuzzleAutoAdvanceTaskSpec:
+        """Convert the authored auto-advance block into the runtime dataclass."""
+        return ChessPuzzleAutoAdvanceTaskSpec()
+
+
+class ChessStockfishAutoAdvanceEngineModel(_ChessYamlModel):
+    """Authored Stockfish move-selection configuration block."""
+
+    path: Path
+    depth: StrictInt
+
+    @field_validator("path", mode="before")
+    @classmethod
+    def resolve_engine_path(cls, value: object, info: ValidationInfo) -> object:
+        """Resolve Stockfish paths relative to the authored YAML file."""
+        if not isinstance(value, str | Path):
+            return value
+        return resolve_path_from_context(
+            raw_path=value,
+            info=info,
+            context="chess auto_advance engine field 'path'",
+        )
+
+
+class ChessStockfishAutoAdvanceModel(_ChessYamlModel):
+    """Authored Stockfish auto-advance block."""
+
+    kind: Literal["stockfish"] = "stockfish"
+    engine: ChessStockfishAutoAdvanceEngineModel
+
+    def to_runtime(self) -> ChessStockfishAutoAdvanceTaskSpec:
+        """Convert the authored auto-advance block into the runtime dataclass."""
+        return ChessStockfishAutoAdvanceTaskSpec(
+            path=self.engine.path,
+            depth=self.engine.depth,
+        )
+
+
+ChessAutoAdvanceModel = Annotated[
+    ChessPuzzleAutoAdvanceModel | ChessStockfishAutoAdvanceModel,
+    Field(discriminator="kind"),
+]
+
+
+class ChessControlModel(_ChessYamlModel):
+    """Authored control block."""
+
+    auto_advance: ChessAutoAdvanceModel | None = None
+
+    def to_runtime(self) -> ChessControlTaskSpec:
+        """Convert the authored control block into the runtime dataclass."""
+        auto_advance = self.auto_advance
+        return ChessControlTaskSpec(
+            auto_advance=None if auto_advance is None else auto_advance.to_runtime()
+        )
+
+
+class ChessTaskSpecModel(TaskSpecModel):
+    """Authored top-level chess task specification."""
+
+    game: Literal["chess"] = "chess"
+    scenario: ChessScenarioModel
+    reward: ChessRewardModel
+    observation: ChessObservationModel | None = None
+    control: ChessControlModel | None = None
+
+    def to_runtime(self) -> ChessTaskSpec:
+        """Convert the authored model into the runtime task spec."""
+        observation = self.observation
+        if observation is None:
+            observation = ChessObservationModel()
+        control = self.control
+        if control is None:
+            control = ChessControlModel()
+        return ChessTaskSpec(
+            schema_version=self.schema_version,
+            task_id=self.task_id,
+            episode_config=self.episode_config(),
+            metadata=self.metadata,
+            scenario=self.scenario.to_runtime(),
+            reward=self.reward.to_runtime(),
+            observation=observation.to_runtime(),
+            control=control.to_runtime(),
+        )
+
+
 def chess_task_spec_from_mapping(
     *,
     payload: dict[str, object],
     base_dir: Path,
 ) -> ChessTaskSpec:
     """Parse a chess task specification from a raw mapping."""
-    header = parse_task_spec_header(
+    task_spec = validate_task_spec_model(
+        model_type=ChessTaskSpecModel,
         payload=payload,
-        expected_game="chess",
-        allowed_top_level_keys=(
-            "schema_version",
-            "id",
-            "game",
-            "scenario",
-            "reward",
-            "episode",
-            "observation",
-            "control",
-            "metadata",
-        ),
-    )
-    scenario = _parse_chess_scenario(
-        payload=require_mapping(payload.get("scenario"), context="chess scenario"),
         base_dir=base_dir,
     )
-    reward = _parse_chess_reward(
-        payload=require_mapping(payload.get("reward"), context="chess reward"),
-        base_dir=base_dir,
-    )
-    observation_payload = optional_mapping(
-        payload,
-        "observation",
-        context="chess task specification",
-    )
-    control_payload = optional_mapping(
-        payload,
-        "control",
-        context="chess task specification",
-    )
-    return ChessTaskSpec(
-        schema_version=header.schema_version,
-        task_id=header.task_id,
-        episode_config=header.episode_config,
-        metadata=header.metadata,
-        scenario=scenario,
-        reward=reward,
-        observation=_parse_chess_observation(observation_payload),
-        control=_parse_chess_control(payload=control_payload, base_dir=base_dir),
-    )
+    return task_spec.to_runtime()
 
 
 def build_chess_environment_from_task_spec(
@@ -289,305 +516,6 @@ def build_chess_environment_from_task_spec(
         orientation=task_spec.observation.orientation,
         auto_advance_policy=_build_chess_auto_advance(task_spec.control),
     )
-
-
-def _parse_chess_scenario(
-    *,
-    payload: dict[str, object],
-    base_dir: Path,
-) -> ChessStartingPositionScenarioTaskSpec | ChessPuzzleDatasetScenarioTaskSpec:
-    kind = required_string(payload, "kind", context="chess scenario")
-    if kind == "starting_position":
-        reject_unknown_keys(
-            payload,
-            allowed_keys=("kind", "initial_fen"),
-            context="chess scenario",
-        )
-        initial_fen = optional_string(payload, "initial_fen", context="chess scenario")
-        return ChessStartingPositionScenarioTaskSpec(
-            initial_fen=STANDARD_START_FEN if initial_fen is None else initial_fen
-        )
-    if kind == "dataset_puzzle":
-        reject_unknown_keys(
-            payload,
-            allowed_keys=("kind", "manifest_path", "split"),
-            context="chess scenario",
-        )
-        manifest_path = optional_path(
-            payload,
-            "manifest_path",
-            base_dir=base_dir,
-            context="chess scenario",
-        )
-        if manifest_path is None:
-            raise ValueError("Chess dataset_puzzle scenario requires manifest_path.")
-        split = optional_string(payload, "split", context="chess scenario")
-        return ChessPuzzleDatasetScenarioTaskSpec(
-            manifest_path=manifest_path,
-            split=DatasetSplit.TRAIN if split is None else DatasetSplit(split),
-        )
-    raise ValueError(f"Unsupported chess scenario kind: {kind!r}.")
-
-
-def _parse_chess_reward(
-    *,
-    payload: dict[str, object],
-    base_dir: Path,
-) -> (
-    ChessTerminalOutcomeRewardTaskSpec
-    | ChessPuzzleDenseRewardTaskSpec
-    | ChessPuzzleSparseRewardTaskSpec
-    | ChessEngineEvalRewardTaskSpec
-):
-    kind = required_string(payload, "kind", context="chess reward")
-    if kind == "terminal_outcome":
-        reject_unknown_keys(
-            payload,
-            allowed_keys=(
-                "kind",
-                "perspective",
-                "win_reward",
-                "draw_reward",
-                "loss_reward",
-            ),
-            context="chess reward",
-        )
-        return ChessTerminalOutcomeRewardTaskSpec(
-            perspective=_parse_chess_perspective(
-                payload,
-                key="perspective",
-                context="chess reward",
-            ),
-            win_reward=required_float(payload, "win_reward", context="chess reward"),
-            draw_reward=required_float(payload, "draw_reward", context="chess reward"),
-            loss_reward=required_float(payload, "loss_reward", context="chess reward"),
-        )
-    if kind == "puzzle_dense":
-        reject_unknown_keys(
-            payload,
-            allowed_keys=("kind", "correct_move_reward", "incorrect_move_reward"),
-            context="chess reward",
-        )
-        return ChessPuzzleDenseRewardTaskSpec(
-            correct_move_reward=(
-                1.0
-                if optional_float(
-                    payload,
-                    "correct_move_reward",
-                    context="chess reward",
-                )
-                is None
-                else cast(
-                    float,
-                    optional_float(
-                        payload,
-                        "correct_move_reward",
-                        context="chess reward",
-                    ),
-                )
-            ),
-            incorrect_move_reward=(
-                -1.0
-                if optional_float(
-                    payload,
-                    "incorrect_move_reward",
-                    context="chess reward",
-                )
-                is None
-                else cast(
-                    float,
-                    optional_float(
-                        payload,
-                        "incorrect_move_reward",
-                        context="chess reward",
-                    ),
-                )
-            ),
-        )
-    if kind == "puzzle_sparse":
-        reject_unknown_keys(
-            payload,
-            allowed_keys=("kind", "success_reward", "incorrect_move_reward"),
-            context="chess reward",
-        )
-        return ChessPuzzleSparseRewardTaskSpec(
-            success_reward=(
-                1.0
-                if optional_float(payload, "success_reward", context="chess reward")
-                is None
-                else cast(
-                    float,
-                    optional_float(
-                        payload,
-                        "success_reward",
-                        context="chess reward",
-                    ),
-                )
-            ),
-            incorrect_move_reward=(
-                -1.0
-                if optional_float(
-                    payload,
-                    "incorrect_move_reward",
-                    context="chess reward",
-                )
-                is None
-                else cast(
-                    float,
-                    optional_float(
-                        payload,
-                        "incorrect_move_reward",
-                        context="chess reward",
-                    ),
-                )
-            ),
-        )
-    if kind in {"engine_eval_dense", "engine_eval_sparse"}:
-        reject_unknown_keys(
-            payload,
-            allowed_keys=("kind", "perspective", "engine"),
-            context="chess reward",
-        )
-        engine_payload = require_mapping(payload.get("engine"), context="chess engine")
-        return ChessEngineEvalRewardTaskSpec(
-            kind=kind,
-            perspective=_parse_chess_reward_perspective(
-                payload,
-                key="perspective",
-                context="chess reward",
-            ),
-            engine=_parse_chess_engine_config(
-                payload=engine_payload, base_dir=base_dir
-            ),
-        )
-    raise ValueError(f"Unsupported chess reward kind: {kind!r}.")
-
-
-def _parse_chess_engine_config(
-    *,
-    payload: dict[str, object],
-    base_dir: Path,
-) -> ChessEngineConfigTaskSpec:
-    reject_unknown_keys(
-        payload,
-        allowed_keys=("path", "depth", "mate_score"),
-        context="chess engine",
-    )
-    path = optional_path(payload, "path", base_dir=base_dir, context="chess engine")
-    if path is None:
-        raise ValueError("Chess engine configuration requires path.")
-    return ChessEngineConfigTaskSpec(
-        path=path,
-        depth=required_int(payload, "depth", context="chess engine"),
-        mate_score=required_int(payload, "mate_score", context="chess engine"),
-    )
-
-
-def _parse_chess_observation(
-    payload: dict[str, object] | None,
-) -> ChessObservationTaskSpec:
-    if payload is None:
-        return ChessObservationTaskSpec()
-    reject_unknown_keys(
-        payload,
-        allowed_keys=(
-            "text_renderer",
-            "include_images",
-            "image_size",
-            "image_coordinates",
-            "orientation",
-        ),
-        context="chess observation",
-    )
-    text_renderer = optional_string(
-        payload, "text_renderer", context="chess observation"
-    )
-    orientation = optional_string(payload, "orientation", context="chess observation")
-    include_images = optional_bool(
-        payload, "include_images", context="chess observation"
-    )
-    image_coordinates = optional_bool(
-        payload,
-        "image_coordinates",
-        context="chess observation",
-    )
-    image_size = optional_int(payload, "image_size", context="chess observation")
-    return ChessObservationTaskSpec(
-        text_renderer=(
-            ChessTextRendererKind.ASCII
-            if text_renderer is None
-            else ChessTextRendererKind(text_renderer)
-        ),
-        include_images=False if include_images is None else include_images,
-        image_size=360 if image_size is None else image_size,
-        image_coordinates=(False if image_coordinates is None else image_coordinates),
-        orientation=(
-            ChessBoardOrientation.WHITE
-            if orientation is None
-            else ChessBoardOrientation(orientation)
-        ),
-    )
-
-
-def _parse_chess_control(
-    *,
-    payload: dict[str, object] | None,
-    base_dir: Path,
-) -> ChessControlTaskSpec:
-    if payload is None:
-        return ChessControlTaskSpec()
-    reject_unknown_keys(
-        payload,
-        allowed_keys=("auto_advance",),
-        context="chess control",
-    )
-    auto_advance_payload = optional_mapping(
-        payload, "auto_advance", context="chess control"
-    )
-    if auto_advance_payload is None:
-        return ChessControlTaskSpec()
-    kind = required_string(auto_advance_payload, "kind", context="chess auto_advance")
-    if kind == "puzzle_solution":
-        reject_unknown_keys(
-            auto_advance_payload,
-            allowed_keys=("kind",),
-            context="chess auto_advance",
-        )
-        return ChessControlTaskSpec(auto_advance=ChessPuzzleAutoAdvanceTaskSpec())
-    if kind == "stockfish":
-        reject_unknown_keys(
-            auto_advance_payload,
-            allowed_keys=("kind", "engine"),
-            context="chess auto_advance",
-        )
-        engine_payload = require_mapping(
-            auto_advance_payload.get("engine"),
-            context="chess auto_advance engine",
-        )
-        reject_unknown_keys(
-            engine_payload,
-            allowed_keys=("path", "depth"),
-            context="chess auto_advance engine",
-        )
-        path = optional_path(
-            engine_payload,
-            "path",
-            base_dir=base_dir,
-            context="chess auto_advance engine",
-        )
-        if path is None:
-            raise ValueError("Chess stockfish auto_advance requires engine.path.")
-        return ChessControlTaskSpec(
-            auto_advance=ChessStockfishAutoAdvanceTaskSpec(
-                path=path,
-                depth=required_int(
-                    engine_payload,
-                    "depth",
-                    context="chess auto_advance engine",
-                ),
-            )
-        )
-    raise ValueError(f"Unsupported chess auto_advance kind: {kind!r}.")
 
 
 def _build_chess_scenario(
@@ -664,32 +592,6 @@ def _build_chess_auto_advance(
             depth=auto_advance.depth,
         )
     )
-
-
-def _parse_chess_perspective(
-    payload: dict[str, object],
-    *,
-    key: str,
-    context: str,
-) -> ChessPerspective:
-    perspective = required_string(payload, key, context=context)
-    if perspective not in ("white", "black"):
-        raise ValueError(f"{context} field {key!r} must be 'white' or 'black'.")
-    return cast(ChessPerspective, perspective)
-
-
-def _parse_chess_reward_perspective(
-    payload: dict[str, object],
-    *,
-    key: str,
-    context: str,
-) -> ChessRewardPerspective:
-    perspective = required_string(payload, key, context=context)
-    if perspective not in ("white", "black", "mover"):
-        raise ValueError(
-            f"{context} field {key!r} must be 'white', 'black', or 'mover'."
-        )
-    return cast(ChessRewardPerspective, perspective)
 
 
 __all__ = [
