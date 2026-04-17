@@ -2,13 +2,13 @@
 
 from collections import deque
 from collections.abc import Callable, Sequence
-from copy import deepcopy
 from dataclasses import dataclass
 from functools import partial
 import multiprocessing
 from multiprocessing.connection import Connection, wait
 from multiprocessing.process import BaseProcess
 from pathlib import Path
+import time
 import traceback
 from typing import TYPE_CHECKING, Any, cast
 
@@ -18,6 +18,7 @@ from rlvr_games.core.types import Observation, StepResult
 
 if TYPE_CHECKING:
     from rlvr_games.core.task_spec_base import TaskSpec
+    from rlvr_games.core.workflow import AsyncWorkflowSession
 
 _DEFAULT_START_METHOD = "spawn"
 _DEFAULT_STARTUP_TIMEOUT_SECONDS = 30.0
@@ -38,9 +39,7 @@ class AsyncResetResult:
     episode_index : int
         Zero-based episode index for this slot.
     observation : Observation
-        Initial observation returned by the environment reset. When `turn` is
-        present, any image payloads are omitted because the trainer-facing
-        message payload already carries them.
+        Initial observation returned by the environment reset.
     reset_info : dict[str, object]
         Public-safe reset metadata emitted by the environment.
     turn : PreparedTurn | None
@@ -71,10 +70,7 @@ class AsyncStepResult:
     episode_index : int
         Zero-based episode index for this slot.
     step_result : StepResult
-        Step transition outcome returned by the underlying environment. When
-        `turn` is present, any image payloads are omitted from
-        `step_result.observation` because the trainer-facing message payload
-        already carries them.
+        Step transition outcome returned by the underlying environment.
     turn : PreparedTurn | None
         Prepared next action turn, or `None` when the episode finished after
         this step.
@@ -164,42 +160,6 @@ def _load_env_from_task_spec_path(*, path: Path) -> Environment[Any, Any]:
     return load_environment_from_task_spec_path(path=path)
 
 
-def _observation_transport_copy(
-    *,
-    observation: Observation,
-    turn: PreparedTurn | None,
-) -> Observation:
-    """Return the observation transport payload for one async result."""
-    if turn is None or not observation.images:
-        return observation
-    return Observation(
-        text=observation.text,
-        images=(),
-        metadata=deepcopy(observation.metadata),
-    )
-
-
-def _step_result_transport_copy(
-    *,
-    step_result: StepResult,
-    turn: PreparedTurn | None,
-) -> StepResult:
-    """Return the step-result transport payload for one async result."""
-    if turn is None or not step_result.observation.images:
-        return step_result
-    return StepResult(
-        observation=_observation_transport_copy(
-            observation=step_result.observation,
-            turn=turn,
-        ),
-        reward=step_result.reward,
-        accepted=step_result.accepted,
-        terminated=step_result.terminated,
-        truncated=step_result.truncated,
-        info=deepcopy(step_result.info),
-    )
-
-
 def _safe_send(*, connection: Connection, payload: object) -> bool:
     """Send one payload to the parent if the worker pipe is still open."""
     try:
@@ -247,10 +207,6 @@ def _worker_main(
                     turn = None
                     if not env.episode_finished:
                         turn = prepare_turn(env=env, observation=observation)
-                    observation = _observation_transport_copy(
-                        observation=observation,
-                        turn=turn,
-                    )
                     response = _WorkerResetResult(
                         episode_index=next_episode_index,
                         observation=observation,
@@ -270,10 +226,6 @@ def _worker_main(
                             env=env,
                             observation=step_result.observation,
                         )
-                    step_result = _step_result_transport_copy(
-                        step_result=step_result,
-                        turn=turn,
-                    )
                     response = _WorkerStepResult(
                         episode_index=episode_index,
                         step_result=step_result,
@@ -326,8 +278,14 @@ class AsyncEnvPool:
         self._processes_by_slot: dict[int, BaseProcess] = {}
         self._slot_ids_by_fileno: dict[int, int] = {}
         self._busy_slot_ids: set[int] = set()
-        self._buffered_results: deque[AsyncResetResult | AsyncStepResult] = deque()
-        self._buffered_exceptions: deque[BaseException] = deque()
+        self._lease_token_by_slot: dict[int, int] = {}
+        self._buffered_results: deque[
+            tuple[int, int, AsyncResetResult | AsyncStepResult]
+        ] = deque()
+        self._buffered_exceptions: deque[tuple[int, int, BaseException]] = deque()
+        self._next_command_id_by_slot: dict[int, int] = {}
+        self._pending_command_id_by_slot: dict[int, int] = {}
+        self._next_lease_token = 0
 
         context = multiprocessing.get_context(start_method)
         try:
@@ -351,6 +309,7 @@ class AsyncEnvPool:
                 self._connections_by_slot[slot_id] = parent_connection
                 self._processes_by_slot[slot_id] = process
                 self._slot_ids_by_fileno[parent_connection.fileno()] = slot_id
+                self._next_command_id_by_slot[slot_id] = 0
 
             self._wait_for_worker_startup(
                 timeout_seconds=startup_timeout_seconds,
@@ -402,12 +361,12 @@ class AsyncEnvPool:
 
     @property
     def pending_slot_ids(self) -> tuple[int, ...]:
-        """Return slot ids whose most recent command is still in flight."""
-        return tuple(sorted(self._busy_slot_ids))
+        """Return unleased slot ids whose most recent command is still in flight."""
+        return self._receivable_slot_ids(allow_leased=False)
 
     def reset(self, *, slot_id: int, seed: int) -> None:
         """Enqueue a reset command for one slot and return immediately."""
-        self._dispatch(slot_id=slot_id, command=_ResetCommand(seed=seed))
+        self._enqueue_reset(slot_id=slot_id, seed=seed)
 
     def reset_all(self, *, seeds: Sequence[int]) -> None:
         """Enqueue one reset command per slot."""
@@ -418,9 +377,43 @@ class AsyncEnvPool:
 
     def step(self, *, slot_id: int, raw_action: str) -> None:
         """Enqueue one step command for a slot and return immediately."""
-        self._dispatch(
+        self._enqueue_step(slot_id=slot_id, raw_action=raw_action)
+
+    def session(
+        self,
+        *,
+        slot_id: int,
+        action_extractor: Callable[[str], str] | None = None,
+        close_pool: bool = False,
+    ) -> "AsyncWorkflowSession":
+        """Return an async workflow-session wrapper for one pool slot."""
+        from rlvr_games.core.workflow import AsyncWorkflowSession
+
+        lease_token = self._lease_slot(slot_id=slot_id)
+        try:
+            return AsyncWorkflowSession(
+                pool=self,
+                slot_id=slot_id,
+                lease_token=lease_token,
+                action_extractor=action_extractor,
+                close_pool=close_pool,
+            )
+        except Exception:
+            self._release_slot(slot_id=slot_id, lease_token=lease_token)
+            raise
+
+    def workflow_session(
+        self,
+        *,
+        slot_id: int,
+        action_extractor: Callable[[str], str] | None = None,
+        close_pool: bool = False,
+    ) -> "AsyncWorkflowSession":
+        """Return a workflow-session wrapper for one pool slot."""
+        return self.session(
             slot_id=slot_id,
-            command=_StepCommand(raw_action=raw_action),
+            action_extractor=action_extractor,
+            close_pool=close_pool,
         )
 
     def recv(
@@ -431,6 +424,98 @@ class AsyncEnvPool:
         """Wait for one slot result and return it."""
         results = self.recv_ready(max_results=1, timeout_seconds=timeout_seconds)
         return results[0]
+
+    def recv_slot(
+        self,
+        *,
+        slot_id: int,
+        command_id: int | None = None,
+        timeout_seconds: float | None = None,
+    ) -> AsyncResetResult | AsyncStepResult:
+        """Wait for the next result produced by one specific unleased slot."""
+        return self._recv_slot(
+            slot_id=slot_id,
+            command_id=command_id,
+            timeout_seconds=timeout_seconds,
+            allow_leased=False,
+            lease_token=None,
+        )
+
+    def _recv_slot(
+        self,
+        *,
+        slot_id: int,
+        command_id: int | None,
+        timeout_seconds: float | None,
+        allow_leased: bool,
+        lease_token: int | None,
+    ) -> AsyncResetResult | AsyncStepResult:
+        """Wait for the next result produced by one specific slot.
+
+        Any responses from other slots that arrive while waiting are buffered
+        and remain available through subsequent `recv()`/`recv_ready()` or
+        `recv_slot()` calls.
+        """
+        self._ensure_open()
+        self._connection_for_slot(slot_id=slot_id)
+        self._ensure_slot_is_accessible(
+            slot_id=slot_id,
+            allow_leased=allow_leased,
+            lease_token=lease_token,
+        )
+        if timeout_seconds is not None and timeout_seconds < 0:
+            raise ValueError("timeout_seconds must be non-negative when provided.")
+
+        deadline = None
+        if timeout_seconds is not None:
+            deadline = time.monotonic() + timeout_seconds
+
+        while True:
+            buffered_result = self._pop_buffered_result_for_slot(
+                slot_id=slot_id,
+                command_id=command_id,
+            )
+            if buffered_result is not None:
+                return buffered_result
+
+            buffered_exception = self._pop_buffered_exception_for_slot(
+                slot_id=slot_id,
+                command_id=command_id,
+            )
+            if buffered_exception is not None:
+                raise buffered_exception
+
+            if slot_id not in self._busy_slot_ids:
+                raise RuntimeError(
+                    f"Async env slot {slot_id} has no pending command to receive."
+                )
+            if command_id is not None:
+                pending_command_id = self._pending_command_id_by_slot.get(slot_id)
+                if pending_command_id != command_id:
+                    raise RuntimeError(
+                        f"Async env slot {slot_id} has no pending command "
+                        f"with id {command_id}."
+                    )
+
+            remaining_timeout = None
+            if deadline is not None:
+                remaining_timeout = max(0.0, deadline - time.monotonic())
+
+            ready_connections = cast(
+                list[Connection],
+                wait(
+                    [
+                        self._connections_by_slot[pending_slot_id]
+                        for pending_slot_id in self._busy_slot_ids
+                    ],
+                    timeout=remaining_timeout,
+                ),
+            )
+            if not ready_connections:
+                raise TimeoutError("Timed out waiting for async environment results.")
+
+            for connection in ready_connections:
+                self._buffer_response(connection=connection)
 
     def recv_ready(
         self,
@@ -445,18 +530,23 @@ class AsyncEnvPool:
         if timeout_seconds is not None and timeout_seconds < 0:
             raise ValueError("timeout_seconds must be non-negative when provided.")
 
-        buffered_results = self._pop_buffered_results(max_results=max_results)
+        buffered_results = self._pop_buffered_results(
+            max_results=max_results,
+            allow_leased=False,
+        )
         if buffered_results:
             return buffered_results
-        if self._buffered_exceptions:
-            raise self._buffered_exceptions.popleft()
-        if not self._busy_slot_ids:
-            raise RuntimeError("AsyncEnvPool has no pending commands to receive.")
+        buffered_exception = self._pop_buffered_exception(allow_leased=False)
+        if buffered_exception is not None:
+            raise buffered_exception
+        pending_slot_ids = self._receivable_slot_ids(allow_leased=False)
+        if not pending_slot_ids:
+            raise RuntimeError("AsyncEnvPool has no unleased commands to receive.")
 
         ready_connections = cast(
             list[Connection],
             wait(
-                [self._connections_by_slot[slot_id] for slot_id in self._busy_slot_ids],
+                [self._connections_by_slot[slot_id] for slot_id in pending_slot_ids],
                 timeout=timeout_seconds,
             ),
         )
@@ -469,11 +559,15 @@ class AsyncEnvPool:
         for connection in ready_connections:
             self._buffer_response(connection=connection)
 
-        buffered_results = self._pop_buffered_results(max_results=max_results)
+        buffered_results = self._pop_buffered_results(
+            max_results=max_results,
+            allow_leased=False,
+        )
         if buffered_results:
             return buffered_results
-        if self._buffered_exceptions:
-            raise self._buffered_exceptions.popleft()
+        buffered_exception = self._pop_buffered_exception(allow_leased=False)
+        if buffered_exception is not None:
+            raise buffered_exception
         raise RuntimeError("AsyncEnvPool received no buffered results or exceptions.")
 
     def close(self) -> None:
@@ -501,8 +595,11 @@ class AsyncEnvPool:
         self._processes_by_slot.clear()
         self._slot_ids_by_fileno.clear()
         self._busy_slot_ids.clear()
+        self._lease_token_by_slot.clear()
         self._buffered_results.clear()
         self._buffered_exceptions.clear()
+        self._next_command_id_by_slot.clear()
+        self._pending_command_id_by_slot.clear()
 
     def __enter__(self) -> "AsyncEnvPool":
         """Return the pool for context-manager use."""
@@ -543,12 +640,62 @@ class AsyncEnvPool:
                 f"Async env worker {slot_id} sent an unexpected startup response."
             )
 
-    def _dispatch(self, *, slot_id: int, command: _ResetCommand | _StepCommand) -> None:
+    def _enqueue_reset(
+        self,
+        *,
+        slot_id: int,
+        seed: int,
+        allow_leased: bool = False,
+        lease_token: int | None = None,
+    ) -> int:
+        """Enqueue a reset command and return its per-slot command id."""
+        return self._dispatch(
+            slot_id=slot_id,
+            command=_ResetCommand(seed=seed),
+            allow_leased=allow_leased,
+            lease_token=lease_token,
+        )
+
+    def _enqueue_step(
+        self,
+        *,
+        slot_id: int,
+        raw_action: str,
+        allow_leased: bool = False,
+        lease_token: int | None = None,
+    ) -> int:
+        """Enqueue a step command and return its per-slot command id."""
+        return self._dispatch(
+            slot_id=slot_id,
+            command=_StepCommand(raw_action=raw_action),
+            allow_leased=allow_leased,
+            lease_token=lease_token,
+        )
+
+    def _dispatch(
+        self,
+        *,
+        slot_id: int,
+        command: _ResetCommand | _StepCommand,
+        allow_leased: bool,
+        lease_token: int | None,
+    ) -> int:
         """Send one command to an idle slot."""
         self._ensure_open()
         connection = self._connection_for_slot(slot_id=slot_id)
+        self._ensure_slot_is_accessible(
+            slot_id=slot_id,
+            allow_leased=allow_leased,
+            lease_token=lease_token,
+        )
         if slot_id in self._busy_slot_ids:
             raise RuntimeError(f"Async env slot {slot_id} already has a pending task.")
+        if self._slot_has_buffered_response(slot_id=slot_id):
+            raise RuntimeError(
+                f"Async env slot {slot_id} has an unread buffered result."
+            )
+        command_id = self._next_command_id_by_slot[slot_id]
+        self._next_command_id_by_slot[slot_id] = command_id + 1
         try:
             connection.send(command)
         except (BrokenPipeError, EOFError, OSError) as exc:
@@ -556,6 +703,8 @@ class AsyncEnvPool:
                 f"Async env worker for slot {slot_id} is not available."
             ) from exc
         self._busy_slot_ids.add(slot_id)
+        self._pending_command_id_by_slot[slot_id] = command_id
+        return command_id
 
     def _buffer_response(
         self,
@@ -566,50 +715,73 @@ class AsyncEnvPool:
         fileno = connection.fileno()
         slot_id = self._slot_ids_by_fileno[fileno]
         self._busy_slot_ids.remove(slot_id)
+        command_id = self._pending_command_id_by_slot.pop(slot_id)
 
         try:
             response = connection.recv()
         except EOFError:
             process = self._processes_by_slot[slot_id]
             self._buffered_exceptions.append(
-                RuntimeError(
-                    "Async env worker exited while a command was in flight "
-                    f"(slot {slot_id}, exitcode={process.exitcode})."
+                (
+                    slot_id,
+                    command_id,
+                    RuntimeError(
+                        "Async env worker exited while a command was in flight "
+                        f"(slot {slot_id}, exitcode={process.exitcode})."
+                    ),
                 )
             )
             return
 
         if isinstance(response, _WorkerException):
             self._buffered_exceptions.append(
-                self._materialize_worker_exception(
-                    slot_id=slot_id,
-                    response=response,
+                (
+                    slot_id,
+                    command_id,
+                    self._materialize_worker_exception(
+                        slot_id=slot_id,
+                        response=response,
+                    ),
                 )
             )
             return
         if isinstance(response, _WorkerResetResult):
             self._buffered_results.append(
-                AsyncResetResult(
-                    slot_id=slot_id,
-                    episode_index=response.episode_index,
-                    observation=response.observation,
-                    reset_info=response.reset_info,
-                    turn=response.turn,
+                (
+                    slot_id,
+                    command_id,
+                    AsyncResetResult(
+                        slot_id=slot_id,
+                        episode_index=response.episode_index,
+                        observation=response.observation,
+                        reset_info=response.reset_info,
+                        turn=response.turn,
+                    ),
                 )
             )
             return
         if isinstance(response, _WorkerStepResult):
             self._buffered_results.append(
-                AsyncStepResult(
-                    slot_id=slot_id,
-                    episode_index=response.episode_index,
-                    step_result=response.step_result,
-                    turn=response.turn,
+                (
+                    slot_id,
+                    command_id,
+                    AsyncStepResult(
+                        slot_id=slot_id,
+                        episode_index=response.episode_index,
+                        step_result=response.step_result,
+                        turn=response.turn,
+                    ),
                 )
             )
             return
         self._buffered_exceptions.append(
-            RuntimeError(f"Async env worker {slot_id} returned an unknown response.")
+            (
+                slot_id,
+                command_id,
+                RuntimeError(
+                    f"Async env worker {slot_id} returned an unknown response."
+                ),
+            )
         )
 
     def _materialize_worker_exception(
@@ -635,6 +807,7 @@ class AsyncEnvPool:
         self,
         *,
         max_results: int | None,
+        allow_leased: bool,
     ) -> tuple[AsyncResetResult | AsyncStepResult, ...]:
         """Pop and return up to `max_results` buffered successful results."""
         if not self._buffered_results:
@@ -644,9 +817,84 @@ class AsyncEnvPool:
             max_results = len(self._buffered_results)
 
         results: list[AsyncResetResult | AsyncStepResult] = []
-        while self._buffered_results and len(results) < max_results:
-            results.append(self._buffered_results.popleft())
+        remaining_results: deque[
+            tuple[int, int, AsyncResetResult | AsyncStepResult]
+        ] = deque()
+        while self._buffered_results:
+            slot_id, command_id, result = self._buffered_results.popleft()
+            if len(results) < max_results and (
+                allow_leased or slot_id not in self._lease_token_by_slot
+            ):
+                results.append(result)
+                continue
+            remaining_results.append((slot_id, command_id, result))
+        self._buffered_results = remaining_results
         return tuple(results)
+
+    def _pop_buffered_result_for_slot(
+        self,
+        *,
+        slot_id: int,
+        command_id: int | None,
+    ) -> AsyncResetResult | AsyncStepResult | None:
+        """Pop and return one buffered successful result for `slot_id`."""
+        buffered_result = None
+        remaining_results: deque[
+            tuple[int, int, AsyncResetResult | AsyncStepResult]
+        ] = deque()
+        while self._buffered_results:
+            result_slot_id, result_command_id, result = self._buffered_results.popleft()
+            if (
+                buffered_result is None
+                and result_slot_id == slot_id
+                and (command_id is None or result_command_id == command_id)
+            ):
+                buffered_result = result
+                continue
+            remaining_results.append((result_slot_id, result_command_id, result))
+        self._buffered_results = remaining_results
+        return buffered_result
+
+    def _pop_buffered_exception_for_slot(
+        self,
+        *,
+        slot_id: int,
+        command_id: int | None,
+    ) -> BaseException | None:
+        """Pop and return one buffered exception for `slot_id`."""
+        buffered_exception = None
+        remaining_exceptions: deque[tuple[int, int, BaseException]] = deque()
+        while self._buffered_exceptions:
+            exception_slot_id, exception_command_id, exception = (
+                self._buffered_exceptions.popleft()
+            )
+            if (
+                buffered_exception is None
+                and exception_slot_id == slot_id
+                and (command_id is None or exception_command_id == command_id)
+            ):
+                buffered_exception = exception
+                continue
+            remaining_exceptions.append(
+                (exception_slot_id, exception_command_id, exception)
+            )
+        self._buffered_exceptions = remaining_exceptions
+        return buffered_exception
+
+    def _pop_buffered_exception(self, *, allow_leased: bool) -> BaseException | None:
+        """Pop and return one buffered exception visible to the caller."""
+        remaining_exceptions: deque[tuple[int, int, BaseException]] = deque()
+        buffered_exception = None
+        while self._buffered_exceptions:
+            slot_id, command_id, exception = self._buffered_exceptions.popleft()
+            if buffered_exception is None and (
+                allow_leased or slot_id not in self._lease_token_by_slot
+            ):
+                buffered_exception = exception
+                continue
+            remaining_exceptions.append((slot_id, command_id, exception))
+        self._buffered_exceptions = remaining_exceptions
+        return buffered_exception
 
     def _connection_for_slot(self, *, slot_id: int) -> Connection:
         """Return the parent connection for a validated slot id."""
@@ -654,6 +902,81 @@ class AsyncEnvPool:
         if connection is None:
             raise IndexError(f"Async env slot {slot_id} does not exist.")
         return connection
+
+    def _lease_slot(self, *, slot_id: int) -> int:
+        """Mark one slot as exclusively owned by a workflow session."""
+        self._ensure_open()
+        self._connection_for_slot(slot_id=slot_id)
+        if slot_id in self._lease_token_by_slot:
+            raise RuntimeError(
+                f"Async env slot {slot_id} is already leased to a workflow session."
+            )
+        if slot_id in self._busy_slot_ids:
+            raise RuntimeError(
+                f"Async env slot {slot_id} cannot be leased while a command is pending."
+            )
+        if self._slot_has_buffered_response(slot_id=slot_id):
+            raise RuntimeError(
+                f"Async env slot {slot_id} has an unread buffered result."
+            )
+        lease_token = self._next_lease_token
+        self._next_lease_token += 1
+        self._lease_token_by_slot[slot_id] = lease_token
+        return lease_token
+
+    def _release_slot(self, *, slot_id: int, lease_token: int) -> None:
+        """Release a workflow-session lease on one slot."""
+        if self._closed:
+            return
+        current_lease_token = self._lease_token_by_slot.get(slot_id)
+        if current_lease_token != lease_token:
+            raise RuntimeError(
+                f"Async env slot {slot_id} is not owned by this workflow session."
+            )
+        if slot_id in self._busy_slot_ids or self._slot_has_buffered_response(
+            slot_id=slot_id
+        ):
+            raise RuntimeError(
+                f"Async env slot {slot_id} still has in-flight or unread work."
+            )
+        del self._lease_token_by_slot[slot_id]
+
+    def _receivable_slot_ids(self, *, allow_leased: bool) -> tuple[int, ...]:
+        """Return pending slot ids visible to one receive caller."""
+        return tuple(
+            slot_id
+            for slot_id in sorted(self._busy_slot_ids)
+            if allow_leased or slot_id not in self._lease_token_by_slot
+        )
+
+    def _slot_has_buffered_response(self, *, slot_id: int) -> bool:
+        """Return whether one slot has an unread buffered result or exception."""
+        return any(
+            result_slot_id == slot_id for result_slot_id, _, _ in self._buffered_results
+        ) or any(
+            exception_slot_id == slot_id
+            for exception_slot_id, _, _ in self._buffered_exceptions
+        )
+
+    def _ensure_slot_is_accessible(
+        self,
+        *,
+        slot_id: int,
+        allow_leased: bool,
+        lease_token: int | None,
+    ) -> None:
+        """Raise when a caller tries to access a slot leased to a session."""
+        current_lease_token = self._lease_token_by_slot.get(slot_id)
+        if allow_leased:
+            if lease_token is None or current_lease_token != lease_token:
+                raise RuntimeError(
+                    f"Async env slot {slot_id} is not owned by this workflow session."
+                )
+            return
+        if current_lease_token is not None:
+            raise RuntimeError(
+                f"Async env slot {slot_id} is leased to a workflow session."
+            )
 
     def _ensure_open(self) -> None:
         """Raise if the pool has already been closed."""

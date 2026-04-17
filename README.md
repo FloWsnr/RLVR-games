@@ -267,10 +267,31 @@ with AsyncEnvPool.from_task_spec_paths(
 
 Reset and step results carry the worker `slot_id`, the per-slot
 `episode_index`, the raw env result payload, and an optional `PreparedTurn`
-containing the next action context plus trainer-facing messages. When a
-`PreparedTurn` is present, image payloads stay inside `turn.messages` so the
-transport copy of `observation` or `step_result.observation` does not duplicate
-them.
+containing the next action context plus trainer-facing messages.
+
+If you want one trainer-facing interface that works the same way for both local
+envs and async slots, use workflow sessions:
+
+```python
+from rlvr_games import AsyncEnvPool, WorkflowSession
+
+env_session = WorkflowSession(env=env)
+
+with AsyncEnvPool(env_factories=(make_env,)) as pool:
+    async_session = pool.session(slot_id=0)
+
+    async_session.reset(seed=0)
+    while async_session.turn is not None:
+        submission = async_session.submit("4")
+        if submission.turn is None:
+            break
+```
+
+`LocalWorkflowSession` and `AsyncWorkflowSession` share the same
+`WorkflowSessionProtocol`: reset an episode, read the current `turn`, submit one
+assistant output, and continue until `turn` becomes `None`. Async sessions
+lease their pool slot exclusively while they are alive, so raw pool operations
+and workflow-session control do not interleave on the same slot.
 
 ## Development
 

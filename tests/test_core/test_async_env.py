@@ -96,11 +96,41 @@ class FlakyCounterScenario:
         )
 
 
+@dataclass(slots=True)
+class SlowCounterScenario:
+    """Sleep briefly during reset to make cross-slot ordering deterministic."""
+
+    delay_seconds: float
+
+    def reset(self, *, seed: int) -> ScenarioReset[CounterState]:
+        """Return the standard counter reset after a short delay."""
+        time.sleep(self.delay_seconds)
+        return ScenarioReset(
+            initial_state=CounterState(value=0),
+            reset_info={"scenario": "slow_counter", "seed": seed},
+        )
+
+
 def _build_flaky_reset_env() -> TurnBasedEnv[CounterState, CounterAction]:
     """Return one counter env whose first reset fails inside the worker."""
     return TurnBasedEnv(
         backend=CounterBackend(),
         scenario=FlakyCounterScenario(),
+        renderer=CounterRenderer(),
+        inspect_canonical_state_fn=inspect_counter_state,
+        reward_fn=CounterReward(),
+        config=EpisodeConfig(),
+        observation_message_adapter=DefaultObservationMessageAdapter(
+            policy=DefaultObservationMessagePolicy()
+        ),
+    )
+
+
+def _build_slow_reset_env() -> TurnBasedEnv[CounterState, CounterAction]:
+    """Return one counter env whose reset intentionally sleeps."""
+    return TurnBasedEnv(
+        backend=CounterBackend(),
+        scenario=SlowCounterScenario(delay_seconds=0.2),
         renderer=CounterRenderer(),
         inspect_canonical_state_fn=inspect_counter_state,
         reward_fn=CounterReward(),
@@ -380,6 +410,61 @@ def test_recv_ready_preserves_successful_results_when_another_slot_fails() -> No
             pool.recv(timeout_seconds=5.0)
 
 
+def test_recv_slot_buffers_other_slot_results() -> None:
+    with AsyncEnvPool(
+        env_factories=(_build_counter_env, _build_slow_reset_env)
+    ) as pool:
+        pool.reset(slot_id=0, seed=4)
+        pool.reset(slot_id=1, seed=5)
+
+        slow_result = pool.recv_slot(slot_id=1, timeout_seconds=5.0)
+
+        assert isinstance(slow_result, AsyncResetResult)
+        assert slow_result.slot_id == 1
+        assert slow_result.reset_info["scenario"] == "slow_counter"
+
+        buffered_fast_result = pool.recv_slot(slot_id=0, timeout_seconds=0.0)
+
+        assert isinstance(buffered_fast_result, AsyncResetResult)
+        assert buffered_fast_result.slot_id == 0
+        assert buffered_fast_result.reset_info["scenario"] == "counter"
+        assert pool.pending_slot_ids == ()
+
+
+def test_recv_slot_zero_timeout_can_poll_a_ready_slot() -> None:
+    with AsyncEnvPool(env_factories=(_build_counter_env,)) as pool:
+        pool.reset(slot_id=0, seed=8)
+
+        deadline = time.monotonic() + 5.0
+        while True:
+            try:
+                result = pool.recv_slot(slot_id=0, timeout_seconds=0.0)
+                break
+            except TimeoutError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.01)
+
+        assert isinstance(result, AsyncResetResult)
+        assert result.reset_info["seed"] == 8
+
+
+def test_async_env_pool_rejects_dispatch_to_slot_with_unread_buffered_result() -> None:
+    with AsyncEnvPool(
+        env_factories=(_build_counter_env, _build_slow_reset_env)
+    ) as pool:
+        pool.reset(slot_id=0, seed=4)
+        pool.reset(slot_id=1, seed=5)
+
+        slow_result = pool.recv_slot(slot_id=1, timeout_seconds=5.0)
+
+        assert isinstance(slow_result, AsyncResetResult)
+        assert slow_result.slot_id == 1
+
+        with pytest.raises(RuntimeError, match="unread buffered result"):
+            pool.reset(slot_id=0, seed=99)
+
+
 def test_reset_failures_do_not_advance_episode_index() -> None:
     with AsyncEnvPool(env_factories=(_build_flaky_reset_env,)) as pool:
         pool.reset(slot_id=0, seed=5)
@@ -395,14 +480,16 @@ def test_reset_failures_do_not_advance_episode_index() -> None:
         assert reset_result.reset_info["seed"] == 6
 
 
-def test_async_env_pool_strips_duplicate_images_from_actionable_observations() -> None:
+def test_async_env_pool_preserves_canonical_images_in_actionable_observations() -> None:
     with AsyncEnvPool(env_factories=(_build_counter_image_env,)) as pool:
         pool.reset(slot_id=0, seed=3)
         reset_result = pool.recv(timeout_seconds=5.0)
 
         assert isinstance(reset_result, AsyncResetResult)
         assert reset_result.turn is not None
-        assert reset_result.observation.images == ()
+        assert tuple(image.key for image in reset_result.observation.images) == (
+            "counter-0",
+        )
         assert any(
             isinstance(part, ImageMessagePart)
             for part in reset_result.turn.messages[0].content
@@ -413,7 +500,9 @@ def test_async_env_pool_strips_duplicate_images_from_actionable_observations() -
 
         assert isinstance(step_result, AsyncStepResult)
         assert step_result.turn is not None
-        assert step_result.step_result.observation.images == ()
+        assert tuple(
+            image.key for image in step_result.step_result.observation.images
+        ) == ("counter-1",)
         assert any(
             isinstance(part, ImageMessagePart)
             for part in step_result.turn.messages[0].content

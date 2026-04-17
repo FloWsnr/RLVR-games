@@ -7,6 +7,7 @@ from rlvr_games.core.action_context import (
     PublicResetEvent,
     ProjectedActionContext,
 )
+from rlvr_games.core.async_env import AsyncEnvPool, AsyncResetResult, AsyncStepResult
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.exceptions import (
     EpisodeFinishedError,
@@ -52,6 +53,15 @@ from rlvr_games.core.types import (
     RenderedImage,
     StepResult,
 )
+from rlvr_games.core.workflow import (
+    AsyncWorkflowSession,
+    LocalWorkflowSession,
+    WorkflowResetResult,
+    WorkflowSession,
+    WorkflowSessionProtocol,
+    WorkflowSubmission,
+    WorkflowTurn,
+)
 
 __all__ = [
     "ActionContext",
@@ -61,6 +71,10 @@ __all__ = [
     "PreparedTurn",
     "ProjectedActionContext",
     "AppliedResetEvent",
+    "AsyncEnvPool",
+    "AsyncResetResult",
+    "AsyncStepResult",
+    "AsyncWorkflowSession",
     "AutoAction",
     "AutoAdvancePolicy",
     "ChatMessage",
@@ -77,6 +91,7 @@ __all__ = [
     "InvalidActionError",
     "InvalidActionMode",
     "InvalidActionPolicy",
+    "LocalWorkflowSession",
     "MessageRole",
     "Observation",
     "ObservationMessageAdapter",
@@ -94,6 +109,11 @@ __all__ = [
     "TrajectoryStep",
     "TurnBasedEnv",
     "ZeroReward",
+    "WorkflowResetResult",
+    "WorkflowSession",
+    "WorkflowSessionProtocol",
+    "WorkflowSubmission",
+    "WorkflowTurn",
     "build_action_context",
     "prepare_turn",
 ]
