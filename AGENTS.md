@@ -22,6 +22,8 @@ environment-first RLVR framework built around executable game verifiers.
   helpers, rewards, protocols, and types.
 - `rlvr_games/games/<game>/` holds game-specific backend logic, scenarios,
   rendering, rewards, state types, and factory wiring.
+  Bundled games currently include chess, connect4, game2048, mastermind,
+  minesweeper, and yahtzee.
 - `rlvr_games/datasets/` holds shared offline dataset utilities.
 - `rlvr_games/task_specs/` holds shared YAML task-spec parsing, validation,
   registry, and environment-construction helpers.

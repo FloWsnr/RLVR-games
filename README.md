@@ -85,6 +85,8 @@ canonical-state traces for offline debugging and analysis.
   support.
 - `rlvr_games/games/<game>/` holds the actual game logic, rendering, scenarios,
   rewards, and factories.
+  Bundled games currently include chess, connect4, game2048, mastermind,
+  minesweeper, and yahtzee.
 - `rlvr_games/task_specs/` holds shared YAML task-spec loading, validation, and
   environment construction helpers.
 - `config/games/<game>/` holds checked-in example task specs for reproducible
@@ -123,6 +125,7 @@ uv run rlvr-games play chess --seed 0 --reward engine-eval-dense --engine-depth 
 uv run rlvr-games play connect4 --seed 0
 uv run rlvr-games play connect4 --seed 0 --reward solver-move-dense --opponent solver
 uv run rlvr-games play 2048 --seed 0
+uv run rlvr-games play mastermind --seed 0
 uv run rlvr-games play minesweeper --seed 0
 uv run rlvr-games play yahtzee --seed 0
 uv run rlvr-games play connect4 --task-spec config/games/connect4/solver_opponent.yaml --seed 0

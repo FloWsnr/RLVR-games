@@ -1,0 +1,16 @@
+schema_version: 1
+id: mastermind_standard_game_terminal
+game: mastermind
+
+scenario:
+  kind: standard_game
+
+reward:
+  kind: terminal_outcome
+  win_reward: 1.0
+  loss_reward: -1.0
+
+observation:
+  include_images: false
+  image_size: 360
+

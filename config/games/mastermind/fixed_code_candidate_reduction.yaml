@@ -1,0 +1,14 @@
+schema_version: 1
+id: mastermind_fixed_code_candidate_reduction
+game: mastermind
+
+scenario:
+  kind: fixed_code
+  code: "1122"
+
+reward:
+  kind: candidate_reduction_dense
+
+observation:
+  include_images: false
+  image_size: 360

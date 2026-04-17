@@ -22,6 +22,10 @@ from rlvr_games.games.minesweeper.task_spec import (
     build_minesweeper_environment_from_task_spec,
     minesweeper_task_spec_from_mapping,
 )
+from rlvr_games.games.mastermind.task_spec import (
+    build_mastermind_environment_from_task_spec,
+    mastermind_task_spec_from_mapping,
+)
 from rlvr_games.games.yahtzee.task_spec import (
     build_yahtzee_environment_from_task_spec,
     yahtzee_task_spec_from_mapping,
@@ -68,6 +72,10 @@ _TASK_SPEC_HANDLERS: dict[str, TaskSpecHandler] = {
     "minesweeper": TaskSpecHandler(
         parse_mapping=minesweeper_task_spec_from_mapping,
         build_environment=build_minesweeper_environment_from_task_spec,
+    ),
+    "mastermind": TaskSpecHandler(
+        parse_mapping=mastermind_task_spec_from_mapping,
+        build_environment=build_mastermind_environment_from_task_spec,
     ),
     "yahtzee": TaskSpecHandler(
         parse_mapping=yahtzee_task_spec_from_mapping,

@@ -41,6 +41,7 @@ Implemented games:
 - Chess
 - 2048
 - Connect 4
+- Mastermind
 - Minesweeper
 - Yahtzee
   - v1 scope: 13 turns with up to 3 rolls per turn
@@ -49,7 +50,6 @@ Implemented games:
 Possible next additions:
 
 - Sokoban
-- Mastermind
 - Wordle
 - Kuhn Poker
 - Leduc Poker

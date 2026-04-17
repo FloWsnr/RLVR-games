@@ -37,7 +37,14 @@ def test_example_task_specs_load(task_spec_path: Path) -> None:
 
     assert task_spec.schema_version == TASK_SPEC_SCHEMA_VERSION
     assert task_spec.task_id
-    assert task_spec.game in {"chess", "connect4", "game2048", "minesweeper", "yahtzee"}
+    assert task_spec.game in {
+        "chess",
+        "connect4",
+        "game2048",
+        "mastermind",
+        "minesweeper",
+        "yahtzee",
+    }
 
 
 @pytest.mark.parametrize("task_spec_path", example_task_spec_paths())
