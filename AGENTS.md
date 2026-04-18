@@ -2,18 +2,21 @@
 
 ## Mission
 
-See [SPEC.md](/home/flwi01/coding/RLVR-games/SPEC.md). This repository is an
-environment-first RLVR framework built around executable game verifiers.
+See [SPEC.md](/home/flwi01/coding/RLVR-games/SPEC.md). This repository is a
+trainer-agnostic RLVR framework for executable, verifiable tasks. It currently
+bundles game environments, but the intended surface includes both single-step
+verifier tasks and multi-step environments.
 
 ## Core Idea
 
-- The environment is the core abstraction, not a static dataset.
-- The game engine is the source of truth for symbolic state, legal actions,
-  transitions, terminal conditions, and reward inputs.
-- Text and images are observations over canonical state, not the authoritative
-  state themselves.
+- Support both dominant RLVR contracts: prompt-only verifier tasks and
+  stateful `reset()`/`step()` environments.
+- Keep canonical task state and executable verification authoritative.
+- Text, images, and tool outputs are observations over canonical state, not
+  the authoritative state themselves.
 - Trajectories are first-class and should record the verified interaction
-  history.
+  history across both single-step and multi-step tasks.
+- Games are bundled reference domains, not the whole product identity.
 
 ## Architecture
 
@@ -39,15 +42,20 @@ environment-first RLVR framework built around executable game verifiers.
 - Prefer the cleanest design, not the most layered one. Remove abstractions
   that do not carry their weight.
 - Do not optimize for backwards compatibility. This is a research codebase.
-- Keep canonical state and executable game logic authoritative.
-- Keep game-specific behavior out of the generic core unless multiple games
+- Keep canonical state and executable verifier logic authoritative.
+- Design scalar task sessions. Batching, queueing, and freshness control belong
+  in rollout or trainer layers, not inside each environment implementation.
+- Keep domain-specific behavior out of the generic core unless multiple tasks
   clearly need it.
 - Put trainer-facing chat formatting in observation message adapters and rollout
   helpers, not in renderers, scenarios, or backends.
 - Prefer validated task specs for reproducible environment setups instead of
   growing ad hoc CLI-only configuration paths.
+- Prefer abstractions that can support both prompt-only verifier tasks and
+  multi-step environments.
 - Add new games under `rlvr_games/games/<game>/` with the same separation of
-  concerns as the existing games.
+  concerns as the existing games, but prioritize new domains when they stress
+  reusable verifier/runtime boundaries better than another game would.
 - Keep fixtures and rendered assets near the game that owns them.
 
 ## Code Expectations
@@ -64,7 +72,7 @@ environment-first RLVR framework built around executable game verifiers.
 - Do not use `from __future__ import annotations`.
 - Write numpy-style docstrings for functions and classes.
 - Create new worktrees in the `./worktrees/` directory for each task. Name them descriptively.
-- Make sure to update the `README.md` and `AGENTS.md` documentation when adding new features or games.
+- Make sure to update the `README.md` and `AGENTS.md` documentation when adding new features, games, or new task domains.
 
 ## Git Hygiene
 

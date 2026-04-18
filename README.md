@@ -1,26 +1,46 @@
 # RLVR-games
-Teach LLMs to reason by playing games
+Executable verifiers for RLVR, starting with games
 
 ## Core Idea
 
-This project is an environment-first RLVR framework. The point is not to turn
-games into static question/answer examples. The point is to train and evaluate
-an agent through interaction with an executable verifier.
+This project is a trainer-agnostic RLVR framework for executable, verifiable
+tasks. A task may be a single-step prompt/completion/verifier workload or a
+multi-step stateful environment. The current implementation is centered on
+reusable game environments, but the architecture is intended to generalize to
+procedural reasoning, coding, and tool-backed workflows.
 
-- The game engine is the source of truth for state, legal actions,
-  transitions, terminal conditions, and reward inputs.
-- Text and images are observations over canonical symbolic state, not the
-  authoritative state themselves.
+- Canonical verifier-owned state is the source of truth for task state, legal
+  actions, transitions, terminal conditions, and reward inputs.
+- Text, images, and tool outputs are observations over canonical state, not
+  the authoritative state themselves.
 - Trajectories are first-class data. Each episode records observations, raw
   actions, parsed actions, rewards, terminal flags, public-safe metadata, and
   privileged debug traces over canonical state.
-- Games plug into one shared environment loop instead of each game inventing
-  its own runner.
+- Bundled games plug into one shared environment loop instead of each domain
+  inventing its own runner.
+- Games are reference environments, not the sole product identity.
+
+## Direction
+
+The framework direction is shaped by the current RLVR split between two task
+contracts:
+
+- single-step verifier tasks for high-throughput prompt to completion to reward
+  workloads
+- multi-step environments for stateful interaction, tool use, and long-horizon
+  behavior
+
+The environment or verifier should describe one logical task session. Rollout
+controllers and trainers should own batching, queueing, async overlap, and
+freshness policy. That keeps executable task logic reusable across trainer
+stacks.
 
 ## Core Architecture
 
-The architectural center is `TurnBasedEnv` in `rlvr_games/core/env.py`. Each
-game composes that generic environment out of a small set of collaborators:
+Today the architectural center is `TurnBasedEnv` in
+`rlvr_games/core/env.py`, with trainer-facing workflow sessions layered on top
+in `rlvr_games/core/workflow.py`. Bundled games compose that generic
+environment out of a small set of collaborators:
 
 - `Scenario`: creates the initial canonical state for `reset(seed=...)`
 - `GameBackend`: parses actions, checks legality, applies transitions, and
@@ -40,7 +60,7 @@ game composes that generic environment out of a small set of collaborators:
 - `AutoAdvancePolicy` (optional): applies internal verifier-backed moves such
   as opponent replies until control returns to the agent
 
-The core loop is:
+The core multi-step loop is:
 
 ```python
 observation, reset_info = env.reset(seed=seed)
@@ -63,7 +83,9 @@ Inside one `step(...)`, the environment does roughly this:
 
 That split is deliberate. It keeps the generic episode lifecycle in one place,
 while game-specific logic stays inside the backend, scenario, renderer, and
-reward components.
+reward components. The longer-term direction is to give prompt-only verifier
+tasks an equally first-class path without pushing batching semantics into the
+task implementations themselves.
 
 The intended agent-facing surface is the observation plus explicit structured
 action context. Canonical inspection through `env.inspect_canonical_state()`
