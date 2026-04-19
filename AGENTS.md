@@ -2,7 +2,7 @@
 
 ## Mission
 
-See [SPEC.md](/home/flwi01/coding/RLVR-games/SPEC.md). This repository should
+See [SPEC.md](/home/flwi01/coding/RLVR-physics/SPEC.md). This repository should
 be a trainer-agnostic RLVR task library for executable, verifiable tasks.
 
 

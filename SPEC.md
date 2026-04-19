@@ -38,7 +38,7 @@ This also means we need to enable:
 - task renderers (text, images)
 
 
-## Greenfield Principles
+## Core Principles
 
 - `TaskSession` is the only trainer-facing runtime abstraction.
 - A task session is scalar. One instance represents one rollout or completion.
