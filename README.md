@@ -35,7 +35,7 @@ controllers and trainers should own batching, queueing, async overlap, and
 freshness policy. That keeps executable task logic reusable across trainer
 stacks.
 
-## Core Architecture
+## Current Multi-Step Architecture
 
 Today the architectural center is `TurnBasedEnv` in
 `rlvr_games/core/env.py`, with trainer-facing workflow sessions layered on top
@@ -207,12 +207,16 @@ env = load_environment_from_task_spec_path(path=task_spec_path)
 
 Task specs are validated with Pydantic before the environment is built, and any
 relative paths inside the YAML are resolved relative to the task-spec file.
+Today, checked-in task specs build game environments. The target architecture is
+to have specs build scalar task-session factories, with environment construction
+kept for multi-step CLI and debug paths.
 
 ## Programmatic Rollouts
 
-The main in-process surface is still the environment API, but the trainer-facing
-helpers now package action context and chat messages alongside each actionable
-turn:
+The current in-process multi-step surface is still the environment API, but the
+trainer-facing helpers now package action context and chat messages alongside
+each actionable turn. The target trainer-facing surface is a scalar task session
+that can wrap either this environment API or a single-step verifier:
 
 ```python
 from pathlib import Path

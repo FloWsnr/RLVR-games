@@ -22,7 +22,9 @@ verifier tasks and multi-step environments.
 
 - `rlvr_games/core/` holds the generic environment abstractions, trajectory
   machinery, rollout helpers, trainer-facing message adapters, async rollout
-  helpers, rewards, protocols, and types.
+  helpers, rewards, protocols, and types. New trainer-facing runtime work
+  should move toward scalar task-session factories rather than environment-only
+  construction.
 - `rlvr_games/games/<game>/` holds game-specific backend logic, scenarios,
   rendering, rewards, state types, and factory wiring.
   Bundled games currently include chess, connect4, game2048, mastermind,
@@ -30,8 +32,8 @@ verifier tasks and multi-step environments.
 - `rlvr_games/datasets/` holds shared offline dataset utilities.
 - `rlvr_games/task_specs/` holds shared YAML task-spec parsing, validation,
   registry, and environment-construction helpers.
-- `config/games/<game>/` holds checked-in example task specs for reproducible
-  training and evaluation setups.
+- `config/games/<game>/` holds checked-in game task specs today. New non-game
+  domains should use a neutral namespace such as `config/tasks/<domain>/`.
 - `rlvr_games/cli/` is a thin interactive debug shell over the environments.
   Keep it small.
 - Offline tooling such as dataset preparation or engine installation should
@@ -64,7 +66,8 @@ verifier tasks and multi-step environments.
   behavior, truncation behavior, rendering, and trajectory recording.
 - Prefer deterministic tests with explicit seeds.
 - When you add or change reusable environment setups, add or update example
-  task specs under `config/games/<game>/`.
+  task specs under `config/games/<game>/`. For new non-game domains, add
+  examples under a neutral namespace such as `config/tasks/<domain>/`.
 - Run the full validation stack before finishing: format & lint (`uv run ruff check`, `uv run ruff format`), static type
   checking (`uv run pyright`), and tests (`uv run pytest`).
 - Keep types explicit. Avoid unnecessary optional/default parameters when they

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "rlvr-games"
 version = "0.1.0"
-description = "Teach LLMs to reason by playing games"
+description = "Executable verifiers for RLVR, starting with games"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.13"

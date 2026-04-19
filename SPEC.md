@@ -21,6 +21,22 @@ verification, canonical state, and reproducible trajectories.
 - Treat bundled games as reference environments and abstraction stress-tests,
   not as the sole product identity.
 
+## Task Instances And Sessions
+
+The framework should distinguish immutable task identity from mutable session
+execution.
+
+A task instance is the verifier-owned prompt, seed, state seed, or task payload
+that defines what should be solved. A task session is one scalar execution
+against that task instance. For single-step RLVR, trainers may create many
+sessions that share one task instance so they can sample multiple completions
+for the same prompt. For multi-step environments, a session usually corresponds
+to one environment episode.
+
+Task sessions are mutable and should not be reused across concurrent rollouts.
+Task instance identity should be stable enough for grouping completions,
+trajectory analysis, and reward aggregation.
+
 ## Interaction Contracts
 
 ### Single-Step Verifier Tasks
@@ -61,7 +77,7 @@ reproducible verification:
 
 - canonical state or verifier-owned task inputs
 - a model-facing prompt or observation surface
-- an action or completion format that can be parsed and validated
+- a submission format that can be parsed and validated
 - an executable verifier or transition function
 - reward assignment grounded in executable checks
 - terminal or truncation conditions
@@ -71,8 +87,9 @@ reproducible verification:
 
 The framework should keep responsibilities clean:
 
-- The environment or verifier layer owns per-session state, action parsing,
-  legality checks, transitions, tool/resource execution, and verification.
+- The environment or verifier layer owns per-session state, submission parsing
+  and validation, action legality checks where applicable, transitions,
+  tool/resource execution, and verification.
 - The workflow layer owns trainer-facing turn packaging, message adaptation,
   and session helpers built on top of the verifier or environment.
 - The rollout controller owns concurrency, queueing, retries, cancellation,
