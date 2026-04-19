@@ -1,0 +1,11 @@
+schema_version: 1
+id: arithmetic_simple_addition
+kind: arithmetic
+
+source:
+  min_value: 2
+  max_value: 2
+  operations: [add]
+
+metadata:
+  tags: [example, single-step, verifier]

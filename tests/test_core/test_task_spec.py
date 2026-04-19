@@ -17,17 +17,29 @@ from rlvr_games.games.connect4.cli import (
     register_connect4_arguments,
 )
 from rlvr_games.games.connect4.task_spec import Connect4TaskSpec
+from rlvr_games.tasks.arithmetic import ArithmeticTaskSpec
 from rlvr_games.task_specs import (
     TASK_SPEC_SCHEMA_VERSION,
     build_environment_from_task_spec,
+    build_task_session_factory_from_task_spec,
+    build_task_session_from_task_spec,
     load_environment_from_task_spec_path,
+    load_task_session_factory_from_task_spec_path,
+    load_task_session_from_task_spec_path,
     load_task_spec,
+    task_spec_from_mapping,
 )
 
 
 def example_task_spec_paths() -> tuple[Path, ...]:
     """Return every checked-in example task-spec YAML path."""
     config_root = Path(__file__).resolve().parents[2] / "config" / "games"
+    return tuple(sorted(config_root.rglob("*.yaml")))
+
+
+def example_verifier_task_spec_paths() -> tuple[Path, ...]:
+    """Return every checked-in non-game verifier task-spec YAML path."""
+    config_root = Path(__file__).resolve().parents[2] / "config" / "tasks"
     return tuple(sorted(config_root.rglob("*.yaml")))
 
 
@@ -76,6 +88,133 @@ def test_build_environment_from_task_spec_matches_loader_path_build() -> None:
         assert info["scenario"] == "random_position"
     finally:
         env.close()
+
+
+@pytest.mark.parametrize("task_spec_path", example_task_spec_paths())
+def test_example_game_task_specs_build_task_session_factory(
+    task_spec_path: Path,
+) -> None:
+    task_spec = load_task_spec(path=task_spec_path)
+    session_factory = build_task_session_factory_from_task_spec(task_spec=task_spec)
+    session = session_factory()
+
+    try:
+        reset_result = session.reset(seed=0)
+        assert reset_result.task_instance_id
+        assert isinstance(reset_result.info, dict)
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize("task_spec_path", example_verifier_task_spec_paths())
+def test_example_verifier_task_specs_build_task_session(
+    task_spec_path: Path,
+) -> None:
+    session = load_task_session_from_task_spec_path(path=task_spec_path)
+
+    try:
+        reset_result = session.reset(seed=0)
+        assert reset_result.turn is not None
+        assert reset_result.observation is not None
+    finally:
+        session.close()
+
+
+def test_arithmetic_task_spec_loads_and_builds_fresh_sessions() -> None:
+    task_spec_path = (
+        Path(__file__).resolve().parents[2]
+        / "config"
+        / "tasks"
+        / "arithmetic"
+        / "simple_addition.yaml"
+    )
+
+    task_spec = load_task_spec(path=task_spec_path)
+    session_factory = load_task_session_factory_from_task_spec_path(path=task_spec_path)
+    first_session = session_factory()
+    second_session = build_task_session_from_task_spec(task_spec=task_spec)
+
+    try:
+        assert isinstance(task_spec, ArithmeticTaskSpec)
+        assert task_spec.kind == "arithmetic"
+        assert task_spec.task_id == "arithmetic_simple_addition"
+
+        first_reset = first_session.reset(seed=0)
+        second_reset = second_session.reset(seed=0)
+        assert first_reset.task_instance_id == second_reset.task_instance_id
+
+        correct_result = first_session.submit("4")
+        wrong_result = second_session.submit("5")
+        assert correct_result.valid_submission is True
+        assert correct_result.reward == 1.0
+        assert wrong_result.valid_submission is True
+        assert wrong_result.reward == 0.0
+    finally:
+        first_session.close()
+        second_session.close()
+
+
+def test_build_environment_rejects_non_environment_task_spec() -> None:
+    task_spec_path = (
+        Path(__file__).resolve().parents[2]
+        / "config"
+        / "tasks"
+        / "arithmetic"
+        / "simple_addition.yaml"
+    )
+    task_spec = load_task_spec(path=task_spec_path)
+
+    with pytest.raises(ValueError, match="not environment-backed"):
+        build_environment_from_task_spec(task_spec=task_spec)
+
+
+def test_neutral_kind_can_parse_game_task_spec_mapping(tmp_path: Path) -> None:
+    task_spec = task_spec_from_mapping(
+        payload={
+            "schema_version": 1,
+            "id": "neutral_connect4",
+            "kind": "connect4",
+            "scenario": {
+                "kind": "random_position",
+                "rows": 6,
+                "columns": 7,
+                "connect_length": 4,
+                "min_start_moves": 0,
+                "max_start_moves": 0,
+            },
+            "reward": {
+                "kind": "terminal_outcome",
+                "perspective": "mover",
+                "win_reward": 1.0,
+                "draw_reward": 0.0,
+                "loss_reward": -1.0,
+            },
+        },
+        base_dir=tmp_path,
+    )
+    session = build_task_session_from_task_spec(task_spec=task_spec)
+
+    try:
+        assert isinstance(task_spec, Connect4TaskSpec)
+        assert task_spec.kind == "connect4"
+        assert task_spec.game == "connect4"
+        reset_result = session.reset(seed=0)
+        assert reset_result.turn is not None
+    finally:
+        session.close()
+
+
+def test_task_spec_dispatch_rejects_kind_game_mismatch(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="must match"):
+        task_spec_from_mapping(
+            payload={
+                "schema_version": 1,
+                "id": "bad_dispatch",
+                "kind": "arithmetic",
+                "game": "connect4",
+            },
+            base_dir=tmp_path,
+        )
 
 
 def test_run_cli_accepts_task_spec(monkeypatch: MonkeyPatch) -> None:

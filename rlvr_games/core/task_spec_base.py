@@ -50,6 +50,11 @@ class TaskSpec:
     metadata: dict[str, object] = field(default_factory=dict)
 
     @property
+    def kind(self) -> str:
+        """Return the neutral task kind used for registry dispatch."""
+        return self.game
+
+    @property
     def game(self) -> str:
         """Return the canonical game name for the task specification."""
         raise NotImplementedError

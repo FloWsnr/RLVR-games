@@ -23,15 +23,18 @@ verifier tasks and multi-step environments.
 - `rlvr_games/core/` holds the generic environment abstractions, trajectory
   machinery, rollout helpers, trainer-facing message adapters, async rollout
   helpers, rewards, protocols, and types. New trainer-facing runtime work
-  should move toward scalar task-session factories rather than environment-only
-  construction.
+  should target scalar task sessions rather than environment-only construction.
+- `rlvr_games/tasks/<domain>/` holds non-game verifier tasks. The bundled
+  arithmetic domain is the first single-step prompt/completion/verifier
+  reference task.
 - `rlvr_games/games/<game>/` holds game-specific backend logic, scenarios,
   rendering, rewards, state types, and factory wiring.
   Bundled games currently include chess, connect4, game2048, mastermind,
   minesweeper, and yahtzee.
 - `rlvr_games/datasets/` holds shared offline dataset utilities.
 - `rlvr_games/task_specs/` holds shared YAML task-spec parsing, validation,
-  registry, and environment-construction helpers.
+  registry, task-session factory construction, and environment-construction
+  helpers for CLI/debug compatibility.
 - `config/games/<game>/` holds checked-in game task specs today. New non-game
   domains should use a neutral namespace such as `config/tasks/<domain>/`.
 - `rlvr_games/cli/` is a thin interactive debug shell over the environments.
@@ -47,12 +50,15 @@ verifier tasks and multi-step environments.
 - Keep canonical state and executable verifier logic authoritative.
 - Design scalar task sessions. Batching, queueing, and freshness control belong
   in rollout or trainer layers, not inside each environment implementation.
+- Prefer trainer-facing code that consumes `TaskSessionProtocol`,
+  `TaskTurn`, `TaskSubmissionResult`, and `TaskTrajectory`.
 - Keep domain-specific behavior out of the generic core unless multiple tasks
   clearly need it.
 - Put trainer-facing chat formatting in observation message adapters and rollout
   helpers, not in renderers, scenarios, or backends.
-- Prefer validated task specs for reproducible environment setups instead of
-  growing ad hoc CLI-only configuration paths.
+- Prefer validated task specs for reproducible task setups instead of growing
+  ad hoc CLI-only configuration paths. New specs should use neutral `kind:`
+  dispatch; legacy game specs may keep `game:`.
 - Prefer abstractions that can support both prompt-only verifier tasks and
   multi-step environments.
 - Add new games under `rlvr_games/games/<game>/` with the same separation of

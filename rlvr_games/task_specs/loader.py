@@ -1,31 +1,58 @@
-"""YAML-backed task specifications for RLVR environments."""
+"""YAML-backed task specifications for executable RLVR tasks."""
 
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, StrictStr, model_validator
 import yaml
 
 from rlvr_games.core.protocol import Environment
+from rlvr_games.core.session import TaskSessionProtocol
 from rlvr_games.core.task_spec_base import TASK_SPEC_SCHEMA_VERSION, TaskSpec
-from rlvr_games.task_specs.registry import get_task_spec_handler
+from rlvr_games.task_specs.registry import (
+    TaskSessionFactory,
+    build_environment_from_registered_task_spec,
+    build_task_session_factory_from_registered_task_spec,
+    get_task_spec_handler,
+)
 
 
 class _TaskSpecDispatchModel(BaseModel):
-    """Minimal model used to route authored mappings to one game parser."""
+    """Minimal model used to route authored mappings to one task parser."""
 
     model_config = ConfigDict(extra="ignore", frozen=True)
 
-    game: StrictStr
+    kind: StrictStr | None = None
+    game: StrictStr | None = None
 
-    @field_validator("game")
-    @classmethod
-    def validate_game(cls, value: str) -> str:
-        """Validate that the authored game name is non-empty."""
-        if not value:
+    @model_validator(mode="after")
+    def validate_dispatch_fields(self) -> "_TaskSpecDispatchModel":
+        """Validate neutral and legacy dispatch fields."""
+        if self.kind is None and self.game is None:
+            raise ValueError(
+                "Task specification requires a non-empty 'kind' field, or legacy "
+                "'game' field."
+            )
+        if self.kind == "":
+            raise ValueError("Task specification field 'kind' must be non-empty.")
+        if self.game == "":
             raise ValueError("Task specification field 'game' must be non-empty.")
-        return value
+        if self.kind is not None and self.game is not None and self.kind != self.game:
+            raise ValueError(
+                "Task specification fields 'kind' and 'game' must match when both "
+                "are provided."
+            )
+        return self
+
+    @property
+    def task_kind(self) -> str:
+        """Return the neutral task kind used for registry dispatch."""
+        if self.kind is not None:
+            return self.kind
+        if self.game is not None:
+            return self.game
+        raise RuntimeError("Validated dispatch model has no kind or game.")
 
 
 def load_task_spec(*, path: Path) -> TaskSpec:
@@ -70,8 +97,13 @@ def task_spec_from_mapping(
         raise TypeError("task specification must be a mapping.")
     mapping = dict(payload)
     dispatch = _TaskSpecDispatchModel.model_validate(mapping)
-    return get_task_spec_handler(game=dispatch.game).parse_mapping(
-        payload=mapping,
+    handler = get_task_spec_handler(kind=dispatch.task_kind)
+    return handler.parse_mapping(
+        payload=_payload_for_handler(
+            mapping=mapping,
+            task_kind=dispatch.task_kind,
+            handler_uses_legacy_game_field=handler.uses_legacy_game_field,
+        ),
         base_dir=base_dir,
     )
 
@@ -92,9 +124,35 @@ def build_environment_from_task_spec(
     Environment[Any, Any]
         Fully wired environment implied by the task specification.
     """
-    return get_task_spec_handler(game=task_spec.game).build_environment(
-        task_spec=task_spec
-    )
+    return build_environment_from_registered_task_spec(task_spec=task_spec)
+
+
+def build_task_session_factory_from_task_spec(
+    *,
+    task_spec: TaskSpec,
+) -> TaskSessionFactory:
+    """Construct a fresh scalar task-session factory from one task spec.
+
+    Parameters
+    ----------
+    task_spec : TaskSpec
+        Parsed task specification to materialize.
+
+    Returns
+    -------
+    TaskSessionFactory
+        Picklable factory that returns a new mutable task session on each call.
+    """
+    return build_task_session_factory_from_registered_task_spec(task_spec=task_spec)
+
+
+def build_task_session_from_task_spec(
+    *,
+    task_spec: TaskSpec,
+) -> TaskSessionProtocol:
+    """Construct one scalar task session from a validated task specification."""
+    session_factory = build_task_session_factory_from_task_spec(task_spec=task_spec)
+    return session_factory()
 
 
 def load_environment_from_task_spec_path(
@@ -117,11 +175,47 @@ def load_environment_from_task_spec_path(
     return build_environment_from_task_spec(task_spec=task_spec)
 
 
+def load_task_session_factory_from_task_spec_path(
+    *,
+    path: Path,
+) -> TaskSessionFactory:
+    """Load a YAML task spec and build a fresh scalar-session factory."""
+    task_spec = load_task_spec(path=path)
+    return build_task_session_factory_from_task_spec(task_spec=task_spec)
+
+
+def load_task_session_from_task_spec_path(
+    *,
+    path: Path,
+) -> TaskSessionProtocol:
+    """Load a YAML task spec and immediately build one scalar task session."""
+    session_factory = load_task_session_factory_from_task_spec_path(path=path)
+    return session_factory()
+
+
+def _payload_for_handler(
+    *,
+    mapping: dict[str, object],
+    task_kind: str,
+    handler_uses_legacy_game_field: bool,
+) -> dict[str, object]:
+    """Return a parser payload with dispatch fields normalized."""
+    payload = dict(mapping)
+    if handler_uses_legacy_game_field:
+        payload["game"] = task_kind
+        payload.pop("kind", None)
+    return payload
+
+
 __all__ = [
     "TASK_SPEC_SCHEMA_VERSION",
     "TaskSpec",
     "build_environment_from_task_spec",
+    "build_task_session_factory_from_task_spec",
+    "build_task_session_from_task_spec",
     "load_environment_from_task_spec_path",
+    "load_task_session_factory_from_task_spec_path",
+    "load_task_session_from_task_spec_path",
     "load_task_spec",
     "task_spec_from_mapping",
 ]

@@ -1,6 +1,12 @@
-"""RLVR environments built around executable game verifiers."""
+"""Trainer-agnostic executable verifier tasks for RLVR."""
 
 from rlvr_games.core.async_env import AsyncEnvPool, AsyncResetResult, AsyncStepResult
+from rlvr_games.core.async_session import (
+    AsyncSessionPool,
+    AsyncTaskResetResult,
+    AsyncTaskSession,
+    AsyncTaskSubmissionResult,
+)
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.messages import (
     ChatMessage,
@@ -11,6 +17,25 @@ from rlvr_games.core.messages import (
     ObservationMessageAdapter,
     ObservationMessagePolicy,
     TextMessagePart,
+)
+from rlvr_games.core.session import (
+    EnvironmentTaskSession,
+    TaskInstance,
+    TaskResetResult,
+    TaskSessionProtocol,
+    TaskSubmissionRecord,
+    TaskSubmissionResult,
+    TaskTrajectory,
+    TaskTurn,
+)
+from rlvr_games.core.session_rollout import TaskSessionPolicy, rollout_task_session
+from rlvr_games.core.single_step import (
+    PromptRenderer,
+    SingleStepTask,
+    SingleStepVerifier,
+    SingleStepVerifierSession,
+    TaskSource,
+    VerificationResult,
 )
 from rlvr_games.core.types import (
     EpisodeConfig,
@@ -38,8 +63,13 @@ __all__ = [
     "DefaultObservationMessagePolicy",
     "AsyncEnvPool",
     "AsyncResetResult",
+    "AsyncSessionPool",
     "AsyncStepResult",
+    "AsyncTaskResetResult",
+    "AsyncTaskSession",
+    "AsyncTaskSubmissionResult",
     "AsyncWorkflowSession",
+    "EnvironmentTaskSession",
     "ImageMessagePart",
     "InvalidActionMode",
     "InvalidActionPolicy",
@@ -49,13 +79,28 @@ __all__ = [
     "ObservationMessageAdapter",
     "ObservationMessagePolicy",
     "ParseResult",
+    "PromptRenderer",
     "RenderedImage",
+    "SingleStepTask",
+    "SingleStepVerifier",
+    "SingleStepVerifierSession",
     "StepResult",
+    "TaskInstance",
+    "TaskResetResult",
+    "TaskSessionProtocol",
+    "TaskSessionPolicy",
+    "TaskSubmissionRecord",
+    "TaskSubmissionResult",
+    "TaskTrajectory",
+    "TaskTurn",
+    "TaskSource",
     "TextMessagePart",
     "TurnBasedEnv",
+    "VerificationResult",
     "WorkflowResetResult",
     "WorkflowSession",
     "WorkflowSessionProtocol",
     "WorkflowSubmission",
     "WorkflowTurn",
+    "rollout_task_session",
 ]

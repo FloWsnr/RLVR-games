@@ -1,4 +1,4 @@
-"""Core environment abstractions for RLVR games."""
+"""Core task-session and environment abstractions for RLVR."""
 
 from rlvr_games.core.action_context import (
     ActionContext,
@@ -8,6 +8,12 @@ from rlvr_games.core.action_context import (
     ProjectedActionContext,
 )
 from rlvr_games.core.async_env import AsyncEnvPool, AsyncResetResult, AsyncStepResult
+from rlvr_games.core.async_session import (
+    AsyncSessionPool,
+    AsyncTaskResetResult,
+    AsyncTaskSession,
+    AsyncTaskSubmissionResult,
+)
 from rlvr_games.core.env import TurnBasedEnv
 from rlvr_games.core.exceptions import (
     EpisodeFinishedError,
@@ -34,6 +40,25 @@ from rlvr_games.core.protocol import (
 )
 from rlvr_games.core.rewards import ZeroReward
 from rlvr_games.core.rollout import PreparedTurn, build_action_context, prepare_turn
+from rlvr_games.core.session import (
+    EnvironmentTaskSession,
+    TaskInstance,
+    TaskResetResult,
+    TaskSessionProtocol,
+    TaskSubmissionRecord,
+    TaskSubmissionResult,
+    TaskTrajectory,
+    TaskTurn,
+)
+from rlvr_games.core.session_rollout import TaskSessionPolicy, rollout_task_session
+from rlvr_games.core.single_step import (
+    PromptRenderer,
+    SingleStepTask,
+    SingleStepVerifier,
+    SingleStepVerifierSession,
+    TaskSource,
+    VerificationResult,
+)
 from rlvr_games.core.trajectory import (
     AppliedResetEvent,
     EpisodeTrajectory,
@@ -69,11 +94,16 @@ __all__ = [
     "AgentVisibleEvent",
     "PublicResetEvent",
     "PreparedTurn",
+    "PromptRenderer",
     "ProjectedActionContext",
     "AppliedResetEvent",
     "AsyncEnvPool",
     "AsyncResetResult",
+    "AsyncSessionPool",
     "AsyncStepResult",
+    "AsyncTaskResetResult",
+    "AsyncTaskSession",
+    "AsyncTaskSubmissionResult",
     "AsyncWorkflowSession",
     "AutoAction",
     "AutoAdvancePolicy",
@@ -85,6 +115,7 @@ __all__ = [
     "EpisodeBoundary",
     "EpisodeFinishedError",
     "EpisodeTrajectory",
+    "EnvironmentTaskSession",
     "EnvironmentNotResetError",
     "ImageRenderer",
     "ImageMessagePart",
@@ -103,11 +134,24 @@ __all__ = [
     "ResetEventPolicy",
     "RLVRGamesError",
     "ScenarioReset",
+    "SingleStepTask",
+    "SingleStepVerifier",
+    "SingleStepVerifierSession",
     "StepResult",
+    "TaskInstance",
+    "TaskResetResult",
+    "TaskSessionProtocol",
+    "TaskSessionPolicy",
+    "TaskSubmissionRecord",
+    "TaskSubmissionResult",
+    "TaskTrajectory",
+    "TaskTurn",
+    "TaskSource",
     "TextRenderer",
     "TextMessagePart",
     "TrajectoryStep",
     "TurnBasedEnv",
+    "VerificationResult",
     "ZeroReward",
     "WorkflowResetResult",
     "WorkflowSession",
@@ -116,4 +160,5 @@ __all__ = [
     "WorkflowTurn",
     "build_action_context",
     "prepare_turn",
+    "rollout_task_session",
 ]

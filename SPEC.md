@@ -39,6 +39,24 @@ trajectory analysis, and reward aggregation.
 
 ## Interaction Contracts
 
+### Scalar Task Sessions
+
+Trainer-facing runtime code should target scalar task sessions:
+
+```python
+reset_result = session.reset(seed=seed)
+
+while session.turn is not None:
+    assistant_output = agent.act(session.turn.messages)
+    submission_result = session.submit(assistant_output)
+```
+
+The shared contract is `TaskSessionProtocol`. It exposes stable task-instance
+identity, the current `TaskTurn`, cumulative reward, and `TaskTrajectory`.
+Environment sessions and single-step verifier sessions both adapt into this
+contract. Concurrency belongs in rollout controllers such as `AsyncSessionPool`,
+not inside individual task implementations.
+
 ### Single-Step Verifier Tasks
 
 The high-throughput RLVR path is a single prompt or task instance, one or more
@@ -91,7 +109,9 @@ The framework should keep responsibilities clean:
   and validation, action legality checks where applicable, transitions,
   tool/resource execution, and verification.
 - The workflow layer owns trainer-facing turn packaging, message adaptation,
-  and session helpers built on top of the verifier or environment.
+  and session helpers built on top of the verifier or environment. New
+  trainer-facing helpers should target task sessions rather than environment
+  objects directly.
 - The rollout controller owns concurrency, queueing, retries, cancellation,
   backpressure, and async overlap between generation and verification.
 - The trainer owns model inference, rollout fan-out, minibatch construction,
@@ -110,6 +130,19 @@ The near-term priority order should track where RLVR demand is strongest:
 - coding and software-engineering tasks with executable checks
 - multi-step tool-using tasks such as browser or workplace workflows
 - games as bundled reference environments for stateful interaction
+
+## Task Specs
+
+Task specs should describe reproducible task setup and build fresh scalar
+task-session factories for trainer-facing code. Multi-step game specs may also
+build environments for CLI/debug tooling.
+
+- New task specs should use neutral `kind:` dispatch.
+- Legacy game specs may keep `game:` under a compatibility bridge.
+- Game examples live under `config/games/<game>/`.
+- Non-game verifier examples live under `config/tasks/<domain>/`.
+- A task-session factory must create a new mutable session each time it is
+  called; sessions must not be shared across concurrent rollouts.
 
 ## Games
 

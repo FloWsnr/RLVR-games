@@ -1,5 +1,5 @@
 # RLVR-games
-Executable verifiers for RLVR, starting with games
+Trainer-agnostic executable verifier tasks for RLVR
 
 ## Core Idea
 
@@ -13,12 +13,20 @@ procedural reasoning, coding, and tool-backed workflows.
   actions, transitions, terminal conditions, and reward inputs.
 - Text, images, and tool outputs are observations over canonical state, not
   the authoritative state themselves.
-- Trajectories are first-class data. Each episode records observations, raw
-  actions, parsed actions, rewards, terminal flags, public-safe metadata, and
-  privileged debug traces over canonical state.
+- Trajectories are first-class data. Each task session records observations,
+  assistant outputs, parsed submissions, rewards, terminal flags, public-safe
+  metadata, and privileged debug traces over canonical state or verifier-owned
+  inputs.
 - Bundled games plug into one shared environment loop instead of each domain
   inventing its own runner.
 - Games are reference environments, not the sole product identity.
+
+The trainer-facing backbone is now a scalar `TaskSessionProtocol`: `reset(...)`
+produces the next `TaskTurn`, `submit(...)` verifies one assistant output, and
+`TaskTrajectory` records the interaction. `EnvironmentTaskSession` adapts
+stateful game environments into that contract. `SingleStepVerifierSession`
+supports prompt/completion/verifier workloads without pretending they have
+legal actions or environment state.
 
 ## Direction
 
@@ -102,17 +110,23 @@ canonical-state traces for offline debugging and analysis.
 
 ## Architectural Boundaries
 
-- `rlvr_games/core/` holds the reusable environment abstractions and trajectory
-  machinery, rollout helpers, trainer-facing message adapters, and async pool
-  support.
+- `rlvr_games/core/` holds the reusable task-session contracts, environment
+  abstractions, trajectory machinery, rollout helpers, trainer-facing message
+  adapters, and async pool support.
+- `rlvr_games/tasks/<domain>/` holds non-game verifier tasks. The bundled
+  arithmetic task is a small reference for single-step prompt/completion
+  verification.
 - `rlvr_games/games/<game>/` holds the actual game logic, rendering, scenarios,
   rewards, and factories.
   Bundled games currently include chess, connect4, game2048, mastermind,
   minesweeper, and yahtzee.
-- `rlvr_games/task_specs/` holds shared YAML task-spec loading, validation, and
-  environment construction helpers.
+- `rlvr_games/task_specs/` holds shared YAML task-spec loading, validation,
+  registry dispatch, environment construction helpers, and scalar
+  task-session factory construction.
 - `config/games/<game>/` holds checked-in example task specs for reproducible
   environment setups.
+- `config/tasks/<domain>/` holds checked-in example task specs for non-game
+  verifier domains.
 - `rlvr-games` is a thin interactive play/debug shell over the environments.
 - Dataset preprocessing and engine installation live in separate scripts rather
   than bloating the play CLI.
@@ -161,8 +175,13 @@ the authored setup stays reproducible.
 ## YAML Task Specs
 
 Task specs make training and evaluation setups explicit, versioned, and easy to
-reuse across the CLI and in-process rollouts. Checked-in examples live under
-`config/games/<game>/`.
+reuse across the CLI and in-process rollouts. Checked-in game examples live
+under `config/games/<game>/`; non-game verifier examples live under
+`config/tasks/<domain>/`.
+
+Legacy game specs keep the `game:` field for CLI compatibility. New specs
+should prefer neutral `kind:` dispatch. The loader also accepts `kind:` for
+game specs and maps it through the compatibility bridge.
 
 ```yaml
 schema_version: 1
@@ -194,51 +213,60 @@ control:
     kind: solver
 ```
 
-Load one directly in Python:
+Single-step verifier specs use the same loader and build scalar sessions:
+
+```yaml
+schema_version: 1
+id: arithmetic_simple_addition
+kind: arithmetic
+
+source:
+  min_value: 2
+  max_value: 2
+  operations: [add]
+```
+
+Load a trainer-facing session factory directly in Python:
 
 ```python
 from pathlib import Path
 
-from rlvr_games.task_specs import load_environment_from_task_spec_path
+from rlvr_games.task_specs import load_task_session_factory_from_task_spec_path
 
-task_spec_path = Path("config/games/connect4/solver_opponent.yaml")
-env = load_environment_from_task_spec_path(path=task_spec_path)
+task_spec_path = Path("config/tasks/arithmetic/simple_addition.yaml")
+session_factory = load_task_session_factory_from_task_spec_path(path=task_spec_path)
+session = session_factory()
 ```
 
 Task specs are validated with Pydantic before the environment is built, and any
 relative paths inside the YAML are resolved relative to the task-spec file.
-Today, checked-in task specs build game environments. The target architecture is
-to have specs build scalar task-session factories, with environment construction
-kept for multi-step CLI and debug paths.
+Environment construction remains available for multi-step CLI and debug paths
+through `load_environment_from_task_spec_path(...)`.
 
 ## Programmatic Rollouts
 
-The current in-process multi-step surface is still the environment API, but the
-trainer-facing helpers now package action context and chat messages alongside
-each actionable turn. The target trainer-facing surface is a scalar task session
-that can wrap either this environment API or a single-step verifier:
+Use `TaskSessionProtocol` for trainer-facing code that should work for both
+single-step verifier tasks and multi-step environments:
 
 ```python
 from pathlib import Path
 
-from rlvr_games.core import prepare_turn
-from rlvr_games.task_specs import load_environment_from_task_spec_path
+from rlvr_games.core import rollout_task_session
+from rlvr_games.task_specs import load_task_session_factory_from_task_spec_path
 
-env = load_environment_from_task_spec_path(
+session_factory = load_task_session_factory_from_task_spec_path(
     path=Path("config/games/connect4/solver_opponent.yaml")
 )
-observation, reset_info = env.reset(seed=0)
+session = session_factory()
 
-while not env.episode_finished:
-    turn = prepare_turn(env=env, observation=observation)
-    raw_action = agent.act(
+trajectory = rollout_task_session(
+    session=session,
+    seed=0,
+    policy=lambda turn: agent.act(
         messages=turn.messages,
         action_context=turn.action_context,
-    )
-    step_result = env.step(raw_action)
-    observation = step_result.observation
-
-trajectory = env.trajectory
+    ),
+)
 ```
 
 `ActionContext` always includes the env-owned `turn_index`. Games may add
@@ -268,56 +296,53 @@ observation metadata, while `debug-state`, `debug-show <key>`, and
 
 ## Async Rollouts
 
-`AsyncEnvPool` provides a process-backed pool for parallel environment stepping.
-Each worker owns one live environment and returns results as soon as they are
-ready:
+`AsyncSessionPool` provides a process-backed pool for parallel scalar task
+sessions. Each worker owns one live task session and returns task reset or
+submission results as soon as they are ready:
 
 ```python
 from pathlib import Path
 
-from rlvr_games.core.async_env import AsyncEnvPool
+from rlvr_games.core import AsyncSessionPool
 
-task_spec_path = Path("config/games/connect4/solver_opponent.yaml")
+task_spec_path = Path("config/tasks/arithmetic/simple_addition.yaml")
 
-with AsyncEnvPool.from_task_spec_paths(
+with AsyncSessionPool.from_task_spec_paths(
     task_spec_paths=(task_spec_path, task_spec_path),
 ) as pool:
     pool.reset_all(seeds=(0, 1))
 
     first_result = pool.recv(timeout_seconds=5.0)
-    assert first_result.turn is not None
+    assert first_result.reset_result.turn is not None
 
-    pool.step(slot_id=first_result.slot_id, raw_action="4")
+    pool.submit(slot_id=first_result.slot_id, assistant_output="4")
     next_result = pool.recv(timeout_seconds=5.0)
 ```
 
-Reset and step results carry the worker `slot_id`, the per-slot
-`episode_index`, the raw env result payload, and an optional `PreparedTurn`
-containing the next action context plus trainer-facing messages.
+Reset and submission results carry the worker `slot_id`, the per-slot
+`episode_index`, the task-session result payload, and the next `TaskTurn` when
+the session can continue.
 
-If you want one trainer-facing interface that works the same way for both local
-envs and async slots, use workflow sessions:
+`AsyncEnvPool` and workflow sessions remain available for environment-specific
+debug and compatibility paths. New trainer-facing code should prefer
+`AsyncSessionPool` and `AsyncTaskSession`:
 
 ```python
-from rlvr_games import AsyncEnvPool, WorkflowSession
+from rlvr_games import AsyncSessionPool
 
-env_session = WorkflowSession(env=env)
+with AsyncSessionPool.from_task_spec_paths(task_spec_paths=(task_spec_path,)) as pool:
+    session = pool.session(slot_id=0)
 
-with AsyncEnvPool(env_factories=(make_env,)) as pool:
-    async_session = pool.session(slot_id=0)
-
-    async_session.reset(seed=0)
-    while async_session.turn is not None:
-        submission = async_session.submit("4")
+    session.reset(seed=0)
+    while session.turn is not None:
+        turn = session.turn
+        submission = session.submit(agent.act(messages=turn.messages))
         if submission.turn is None:
             break
 ```
 
-`LocalWorkflowSession` and `AsyncWorkflowSession` share the same
-`WorkflowSessionProtocol`: reset an episode, read the current `turn`, submit one
-assistant output, and continue until `turn` becomes `None`. Async sessions
-lease their pool slot exclusively while they are alive, so raw pool operations
-and workflow-session control do not interleave on the same slot.
+Async task sessions lease their pool slot exclusively while they are alive, so
+raw pool operations and session control do not interleave on the same slot.
 
 ## Development
 
@@ -330,9 +355,10 @@ uv run pyright
 uv run pytest
 ```
 
-When you add a new feature or game, update the checked-in examples under
-`config/games/` as needed and keep both `README.md` and `AGENTS.md` aligned
-with the new user-facing or contributor-facing surfaces.
+When you add a new feature, game, or non-game verifier domain, update the
+checked-in examples under `config/games/` or `config/tasks/` as needed and keep
+both `README.md` and `AGENTS.md` aligned with the new user-facing or
+contributor-facing surfaces.
 
 ## License
 

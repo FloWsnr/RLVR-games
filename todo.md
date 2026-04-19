@@ -123,6 +123,7 @@ Represents the start of one scalar task session.
 Suggested fields:
 
 - `task_instance_id: str`
+- `observation: Observation | None`
 - `turn: TaskTurn | None`
 - `info: dict[str, object]`
 
@@ -131,6 +132,8 @@ Why:
 - Multi-step environments may terminate during reset due to reset-time events
   or auto-advance.
 - Single-step verifier tasks normally produce exactly one initial turn.
+- Terminal reset paths can still emit an observation even when there is no next
+  actionable turn.
 - The reset result should expose stable task identity without requiring direct
   access to environment state.
 
@@ -147,6 +150,7 @@ Suggested fields:
 - `reward: float`
 - `terminated: bool`
 - `truncated: bool`
+- `observation: Observation | None`
 - `turn: TaskTurn | None`
 - `info: dict[str, object]`
 - `debug_info: dict[str, object]`
@@ -161,6 +165,8 @@ Why:
   environment step.
 - Single-step verifier tasks need the same trainer-facing information without
   pretending to have a next environment observation.
+- Environment submissions can emit a final observation even when there is no
+  next actionable turn.
 - `valid_submission` should mean the submission was parseable and verifiable
   for the task, not that the answer was correct.
 - A wrong but well-formed single-step answer should usually be valid with low
@@ -187,6 +193,7 @@ Suggested fields:
 - reward
 - valid-submission flag
 - terminated and truncated flags
+- post-submission observation when available
 - public info
 - debug info
 - optional environment-specific details such as `StepResult` summaries or
@@ -239,9 +246,11 @@ Why:
 
 ## Phase 0: Lock Shared Contracts
 
+Status: Done.
+
 ### Tasks
 
-- Define precise lifecycle semantics before code churn:
+- [x] Define precise lifecycle semantics before code churn:
   - access before reset
   - submit before reset
   - submit after done
@@ -249,12 +258,14 @@ Why:
   - reset while active
   - close idempotency
   - reset failure behavior
-- Define `TaskInstance`, `TaskTurn`, `TaskResetResult`,
+- [x] Define `TaskInstance`, `TaskTurn`, `TaskResetResult`,
   `TaskSubmissionResult`, `TaskTrajectory`, and `TaskSessionProtocol`.
-- Define `valid_submission` semantics separately from answer correctness.
-- Define how `terminated`, `truncated`, and `done` map across both adapters.
-- Define how multiple scalar sessions can share one `task_instance_id`.
-- Define public `info` versus privileged `debug_info` privacy rules.
+- [x] Define `valid_submission` semantics separately from answer correctness.
+- [x] Define how `terminated`, `truncated`, and `done` map across both adapters.
+- [x] Define how multiple scalar sessions can share one `task_instance_id`.
+- [x] Define public `info` versus privileged `debug_info` privacy rules.
+- [x] Add focused unit tests for the task-native result and trajectory
+  invariants.
 
 ### Why
 
@@ -275,15 +286,17 @@ protocols, and tests that pin down semantics.
 
 ## Phase 1: Add Task-Native Session Types Alongside Workflow
 
+Status: Done.
+
 ### Tasks
 
-- Add task-native session/result/trajectory types without renaming existing
+- [x] Add task-native session/result/trajectory types without renaming existing
   `Workflow*` classes yet.
-- Keep current `WorkflowSession`, `WorkflowSubmission`, and `StepResult`
+- [x] Keep current `WorkflowSession`, `WorkflowSubmission`, and `StepResult`
   behavior intact while the new API is proven.
-- Add conversion helpers only where they reduce duplication.
-- Export task-native types from `rlvr_games.core` and the package root.
-- Update focused tests for the new types.
+- [x] Add conversion helpers only where they reduce duplication.
+- [x] Export task-native types from `rlvr_games.core` and the package root.
+- [x] Update focused tests for the new types.
 
 ### Why
 
@@ -304,19 +317,21 @@ shared contract.
 
 ## Phase 2: Add `EnvironmentTaskSession`
 
+Status: Done.
+
 ### Tasks
 
-- Implement an adapter that wraps `Environment[Any, Any]`.
-- On reset, call `env.reset(seed=seed)` and convert the observation into a
+- [x] Implement an adapter that wraps `Environment[Any, Any]`.
+- [x] On reset, call `env.reset(seed=seed)` and convert the observation into a
   `TaskTurn` with the existing rollout/message helpers.
-- On submit, call `env.step(raw_action)` and map the resulting `StepResult`
+- [x] On submit, call `env.step(raw_action)` and map the resulting `StepResult`
   into `TaskSubmissionResult`.
-- Map `StepResult.accepted` to `valid_submission` for environment-backed
+- [x] Map `StepResult.accepted` to `valid_submission` for environment-backed
   sessions.
-- Preserve `terminated` and `truncated` exactly from `StepResult`.
-- Populate `TaskTrajectory` while retaining a link or optional detail payload
+- [x] Preserve `terminated` and `truncated` exactly from `StepResult`.
+- [x] Populate `TaskTrajectory` while retaining a link or optional detail payload
   for the underlying `EpisodeTrajectory`.
-- Keep access to the wrapped environment available for debugging and CLI tools.
+- [x] Keep access to the wrapped environment available for debugging and CLI tools.
 
 ### Why
 
@@ -341,17 +356,19 @@ This also establishes the intended layering:
 
 ## Phase 3: Add Single-Step Verifier Primitives
 
+Status: Done.
+
 ### Tasks
 
-- Add a `TaskSource` protocol for deterministic task-instance sampling.
-- Add a prompt renderer or reuse `Renderer` where the input is a sampled task
+- [x] Add a `TaskSource` protocol for deterministic task-instance sampling.
+- [x] Add a prompt renderer or reuse `Renderer` where the input is a sampled task
   instance.
-- Add a `SingleStepVerifier` protocol with a method like
+- [x] Add a `SingleStepVerifier` protocol with a method like
   `verify(task, completion) -> VerificationResult`.
-- Add `VerificationResult` with parsed output, valid-submission flag, reward,
+- [x] Add `VerificationResult` with parsed output, valid-submission flag, reward,
   terminated/truncated status, public info, and debug metadata.
-- Implement `SingleStepVerifierSession`.
-- Add focused tests for reset, submit, double-submit behavior, deterministic
+- [x] Implement `SingleStepVerifierSession`.
+- [x] Add focused tests for reset, submit, double-submit behavior, deterministic
   seeds, reward metadata, debug privacy, and trajectory recording.
 
 ### Why
@@ -385,17 +402,19 @@ adapter instead.
 
 ## Phase 4: Add A Minimal Non-Game Reference Task
 
+Status: Done.
+
 ### Recommended First Task
 
-Add a small procedural arithmetic or symbolic reasoning verifier.
+- [x] Add a small procedural arithmetic or symbolic reasoning verifier.
 
 Example:
 
-- sample two integers and an operation
-- render a prompt
-- parse the final answer from the completion
-- reward exact correctness
-- record verifier metadata
+- [x] sample two integers and an operation
+- [x] render a prompt
+- [x] parse the final answer from the completion
+- [x] reward exact correctness
+- [x] record verifier metadata
 
 ### Why
 
@@ -416,18 +435,20 @@ actually game-independent.
 
 ## Phase 5: Refactor Rollout Helpers Around Sessions
 
+Status: Done.
+
 ### Tasks
 
-- Add generic rollout helpers that accept `TaskSessionProtocol`.
-- Keep `prepare_turn(env=...)`, `build_action_context(env=...)`,
+- [x] Add generic rollout helpers that accept `TaskSessionProtocol`.
+- [x] Keep `prepare_turn(env=...)`, `build_action_context(env=...)`,
   `legal_actions()`, and canonical state inspection as environment-specific
   utilities.
-- Move generic message packaging to task-turn construction.
-- Make action extraction a session-level concern, not an environment-only
+- [x] Move generic message packaging to task-turn construction.
+- [x] Make action extraction a session-level concern, not an environment-only
   concern.
-- Add tests showing the same rollout loop can drive:
-  - a wrapped game environment
-  - a single-step verifier session
+- [x] Add tests showing the same rollout loop can drive:
+  - [x] a wrapped game environment
+  - [x] a single-step verifier session
 
 ### Why
 
@@ -447,16 +468,18 @@ optional capabilities rather than assumptions.
 
 ## Phase 6: Refactor Async Execution From Env Pool To Session Pool
 
+Status: Done.
+
 ### Tasks
 
-- Introduce `AsyncSessionPool` that owns one scalar task session per worker.
-- Generalize worker commands from `reset`/`step` to `reset`/`submit`.
-- Generalize result types from `AsyncResetResult`/`AsyncStepResult` to
+- [x] Introduce `AsyncSessionPool` that owns one scalar task session per worker.
+- [x] Generalize worker commands from `reset`/`step` to `reset`/`submit`.
+- [x] Generalize result types from `AsyncResetResult`/`AsyncStepResult` to
   task-session reset/submission results.
-- Keep `AsyncEnvPool` as a compatibility wrapper that converts env factories
+- [x] Keep `AsyncEnvPool` as a compatibility wrapper that converts env factories
   into `EnvironmentTaskSession` factories if useful.
-- Ensure worker processes close sessions cleanly.
-- Add tests for worker exceptions, picklability, lease behavior, and clean
+- [x] Ensure worker processes close sessions cleanly.
+- [x] Add tests for worker exceptions, picklability, lease behavior, and clean
   worker close.
 
 ### Why
@@ -478,18 +501,20 @@ implementation.
 
 ## Phase 7: Generalize Task Specs And Registry
 
+Status: Done.
+
 ### Tasks
 
-- Refactor registry handlers to build task session factories, not mutable
+- [x] Refactor registry handlers to build task session factories, not mutable
   sessions.
-- Replace schema dispatch based only on `game` with a neutral task key such as
+- [x] Replace schema dispatch based only on `game` with a neutral task key such as
   `kind`, `task_type`, or `domain`.
-- Decide whether game specs keep a `game:` field under a migration bridge or
+- [x] Decide whether game specs keep a `game:` field under a migration bridge or
   move directly to the neutral key.
-- Keep environment construction functions for CLI/debug paths.
-- Add config examples for the first single-step verifier task under a new
+- [x] Keep environment construction functions for CLI/debug paths.
+- [x] Add config examples for the first single-step verifier task under a new
   config namespace such as `config/tasks/<domain>/`.
-- Add tests for legacy game specs and new neutral non-game specs.
+- [x] Add tests for legacy game specs and new neutral non-game specs.
 
 ### Why
 
@@ -510,13 +535,27 @@ mutable and must not be reused across rollouts or workers.
 
 ## Phase 8: Generalize Dataset Utilities Only When Needed
 
+Status: Deferred by design.
+
 ### Tasks
 
-- Delay broad dataset renaming until a non-game task actually uses
+- [x] Delay broad dataset renaming until a non-game task actually uses
   record-backed sampling.
-- When needed, rename or factor `ParquetScenarioDataset` into a more general
-  task-record sampler.
-- Keep deterministic split/seed sampling behavior.
+- [x] Confirm the first non-game verifier is procedural and does not need
+  record-backed sampling.
+- [x] Keep the existing chess dataset code unchanged during this refactor.
+- [x] Keep existing chess dataset tests passing under the full validation run.
+
+Deferred note: the first non-game verifier is procedural arithmetic and does
+not use record-backed sampling. Generalizing the dataset layer now would add an
+unproven abstraction, so the dataset tasks remain follow-up work for the first
+record-backed non-game domain.
+
+Future trigger:
+
+- When a non-game task needs record-backed sampling, rename or factor
+  `ParquetScenarioDataset` into a general task-record sampler.
+- Preserve deterministic split/seed sampling behavior during that migration.
 - Support records that initialize environments and records that represent
   single-step prompts.
 - Update chess dataset code to use the generalized sampler through a
@@ -540,17 +579,26 @@ needed shape.
 
 ## Phase 9: Naming And Public API Cleanup
 
+Status: Done.
+
 ### Tasks
 
-- Update top-level package docstrings and exports away from game-only language.
-- Consider renaming:
-  - `GameBackend` to `StatefulTaskBackend` or keep it game-specific
-  - `AsyncEnvPool` to `AsyncSessionPool`
-  - `WorkflowSession` to `TaskSession`
-  - `PreparedTurn` to `TaskTurn`
-  - `PLAY_GAME_SPECS` to an environment CLI registry name
-- Keep old names as aliases only when migration cost is high.
-- Update docs and examples after the code path is proven.
+- [x] Update top-level package docstrings and exports away from game-only
+  language.
+- [x] Consider renaming:
+  - [x] `GameBackend` stays game/environment-specific for now because the
+    task-native layer no longer requires it.
+  - [x] `AsyncSessionPool` is the new trainer-facing async pool; `AsyncEnvPool`
+    remains for environment compatibility.
+  - [x] `WorkflowSession` remains as the environment workflow API; task-native
+    code uses `TaskSessionProtocol`, `EnvironmentTaskSession`, and
+    `SingleStepVerifierSession`.
+  - [x] `PreparedTurn` remains environment-specific; task-native code uses
+    `TaskTurn`.
+  - [x] CLI play registries remain game-scoped because the interactive CLI is
+    still an environment debug shell.
+- [x] Keep old names as aliases only when migration cost is high.
+- [x] Update docs and examples after the code path is proven.
 
 ### Why
 
