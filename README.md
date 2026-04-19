@@ -38,10 +38,10 @@ contracts:
 - multi-step environments for stateful interaction, tool use, and long-horizon
   behavior
 
-The environment or verifier should describe one logical task session. Rollout
-controllers and trainers should own batching, queueing, async overlap, and
-freshness policy. That keeps executable task logic reusable across trainer
-stacks.
+The environment or verifier should describe one logical task session. Trainer
+frameworks should own batching, queueing, parallel execution, and freshness
+policy. That keeps executable task logic reusable across trainer stacks without
+turning this repository into a rollout scheduler.
 
 ## Current Multi-Step Architecture
 
@@ -112,7 +112,7 @@ canonical-state traces for offline debugging and analysis.
 
 - `rlvr_games/core/` holds the reusable task-session contracts, environment
   abstractions, trajectory machinery, rollout helpers, trainer-facing message
-  adapters, and async pool support.
+  adapters, rewards, protocols, and types.
 - `rlvr_games/tasks/<domain>/` holds non-game verifier tasks. The bundled
   arithmetic task is a small reference for single-step prompt/completion
   verification.
@@ -293,56 +293,6 @@ environment surface usable for text-only and multimodal training loops.
 The interactive CLI follows the same split: `state` and `show <key>` read from
 observation metadata, while `debug-state`, `debug-show <key>`, and
 `debug-legal` are explicit privileged debug commands.
-
-## Async Rollouts
-
-`AsyncSessionPool` provides a process-backed pool for parallel scalar task
-sessions. Each worker owns one live task session and returns task reset or
-submission results as soon as they are ready:
-
-```python
-from pathlib import Path
-
-from rlvr_games.core import AsyncSessionPool
-
-task_spec_path = Path("config/tasks/arithmetic/simple_addition.yaml")
-
-with AsyncSessionPool.from_task_spec_paths(
-    task_spec_paths=(task_spec_path, task_spec_path),
-) as pool:
-    pool.reset_all(seeds=(0, 1))
-
-    first_result = pool.recv(timeout_seconds=5.0)
-    assert first_result.reset_result.turn is not None
-
-    pool.submit(slot_id=first_result.slot_id, assistant_output="4")
-    next_result = pool.recv(timeout_seconds=5.0)
-```
-
-Reset and submission results carry the worker `slot_id`, the per-slot
-`episode_index`, the task-session result payload, and the next `TaskTurn` when
-the session can continue.
-
-`AsyncEnvPool` and workflow sessions remain available for environment-specific
-debug and compatibility paths. New trainer-facing code should prefer
-`AsyncSessionPool` and `AsyncTaskSession`:
-
-```python
-from rlvr_games import AsyncSessionPool
-
-with AsyncSessionPool.from_task_spec_paths(task_spec_paths=(task_spec_path,)) as pool:
-    session = pool.session(slot_id=0)
-
-    session.reset(seed=0)
-    while session.turn is not None:
-        turn = session.turn
-        submission = session.submit(agent.act(messages=turn.messages))
-        if submission.turn is None:
-            break
-```
-
-Async task sessions lease their pool slot exclusively while they are alive, so
-raw pool operations and session control do not interleave on the same slot.
 
 ## Development
 

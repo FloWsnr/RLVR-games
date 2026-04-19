@@ -21,9 +21,9 @@ verifier tasks and multi-step environments.
 ## Architecture
 
 - `rlvr_games/core/` holds the generic environment abstractions, trajectory
-  machinery, rollout helpers, trainer-facing message adapters, async rollout
-  helpers, rewards, protocols, and types. New trainer-facing runtime work
-  should target scalar task sessions rather than environment-only construction.
+  machinery, rollout helpers, trainer-facing message adapters, rewards,
+  protocols, and types. New trainer-facing runtime work should target scalar
+  task sessions rather than environment-only construction.
 - `rlvr_games/tasks/<domain>/` holds non-game verifier tasks. The bundled
   arithmetic domain is the first single-step prompt/completion/verifier
   reference task.
@@ -50,6 +50,8 @@ verifier tasks and multi-step environments.
 - Keep canonical state and executable verifier logic authoritative.
 - Design scalar task sessions. Batching, queueing, and freshness control belong
   in rollout or trainer layers, not inside each environment implementation.
+- Do not add in-repo async pools or rollout schedulers for now. Trainer
+  frameworks should own concurrency.
 - Prefer trainer-facing code that consumes `TaskSessionProtocol`,
   `TaskTurn`, `TaskSubmissionResult`, and `TaskTrajectory`.
 - Keep domain-specific behavior out of the generic core unless multiple tasks

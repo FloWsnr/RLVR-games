@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar
+from typing import Generic, Protocol, TypeVar
 
 from rlvr_games.core.action_context import ActionContext
 from rlvr_games.core.exceptions import EnvironmentNotResetError
@@ -12,9 +12,6 @@ from rlvr_games.core.protocol import Environment
 from rlvr_games.core.rollout import PreparedTurn, prepare_turn
 from rlvr_games.core.trajectory import EpisodeTrajectory
 from rlvr_games.core.types import Observation, StepResult
-
-if TYPE_CHECKING:
-    from rlvr_games.core.async_env import AsyncEnvPool
 
 StateT = TypeVar("StateT")
 ActionT = TypeVar("ActionT")
@@ -123,7 +120,7 @@ class _DriverStepResult:
 
 
 class _WorkflowSessionBase(Generic[StateT, ActionT]):
-    """Shared implementation for local and async workflow sessions."""
+    """Shared implementation for workflow session wrappers."""
 
     def __init__(self, *, action_extractor: Callable[[str], str] | None = None) -> None:
         self._action_extractor = (
@@ -312,99 +309,6 @@ class LocalWorkflowSession(_WorkflowSessionBase[StateT, ActionT]):
         self._env.close()
 
 
-class AsyncWorkflowSession(_WorkflowSessionBase[Any, Any]):
-    """Workflow session backed by one slot in an async environment pool."""
-
-    def __init__(
-        self,
-        *,
-        pool: "AsyncEnvPool",
-        slot_id: int,
-        lease_token: int,
-        action_extractor: Callable[[str], str] | None = None,
-        close_pool: bool = False,
-    ) -> None:
-        super().__init__(action_extractor=action_extractor)
-        self._pool = pool
-        self._slot_id = slot_id
-        self._lease_token: int | None = lease_token
-        self._close_pool = close_pool
-
-    @property
-    def pool(self) -> "AsyncEnvPool":
-        """Return the owning async environment pool."""
-        return self._pool
-
-    @property
-    def slot_id(self) -> int:
-        """Return the pool slot owned by this session."""
-        return self._slot_id
-
-    def _reset_backend(self, *, seed: int) -> _DriverResetResult:
-        from rlvr_games.core.async_env import AsyncResetResult
-
-        command_id = self._pool._enqueue_reset(
-            slot_id=self._slot_id,
-            seed=seed,
-            allow_leased=True,
-            lease_token=self._lease_token,
-        )
-        result = self._pool._recv_slot(
-            slot_id=self._slot_id,
-            command_id=command_id,
-            timeout_seconds=None,
-            allow_leased=True,
-            lease_token=self._lease_token,
-        )
-        if not isinstance(result, AsyncResetResult):
-            raise RuntimeError(
-                "Expected AsyncResetResult when resetting async workflow session."
-            )
-        return _DriverResetResult(
-            observation=result.observation,
-            reset_info=result.reset_info,
-            turn=result.turn,
-        )
-
-    def _step_backend(self, *, raw_action: str) -> _DriverStepResult:
-        from rlvr_games.core.async_env import AsyncStepResult
-
-        command_id = self._pool._enqueue_step(
-            slot_id=self._slot_id,
-            raw_action=raw_action,
-            allow_leased=True,
-            lease_token=self._lease_token,
-        )
-        result = self._pool._recv_slot(
-            slot_id=self._slot_id,
-            command_id=command_id,
-            timeout_seconds=None,
-            allow_leased=True,
-            lease_token=self._lease_token,
-        )
-        if not isinstance(result, AsyncStepResult):
-            raise RuntimeError(
-                "Expected AsyncStepResult when stepping async workflow session."
-            )
-        return _DriverStepResult(
-            step_result=result.step_result,
-            turn=result.turn,
-        )
-
-    def _close_backend(self) -> None:
-        if self._close_pool:
-            self._pool.close()
-            self._lease_token = None
-            return
-        if self._lease_token is None:
-            return
-        self._pool._release_slot(
-            slot_id=self._slot_id,
-            lease_token=self._lease_token,
-        )
-        self._lease_token = None
-
-
 WorkflowSession = LocalWorkflowSession
 
 
@@ -429,7 +333,6 @@ def _workflow_turn_from_prepared_turn(
 
 
 __all__ = [
-    "AsyncWorkflowSession",
     "LocalWorkflowSession",
     "WorkflowResetResult",
     "WorkflowSession",

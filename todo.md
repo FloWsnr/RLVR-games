@@ -271,8 +271,8 @@ Status: Done.
 
 The first plan moved too quickly into renaming workflow types. The core
 contracts need to be explicit first because they determine every later layer:
-environment adapters, single-step verifiers, async workers, task specs, and
-trajectory storage.
+environment adapters, single-step verifiers, task specs, and trajectory
+storage.
 
 This phase should be short but strict. The output is a small set of dataclasses,
 protocols, and tests that pin down semantics.
@@ -301,9 +301,8 @@ Status: Done.
 ### Why
 
 Replacing `WorkflowSubmission.step_result` immediately would ripple through
-existing workflow and async code before the new adapters are proven. Adding
-task-native types in parallel is safer and keeps the current environment stack
-working.
+existing workflow code before the new adapters are proven. Adding task-native
+types in parallel is safer and keeps the current environment stack working.
 
 Broad renames should happen late, after both adapters exist and tests prove the
 shared contract.
@@ -466,38 +465,34 @@ optional capabilities rather than assumptions.
 - No generic trainer-facing helper requires `env.state`, `env.legal_actions()`,
   `StepResult`, or `Environment`.
 
-## Phase 6: Refactor Async Execution From Env Pool To Session Pool
+## Phase 6: Remove In-Repo Async Execution
 
 Status: Done.
 
 ### Tasks
 
-- [x] Introduce `AsyncSessionPool` that owns one scalar task session per worker.
-- [x] Generalize worker commands from `reset`/`step` to `reset`/`submit`.
-- [x] Generalize result types from `AsyncResetResult`/`AsyncStepResult` to
-  task-session reset/submission results.
-- [x] Keep `AsyncEnvPool` as a compatibility wrapper that converts env factories
-  into `EnvironmentTaskSession` factories if useful.
-- [x] Ensure worker processes close sessions cleanly.
-- [x] Add tests for worker exceptions, picklability, lease behavior, and clean
-  worker close.
+- [x] Remove `AsyncEnvPool`, `AsyncSessionPool`, and async workflow wrappers.
+- [x] Remove async-specific tests and public exports.
+- [x] Keep task sessions scalar and synchronous.
+- [x] Document that trainer and rollout frameworks own concurrency.
 
 ### Why
 
-The research-backed boundary is: task sessions stay scalar; rollout controllers
-own concurrency. A process pool is a rollout/controller concern, not a property
-of any individual environment.
+The research-backed boundary is: task sessions stay scalar; trainer and rollout
+frameworks own concurrency. Keeping process pools in this repository makes the
+framework look like it wants to own scheduling, freshness, and fan-out, which is
+not the current mission.
 
-Generalizing the async layer prevents single-step verifier tasks from needing
-their own parallelization path and keeps batching/fan-out outside the verifier
-implementation.
+Removing async support keeps the codebase smaller and makes the intended
+integration point clearer: load a task-session factory, create scalar sessions,
+and let the trainer framework decide how to parallelize them.
 
 ### Acceptance Criteria
 
-- Existing async environment tests pass through compatibility wrappers.
-- A single-step verifier task can run in the async pool.
-- Worker result payloads do not expose environment-only `StepResult` as the
-  generic result.
+- No public async pool or async workflow API remains exported.
+- No generic trainer-facing helper owns process pools, queues, or scheduling.
+- Single-step verifier tasks and environment-backed sessions still run through
+  the same synchronous task-session API.
 
 ## Phase 7: Generalize Task Specs And Registry
 
@@ -588,8 +583,8 @@ Status: Done.
 - [x] Consider renaming:
   - [x] `GameBackend` stays game/environment-specific for now because the
     task-native layer no longer requires it.
-  - [x] `AsyncSessionPool` is the new trainer-facing async pool; `AsyncEnvPool`
-    remains for environment compatibility.
+- [x] Async pool names were removed for now because trainer frameworks should
+    own concurrency.
   - [x] `WorkflowSession` remains as the environment workflow API; task-native
     code uses `TaskSessionProtocol`, `EnvironmentTaskSession`, and
     `SingleStepVerifierSession`.
@@ -709,8 +704,6 @@ Add privacy tests proving `debug_info` never appears in `TaskTurn.messages`,
 - Single-step trajectory tests covering parse failure, wrong answer, correct
   answer, verifier exception, and verifier timeout/truncation.
 - Privacy tests for public info versus debug metadata.
-- Async tests for single-step sessions, worker exceptions, picklability of task
-  turns, slot lease behavior, and clean worker close.
 - Task-spec tests for legacy `game:` specs and new neutral non-game specs,
   including error messages that no longer say every unsupported task is an
   unsupported game.
@@ -723,7 +716,7 @@ Add privacy tests proving `debug_info` never appears in `TaskTurn.messages`,
 4. Add single-step verifier protocols and `SingleStepVerifierSession`.
 5. Add the first minimal non-game verifier task.
 6. Refactor rollout helpers to target task sessions.
-7. Refactor async env pool into async session pool.
+7. Remove in-repo async pools so trainer frameworks own concurrency.
 8. Generalize task-spec registry to session factories.
 9. Generalize dataset sampler naming and usage only when needed by a real
    record-backed non-game task.

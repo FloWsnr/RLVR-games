@@ -54,8 +54,9 @@ while session.turn is not None:
 The shared contract is `TaskSessionProtocol`. It exposes stable task-instance
 identity, the current `TaskTurn`, cumulative reward, and `TaskTrajectory`.
 Environment sessions and single-step verifier sessions both adapt into this
-contract. Concurrency belongs in rollout controllers such as `AsyncSessionPool`,
-not inside individual task implementations.
+contract. Concurrency belongs in trainer and rollout frameworks, not inside
+individual task implementations and not in this repository's core runtime for
+now.
 
 ### Single-Step Verifier Tasks
 
@@ -112,8 +113,8 @@ The framework should keep responsibilities clean:
   and session helpers built on top of the verifier or environment. New
   trainer-facing helpers should target task sessions rather than environment
   objects directly.
-- The rollout controller owns concurrency, queueing, retries, cancellation,
-  backpressure, and async overlap between generation and verification.
+- External rollout controllers own concurrency, queueing, retries,
+  cancellation, backpressure, and overlap between generation and verification.
 - The trainer owns model inference, rollout fan-out, minibatch construction,
   freshness or staleness policy, and policy updates.
 
