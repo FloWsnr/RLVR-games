@@ -13,19 +13,11 @@ classifiers = [
     "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
 ]
 dependencies = [
-    "bitbully>=0.0.77",
-    "chess>=1.11.2",
     "pillow>=11.0.0",
     "pyarrow>=18.0.0",
     "pydantic>=2.13.2",
     "pyyaml>=6.0.2",
-    "zstandard>=0.23.0",
 ]
-
-[project.scripts]
-rlvr-games = "rlvr_games.cli.main:main"
-rlvr-games-chess-datasets = "rlvr_games.games.chess.datasets_cli:main"
-rlvr-games-install-stockfish = "rlvr_games.games.chess.stockfish_install:main"
 
 [dependency-groups]
 dev = [

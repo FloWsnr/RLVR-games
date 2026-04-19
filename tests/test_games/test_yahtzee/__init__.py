@@ -1,1 +1,0 @@
-"""Yahtzee game tests."""

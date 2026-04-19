@@ -2,168 +2,237 @@
 
 ## Mission
 
-The goal of this project is to build a trainer-agnostic framework for
-reinforcement learning from verifiable rewards (RLVR) over executable tasks.
-A task may be a single-step prompt/completion/verifier workload or a multi-step
-stateful environment. The framework should make it possible to train and
-evaluate LLM agents on tasks where correctness is grounded in executable
-verification, canonical state, and reproducible trajectories.
+Build a trainer-agnostic RLVR task library for executable, verifiable
+tasks. The core product is not a game framework and not a rollout scheduler.
+It is a clean way to define scalar tasks that produce prompts or observations,
+accept model outputs, verify them with executable logic, assign rewards, and
+record trajectories.
+The framework should work with large-scale RL training frameworks. Check out
+`references/RL-framework-research.md` for the current state of RL training frameworks and how this library can fit in.
 
-- Support both dominant RLVR contracts: prompt-only verification and multi-step
-  `reset()`/`step()` episodes.
-- Keep each verifier or environment session scalar, not batch-native.
-- Keep canonical task state and executable verification authoritative.
-- Make trajectories first-class across both single-step and multi-step tasks.
-- Treat text, images, and tool outputs as observations over canonical state,
-  not as the source of truth themselves.
-- Keep the framework flexible enough to host procedural reasoning, coding,
-  tool-using workflows, and games behind shared runtime concepts.
-- Treat bundled games as reference environments and abstraction stress-tests,
-  not as the sole product identity.
+The framework should support two RLVR shapes through one backbone:
 
-## Task Instances And Sessions
+- Single-step verifier tasks: prompt, completion, executable verifier, reward.
+- Stateful tasks: canonical state, repeated submissions, transitions, terminal
+  or truncation logic.
 
-The framework should distinguish immutable task identity from mutable session
-execution.
+Potential tasks include:
+- Single-step: arithmetic, question-answering, code generation with unit tests.
+- Stateful: connect4, chess, tool use, browser tasks.
+- Physics puzzles and simulations.
 
-A task instance is the verifier-owned prompt, seed, state seed, or task payload
-that defines what should be solved. A task session is one scalar execution
-against that task instance. For single-step RLVR, trainers may create many
-sessions that share one task instance so they can sample multiple completions
-for the same prompt. For multi-step environments, a session usually corresponds
-to one environment episode.
+This also means we need to enable:
+- hidden state, e.g. games like minesweeper or partially observable tasks
+- engine support, e.g. physics simulations or chess engines
+- task setups, e.g. sampling of initial position for game2048 or rolling a dice in Yahhtzee
 
-Task sessions are mutable and should not be reused across concurrent rollouts.
-Task instance identity should be stable enough for grouping completions,
-trajectory analysis, and reward aggregation.
 
-## Interaction Contracts
+## Core ingredients
 
-### Scalar Task Sessions
+- Task specs that build fresh task sessions from yaml configs
+- The task backbone doing the logic
+- task renderers (text, images)
 
-Trainer-facing runtime code should target scalar task sessions:
+
+## Greenfield Principles
+
+- `TaskSession` is the only trainer-facing runtime abstraction.
+- A task session is scalar. One instance represents one rollout or completion.
+- Canonical task payloads, canonical state, and executable verifiers are
+  authoritative.
+- Text, images, and tool outputs are observations over authoritative state, not
+  the state itself.
+- Trajectories are first-class for both single-step and stateful tasks.
+- Public task metadata must be separated from privileged debug metadata.
+- Do not optimize for backwards compatibility while the architecture is still
+  being simplified.
+
+## Core Runtime Contract
+
+The target core API should be small:
 
 ```python
-reset_result = session.reset(seed=seed)
+class TaskSession(Protocol):
+    @property
+    def task_instance_id(self) -> str: ...
 
-while session.turn is not None:
-    assistant_output = agent.act(session.turn.messages)
-    submission_result = session.submit(assistant_output)
+    @property
+    def turn(self) -> TaskTurn | None: ...
+
+    @property
+    def trajectory(self) -> TaskTrajectory: ...
+
+    @property
+    def episode_return(self) -> float: ...
+
+    def reset(self, *, seed: int) -> TaskResetResult: ...
+
+    def submit(self, output: str) -> TaskSubmissionResult: ...
+
+    def close(self) -> None: ...
 ```
 
-The shared contract is `TaskSessionProtocol`. It exposes stable task-instance
-identity, the current `TaskTurn`, cumulative reward, and `TaskTrajectory`.
-Environment sessions and single-step verifier sessions both adapt into this
-contract. Concurrency belongs in trainer and rollout frameworks, not inside
-individual task implementations and not in this repository's core runtime for
-now.
+`reset(...)` starts one scalar task session. `turn` is the next model-facing
+opportunity. `submit(...)` verifies one assistant output and either produces
+another turn or ends the session.
+
+Trainer-facing code should not need `Environment`, `StepResult`,
+`WorkflowSession`, `PreparedTurn`, legal-action enumeration, or canonical state
+inspection.
+
+## Core Data Types
+
+### `TaskInstance`
+
+Immutable identity and public task metadata shared by one or more sessions.
+This is required for GRPO-style workloads where many completions solve the same
+prompt or sampled task.
+
+Required fields:
+
+- `task_instance_id`
+- `task_kind`
+- `seed`
+- `prompt_key`
+- public metadata
+
+### `TaskTurn`
+
+One model-action opportunity.
+
+Required fields:
+
+- observation
+- chat/messages payload
+- action context
+
+The messages are derived from the observation and action context. Renderers
+should not know about chat formatting.
+
+### `TaskSubmissionResult`
+
+The result of checking one model output.
+
+Required fields:
+
+- assistant output
+- raw verifier submission
+- parsed output, if any
+- `valid_submission`, meaning parseable/verifiable, not necessarily correct
+- reward
+- terminated/truncated flags
+- next observation and turn, if any
+- public info
+- debug info
+
+Wrong but well-formed answers should usually be valid with low reward.
+Malformed outputs may be invalid or valid-with-penalty, but the policy must be
+explicit per task.
+
+### `TaskTrajectory`
+
+Common interaction record for all task shapes.
+
+It should record:
+
+- task instance id
+- initial turn
+- reset metadata
+- ordered submissions
+- rewards
+- terminal/truncation flags
+- public info
+- privileged debug info
+
+Stateful tasks may attach additional transition details, but downstream tooling
+should be able to consume the common trajectory shape without knowing the
+domain.
+
+## Task Families
 
 ### Single-Step Verifier Tasks
 
-The high-throughput RLVR path is a single prompt or task instance, one or more
-model completions, and executable verification of the resulting output.
+This is the highest-priority RLVR path.
+
+Target shape:
 
 ```python
 task = task_source.sample(seed=seed)
-completion = agent.act(task.prompt)
+observation = prompt_renderer.render(task)
 result = verifier.verify(task=task, completion=completion)
 ```
 
-This contract should still produce a trajectory-like record containing the
-prompt, completion, reward, verifier outputs, and public-safe debug metadata.
+The session wrapper should expose this as:
 
-### Multi-Step Environments
+1. reset samples or loads a task instance
+2. reset returns one `TaskTurn`
+3. submit parses and verifies the completion
+4. submit returns reward and terminal result
+5. trajectory records the prompt, completion, verifier metadata, and reward
 
-The stateful path is a session with canonical state, repeated actions,
-observations, and terminal conditions.
+### Stateful Tasks
+
+Stateful tasks use the same `TaskSession` contract but may produce multiple
+turns.
+
+Target shape:
 
 ```python
-observation, reset_info = env.reset(seed=seed)
+session.reset(seed=seed)
 
-while not env.episode_finished:
-    raw_action = agent.act(observation)
-    step_result = env.step(raw_action)
-    observation = step_result.observation
+while session.turn is not None:
+    output = agent.act(session.turn.messages)
+    result = session.submit(output)
 ```
 
-This contract is the right fit for games, tool use, browsing, software
-engineering, and other tasks where intermediate interaction matters.
+Stateful implementations own canonical state, transition validation, optional
+internal events, reward assignment, and terminal/truncation logic.
 
-## Required Task Components
+Games, tool workflows, browser tasks, and coding tasks are all stateful tasks
+when intermediate interaction matters.
 
-Each task implementation should define the pieces needed for executable,
-reproducible verification:
+## Repository Shape
 
-- canonical state or verifier-owned task inputs
-- a model-facing prompt or observation surface
-- a submission format that can be parsed and validated
-- an executable verifier or transition function
-- reward assignment grounded in executable checks
-- terminal or truncation conditions
-- trajectory and debug metadata
+The greenfield target layout is:
 
-## Runtime Boundaries
+```text
+rlvr_games/core/
+  session.py        # TaskSession, turns, results, trajectories
+  verifier.py       # single-step verifier helpers
+  stateful.py       # reusable stateful task helper
+  messages.py       # observation to trainer messages
+  specs.py          # neutral task specs to session factories
 
-The framework should keep responsibilities clean:
+rlvr_games/tasks/
+  arithmetic/
+  connect4/
+  chess/
+  ...
 
-- The environment or verifier layer owns per-session state, submission parsing
-  and validation, action legality checks where applicable, transitions,
-  tool/resource execution, and verification.
-- The workflow layer owns trainer-facing turn packaging, message adaptation,
-  and session helpers built on top of the verifier or environment. New
-  trainer-facing helpers should target task sessions rather than environment
-  objects directly.
-- External rollout controllers own concurrency, queueing, retries,
-  cancellation, backpressure, and overlap between generation and verification.
-- The trainer owns model inference, rollout fan-out, minibatch construction,
-  freshness or staleness policy, and policy updates.
+config/tasks/
+  arithmetic/
+  connect4/
+  chess/
+```
 
-The framework should not push trainer-side batching semantics down into each
-environment implementation. One verifier or environment instance should
-describe one logical task session; higher-level rollout and trainer code should
-decide how many sessions run concurrently.
-
-## Domain Priorities
-
-The near-term priority order should track where RLVR demand is strongest:
-
-- procedural reasoning and verifier-rich prompt tasks
-- coding and software-engineering tasks with executable checks
-- multi-step tool-using tasks such as browser or workplace workflows
-- games as bundled reference environments for stateful interaction
+All domains are tasks. Games should live under `rlvr_games/tasks/<domain>/`
+once ported. A legacy `rlvr_games/games/` package may exist during migration,
+but new architecture should not be designed around it.
 
 ## Task Specs
 
-Task specs should describe reproducible task setup and build fresh scalar
-task-session factories for trainer-facing code. Multi-step game specs may also
-build environments for CLI/debug tooling.
+Task specs should build fresh task-session factories, not mutable sessions and
+not environment-only objects.
 
-- New task specs should use neutral `kind:` dispatch.
-- Legacy game specs may keep `game:` under a compatibility bridge.
-- Game examples live under `config/games/<game>/`.
-- Non-game verifier examples live under `config/tasks/<domain>/`.
-- A task-session factory must create a new mutable session each time it is
-  called; sessions must not be shared across concurrent rollouts.
+Rules:
 
-## Games
+- Use neutral `kind:` dispatch.
+- Prefer `config/tasks/<kind>/`.
+- Do not add new `game:` specs.
+- A session factory must create a new mutable `TaskSession` each time it is
+  called.
+- Specs should be reproducible and explicit about verifier, reward,
+  observation, and episode limits.
 
-Bundled reference environments today:
-
-- Chess
-- 2048
-- Connect 4
-- Mastermind
-- Minesweeper
-- Yahtzee
-
-New games are useful when they expose missing reusable abstractions such as
-partial observability, stochastic reset events, auto-advance policies, richer
-trajectory metadata, or distinctive verifier-backed reward structures.
-Adding games is not the primary roadmap by itself.
-
-## Non-Goals
-
-- Treat rendered text or images as the authoritative state.
-- Tie the framework to one training library, one serving system, or one rollout
-  engine.
-- Require every task to be multi-step, multimodal, or game-shaped.
+Legacy `game:` compatibility may exist only as a temporary migration bridge.
+It should not influence the greenfield design.
