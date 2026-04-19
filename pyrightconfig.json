@@ -1,5 +1,5 @@
 {
-  "include": ["rlvr_games", "tests"],
+  "include": ["rlvr_physics", "tests"],
   "exclude": ["**/__pycache__"],
   "pythonVersion": "3.13",
   "typeCheckingMode": "standard"

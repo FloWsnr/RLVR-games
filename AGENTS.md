@@ -5,12 +5,13 @@
 See [SPEC.md](/home/flwi01/coding/RLVR-physics/SPEC.md). This repository should
 be a trainer-agnostic RLVR task library for executable, verifiable tasks.
 
-
 ## Design Rules
 
 - Prefer the cleanest design, not the most layered one.
 - Do not optimize for backwards compatibility while the architecture is being
   simplified.
+- Lock invariants before implementation details. Keep exact APIs and layouts
+  provisional until real tasks prove them.
 
 ## Code Expectations
 
@@ -23,8 +24,8 @@ be a trainer-agnostic RLVR task library for executable, verifiable tasks.
   behavior.
 - Do not use `from __future__ import annotations`.
 - Write numpy-style docstrings for functions and classes.
-- If asked to use worktrees, create new worktrees in the `./worktrees/` directory. Name them
-  descriptively.
+- If asked to use worktrees, create new worktrees in the `./worktrees/`
+  directory. Name them descriptively.
 - Update `README.md`, `SPEC.md`, and `AGENTS.md` when changing mission,
   architecture, task domains, or public API.
 

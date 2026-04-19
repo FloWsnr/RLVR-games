@@ -2,223 +2,189 @@
 
 ## Mission
 
-Build a trainer-agnostic RLVR task library for executable, verifiable
-tasks. The core product is not a game framework and not a rollout scheduler.
-It is a clean way to define scalar tasks that produce prompts or observations,
+Build a trainer-agnostic RLVR task library for executable, verifiable tasks.
+The library should define scalar tasks that produce prompts or observations,
 accept model outputs, verify them with executable logic, assign rewards, and
-record trajectories.
+record useful trajectories.
 
-The framework should work with large-scale RL training frameworks. Check out `references/RL-framework-research.md` for the current state of RL training frameworks and how this library can fit in.
+The library should be easy to use from large-scale RL training frameworks. See
+`references/RL-framework-research.md` for the current background research.
 
-The framework should support two RLVR shapes through one backbone:
+The long-term focus is physics and scientific reasoning tasks. Early tasks may
+be simpler domains, such as arithmetic or small games, if they help prove the
+core abstractions without adding heavy simulation complexity too early.
 
-- Single-step verifier tasks: prompt, completion, executable verifier, reward.
-- Stateful tasks: canonical state, repeated submissions, transitions, terminal
-  or truncation logic.
+## Strong Invariants
 
-Potential tasks include:
-- Single-step: arithmetic, question-answering, code generation with unit tests.
-- Stateful: connect4, chess, tool use, browser tasks.
-- Physics puzzles and simulations.
+These are the parts worth locking early:
 
-End-goal tasks:
-Later on, the library will focus on physics and scientific reasoning tasks. However, initially we will start
-with simpler tasks to build out the architecture and core abstractions.
-
-This also means we need to enable:
-- hidden state, e.g. games like minesweeper or partially observable tasks
-- engine support, e.g. physics simulations or chess engines
-- task setups, e.g. sampling of initial position for game2048 or rolling a dice in Yahhtzee
-
-
-## Core ingredients
-
-- Task specs that build fresh task sessions from yaml configs
-- The task backbone doing the logic
-- task renderers (text, images)
-
-
-## Core Principles
-
-- `TaskSession` is the only trainer-facing runtime abstraction.
-- A task session is scalar. One instance represents one rollout or completion.
+- Tasks are scalar. One runtime instance represents one rollout or completion.
+- Trainer and rollout frameworks own batching, queues, parallelism, model
+  inference, and freshness policy.
 - Canonical task payloads, canonical state, and executable verifiers are
   authoritative.
 - Text, images, and tool outputs are observations over authoritative state, not
-  the state itself.
-- Trajectories are first-class for both single-step and stateful tasks.
-- Public task metadata must be separated from privileged debug metadata.
-- Do not optimize for backwards compatibility while the architecture is still
-  being simplified.
+  authoritative state themselves.
+- Public task metadata must stay separate from privileged debug metadata.
+- Task trajectories should record enough verified interaction history for
+  training, evaluation, and debugging.
+- Backwards compatibility is not a priority while the architecture is still
+  being discovered.
 
-## Core Runtime Contract
+## Current Design Bets
 
-The target core API should be small:
+These are working hypotheses, not permanent commitments:
+
+- `TaskSession` is probably the only trainer-facing runtime abstraction.
+- A session likely has `reset(seed=...)`, `turn`, `submit(output)`, and
+  `trajectory`.
+- Task specs should probably build fresh session factories from YAML configs.
+- Renderers should probably produce observations, while message adapters turn
+  observations into trainer-facing messages.
+- Single-step verifier tasks and stateful multi-turn tasks should share one
+  backbone.
+
+These bets should be revised if the first real tasks show a simpler shape.
+
+## Task Shapes
+
+### Single-Step Verifier Tasks
+
+Single-step tasks are prompt/completion/verifier workloads.
+
+Examples:
+
+- arithmetic
+- question answering with executable checks
+- code generation with unit tests
+- short physics reasoning problems with computed answers
+
+Expected lifecycle:
+
+1. sample or load a task instance
+2. render a prompt or observation
+3. accept one model completion
+4. parse and verify the completion
+5. return reward, metadata, and trajectory record
+
+### Stateful Tasks
+
+Stateful tasks keep canonical state and may produce multiple turns.
+
+Examples:
+
+- physics puzzles and simulations
+- partially observable tasks
+- tool-use tasks
+- small games used as architecture probes
+
+Expected lifecycle:
+
+1. sample or load an initial setup
+2. expose the next model-facing turn
+3. accept a model submission
+4. validate and apply the transition or verifier step
+5. return reward and either another turn or a terminal/truncated result
+
+## Capabilities To Enable
+
+The architecture should leave room for:
+
+- hidden state and partial observability
+- simulation engines and external verifiers
+- deterministic seeded task setup
+- stochastic reset events, such as dice rolls or randomized initial states
+- text and image observations
+- public metadata for trainers and privileged metadata for debugging
+- multiple completions against the same immutable task instance
+
+This list is directional. Do not build abstractions for every item before a
+task needs them.
+
+## Provisional Runtime Sketch
+
+The current minimal sketch is:
 
 ```python
 class TaskSession(Protocol):
-    @property
-    def task_instance_id(self) -> str: ...
+    def reset(self, *, seed: int) -> TaskResetResult: ...
 
     @property
     def turn(self) -> TaskTurn | None: ...
 
-    @property
-    def trajectory(self) -> TaskTrajectory: ...
-
-    @property
-    def episode_return(self) -> float: ...
-
-    def reset(self, *, seed: int) -> TaskResetResult: ...
-
     def submit(self, output: str) -> TaskSubmissionResult: ...
 
-    def close(self) -> None: ...
+    @property
+    def trajectory(self) -> TaskTrajectory: ...
 ```
 
-`reset(...)` starts one scalar task session. `turn` is the next model-facing
-opportunity. `submit(...)` verifies one assistant output and either produces
-another turn or ends the session.
+Likely result concepts:
 
-
-## Core Data Types
-
-### `TaskInstance`
-
-Immutable identity and public task metadata shared by one or more sessions.
-This is required for GRPO-style workloads where many completions solve the same
-prompt or sampled task.
-
-Required fields:
-
-- `task_instance_id`
-- `task_kind`
-- `seed`
-- `prompt_key`
-- public metadata
-
-### `TaskTurn`
-
-One model-action opportunity.
-
-Required fields:
-
-- observation
-- chat/messages payload
-- action context
-
-The messages are derived from the observation and action context. Renderers
-should not know about chat formatting.
-
-### `TaskSubmissionResult`
-
-The result of checking one model output.
-
-Required fields:
-
-- assistant output
-- raw verifier submission
-- parsed output, if any
-- `valid_submission`, meaning parseable/verifiable, not necessarily correct
+- task instance identity
+- model-facing turn
+- parsed submission
+- valid-submission flag
 - reward
-- terminated/truncated flags
-- next observation and turn, if any
+- terminal or truncated status
 - public info
 - debug info
+- trajectory record
 
-Wrong but well-formed answers should usually be valid with low reward.
-Malformed outputs may be invalid or valid-with-penalty, but the policy must be
-explicit per task.
+The exact dataclass fields should stay flexible until at least one
+single-step task and one stateful task are implemented cleanly.
 
-### `TaskTrajectory`
+## Provisional Repository Shape
 
-Common interaction record for all task shapes.
-
-It should record:
-
-- task instance id
-- initial turn
-- reset metadata
-- ordered submissions
-- rewards
-- terminal/truncation flags
-- public info
-- privileged debug info
-
-Stateful tasks may attach additional transition details, but downstream tooling
-should be able to consume the common trajectory shape without knowing the
-domain.
-
-## Task Families
-
-### Single-Step Verifier Tasks
-
-This is the highest-priority RLVR path.
-
-Target shape:
-
-```python
-task = task_source.sample(seed=seed)
-observation = prompt_renderer.render(task)
-result = verifier.verify(task=task, completion=completion)
-```
-
-The session wrapper should expose this as:
-
-1. reset samples or loads a task instance
-2. reset returns one `TaskTurn`
-3. submit parses and verifies the completion
-4. submit returns reward and terminal result
-5. trajectory records the prompt, completion, verifier metadata, and reward
-
-### Stateful Tasks
-
-Stateful tasks use the same `TaskSession` contract but may produce multiple
-turns.
-
-Target shape:
-
-```python
-session.reset(seed=seed)
-
-while session.turn is not None:
-    output = agent.act(session.turn.messages)
-    result = session.submit(output)
-```
-
-Stateful implementations own canonical state, transition validation, optional
-internal events, reward assignment, and terminal/truncation logic.
-
-Games, tool workflows, browser tasks, and coding tasks are all stateful tasks
-when intermediate interaction matters.
-
-## Repository Shape
-
-The greenfield target layout is:
+The likely package layout is:
 
 ```text
-rlvr_games/core/
-  session.py        # TaskSession, turns, results, trajectories
-  verifier.py       # single-step verifier helpers
-  stateful.py       # reusable stateful task helper
-  messages.py       # observation to trainer messages
-  specs.py          # neutral task specs to session factories
+rlvr_physics/core/
+  session.py      # task-session protocol and common result types
+  verifier.py     # helpers for single-step verifier tasks
+  stateful.py     # helpers for stateful tasks, only if useful
+  messages.py     # observation to trainer-facing messages
+  specs.py        # task specs to session factories
 
-rlvr_games/tasks/
+rlvr_physics/tasks/
   arithmetic/
-  connect4/
-  ...
+  physics_*/
 
 config/tasks/
   arithmetic/
-  connect4/
+  physics_*/
 ```
 
-All domains are tasks. Games should live under `rlvr_games/tasks/<domain>/`
-once ported. A legacy `rlvr_games/games/` package may exist during migration,
-but new architecture should not be designed around it.
+This layout is a starting point. Keep it shallow until real tasks justify more
+structure.
 
 ## Task Specs
 
-Task specs should build fresh task-session factories, not mutable sessions and
-not environment-only objects.
+Task specs should make task setup reproducible. The current bet is that specs
+build fresh scalar task-session factories.
+
+Likely rules:
+
+- use neutral `kind:` dispatch
+- keep examples under `config/tasks/<kind>/`
+- avoid game-specific top-level schema concepts
+- make seeds, task source, verifier, reward, renderer, and limits explicit when
+  they affect reproducibility
+
+## Open Questions
+
+- What is the smallest useful `TaskSession` protocol after implementing one
+  single-step task and one stateful task?
+- Should trajectories be plain dataclasses, event logs, or both?
+- How much message formatting belongs in core versus trainer adapters?
+- Which physics task should be the first real target?
+- Do stateful tasks need a reusable helper, or should each task own its loop?
+- When do dataset utilities become necessary?
+
+## Non-Goals For Now
+
+- No in-repo async pools or rollout schedulers.
+- No trainer-specific inference or optimization code.
+- No Gym compatibility layer unless a real integration requires it.
+- No broad dataset abstraction before a record-backed task needs it.
+- No commitment to exact public field names before the first prototypes prove
+  them.
