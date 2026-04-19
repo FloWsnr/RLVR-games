@@ -7,8 +7,8 @@ tasks. The core product is not a game framework and not a rollout scheduler.
 It is a clean way to define scalar tasks that produce prompts or observations,
 accept model outputs, verify them with executable logic, assign rewards, and
 record trajectories.
-The framework should work with large-scale RL training frameworks. Check out
-`references/RL-framework-research.md` for the current state of RL training frameworks and how this library can fit in.
+
+The framework should work with large-scale RL training frameworks. Check out `references/RL-framework-research.md` for the current state of RL training frameworks and how this library can fit in.
 
 The framework should support two RLVR shapes through one backbone:
 
@@ -20,6 +20,10 @@ Potential tasks include:
 - Single-step: arithmetic, question-answering, code generation with unit tests.
 - Stateful: connect4, chess, tool use, browser tasks.
 - Physics puzzles and simulations.
+
+End-goal tasks:
+Later on, the library will focus on physics and scientific reasoning tasks. However, initially we will start
+with simpler tasks to build out the architecture and core abstractions.
 
 This also means we need to enable:
 - hidden state, e.g. games like minesweeper or partially observable tasks
@@ -76,9 +80,6 @@ class TaskSession(Protocol):
 opportunity. `submit(...)` verifies one assistant output and either produces
 another turn or ends the session.
 
-Trainer-facing code should not need `Environment`, `StepResult`,
-`WorkflowSession`, `PreparedTurn`, legal-action enumeration, or canonical state
-inspection.
 
 ## Core Data Types
 
@@ -206,13 +207,11 @@ rlvr_games/core/
 rlvr_games/tasks/
   arithmetic/
   connect4/
-  chess/
   ...
 
 config/tasks/
   arithmetic/
   connect4/
-  chess/
 ```
 
 All domains are tasks. Games should live under `rlvr_games/tasks/<domain>/`
@@ -223,16 +222,3 @@ but new architecture should not be designed around it.
 
 Task specs should build fresh task-session factories, not mutable sessions and
 not environment-only objects.
-
-Rules:
-
-- Use neutral `kind:` dispatch.
-- Prefer `config/tasks/<kind>/`.
-- Do not add new `game:` specs.
-- A session factory must create a new mutable `TaskSession` each time it is
-  called.
-- Specs should be reproducible and explicit about verifier, reward,
-  observation, and episode limits.
-
-Legacy `game:` compatibility may exist only as a temporary migration bridge.
-It should not influence the greenfield design.
