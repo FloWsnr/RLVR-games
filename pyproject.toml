@@ -9,10 +9,12 @@ description = "Trainer-agnostic executable verifier tasks for RLVR"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "chess>=1.11.2",
     "pillow>=11.0.0",
     "pyarrow>=18.0.0",
     "pydantic>=2.13.2",
     "pyyaml>=6.0.2",
+    "reasoning-gym>=0.1.25",
 ]
 
 [dependency-groups]
