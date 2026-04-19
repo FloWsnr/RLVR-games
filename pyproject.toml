@@ -18,8 +18,18 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pyright>=1.1.408", "pytest>=9.0.3", "ruff>=0.11.0"]
+dev = [
+    "accelerate>=1.13.0",
+    "datasets>=4.8.4",
+    "gymnasium>=1.2.3",
+    "pyright>=1.1.408",
+    "pytest>=9.0.3",
+    "ruff>=0.11.0",
+    "transformers>=5.5.4",
+    "trl>=1.2.0",
+]
 
 [tool.pytest.ini_options]
+addopts = "--capture=sys"
 pythonpath = ["."]
 testpaths = ["tests"]
