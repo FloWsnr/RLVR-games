@@ -1,10 +1,9 @@
 """Chess tactics task using python-chess."""
 
 from dataclasses import dataclass
-from io import BytesIO
 
-from PIL import Image, ImageDraw, ImageFont
 import chess
+import chess.svg
 
 from rlvr_physics.core.instances import (
     TaskInstance,
@@ -14,8 +13,9 @@ from rlvr_physics.core.instances import (
     stable_hash,
 )
 from rlvr_physics.core.rendering import (
+    ImageContent,
     RenderedObservation,
-    image_observation,
+    TextContent,
     text_observation,
 )
 from rlvr_physics.core.session import (
@@ -141,79 +141,22 @@ def render_chess_tactics_text(instance: TaskInstance) -> RenderedObservation:
 
 
 def render_chess_tactics_image(instance: TaskInstance) -> RenderedObservation:
-    """Render a chess tactic as a PNG image observation."""
+    """Render a chess tactic as an SVG image observation."""
 
     fen = require_str(instance.public_payload["fen"], "fen")
     board = chess.Board(fen)
-    tile = 72
-    label = 28
-    header = 72
-    width = tile * 8 + label * 2
-    height = tile * 8 + label + header
-    image = Image.new("RGB", (width, height), "#f6f7f9")
-    draw = ImageDraw.Draw(image)
-    font_title = ImageFont.load_default(size=28)
-    font_piece = ImageFont.load_default(size=34)
-    font_label = ImageFont.load_default(size=16)
-    side = "White" if board.turn == chess.WHITE else "Black"
-    draw.text(
-        (label, 22), f"{side} to move: mate in 1", fill="#1f2937", font=font_title
-    )
-    light = "#e5edf5"
-    dark = "#7b8794"
-    piece_to_label = {
-        "P": "P",
-        "N": "N",
-        "B": "B",
-        "R": "R",
-        "Q": "Q",
-        "K": "K",
-        "p": "p",
-        "n": "n",
-        "b": "b",
-        "r": "r",
-        "q": "q",
-        "k": "k",
-    }
-    for rank in range(8):
-        for file_index in range(8):
-            board_rank = 7 - rank
-            x = label + file_index * tile
-            y = header + rank * tile
-            fill = light if (rank + file_index) % 2 == 0 else dark
-            draw.rectangle((x, y, x + tile, y + tile), fill=fill)
-            piece = board.piece_at(chess.square(file_index, board_rank))
-            if piece is not None:
-                text = piece_to_label[piece.symbol()]
-                bbox = draw.textbbox((0, 0), text, font=font_piece)
-                text_width = bbox[2] - bbox[0]
-                text_height = bbox[3] - bbox[1]
-                color = "#111827" if piece.color == chess.WHITE else "#f9fafb"
-                draw.text(
-                    (x + (tile - text_width) / 2, y + (tile - text_height) / 2 - 4),
-                    text,
-                    fill=color,
-                    font=font_piece,
-                )
-    for file_index, file_name in enumerate("abcdefgh"):
-        draw.text(
-            (label + file_index * tile + tile / 2 - 5, header + 8 * tile + 6),
-            file_name,
-            fill="#334155",
-            font=font_label,
-        )
-    for rank in range(8):
-        rank_name = str(8 - rank)
-        draw.text(
-            (8, header + rank * tile + tile / 2 - 7),
-            rank_name,
-            fill="#334155",
-            font=font_label,
-        )
-    buffer = BytesIO()
-    image.save(buffer, format="PNG")
-    return image_observation(
-        "image", buffer.getvalue(), render_chess_tactics_text(instance).text()
+    alt_text = render_chess_tactics_text(instance).text()
+    svg = chess.svg.board(board=board, orientation=chess.WHITE, size=640)
+    return RenderedObservation(
+        renderer_name="image",
+        contents=(
+            ImageContent(
+                data=svg.encode("utf-8"),
+                mime_type="image/svg+xml",
+                alt_text=alt_text,
+            ),
+            TextContent(text=alt_text),
+        ),
     )
 
 

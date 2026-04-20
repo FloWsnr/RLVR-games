@@ -27,7 +27,7 @@ Implemented task probes live under `rlvr_physics.tasks.games`:
 - `games.2048.v1`: deterministic spawn-tape 2048, text and PNG renderers,
   invalid action handling, dense score rewards, and a stateful session.
 - `games.chess_tactics.v1`: python-chess mate-in-one tactics, SAN/UCI move
-  parsing, text and PNG renderers, and a single-step session.
+  parsing, text and SVG image renderers, and a single-step session.
 
 The first adapter helpers live under `rlvr_physics.adapters`:
 

@@ -1,5 +1,8 @@
 """Tests for chess tactic behavior."""
 
+import chess
+import chess.svg
+
 from rlvr_physics.core.rendering import ImageContent
 from rlvr_physics.core.session import TaskSubmission
 from rlvr_physics.tasks.games.chess_tactics import (
@@ -29,11 +32,18 @@ def test_chess_text_and_image_renderers() -> None:
 
     text = render_chess_tactics_text(instance)
     image = render_chess_tactics_image(instance)
+    fen = instance.public_payload["fen"]
+    assert isinstance(fen, str)
 
     assert "mate in 1" in text.text()
     assert "FEN:" in text.text()
     assert isinstance(image.contents[0], ImageContent)
-    assert image.contents[0].data.startswith(b"\x89PNG\r\n\x1a\n")
+    assert image.contents[0].mime_type == "image/svg+xml"
+    assert image.contents[0].data == chess.svg.board(
+        board=chess.Board(fen),
+        orientation=chess.WHITE,
+        size=640,
+    ).encode("utf-8")
     assert image.text() == text.text()
 
 
