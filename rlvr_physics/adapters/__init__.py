@@ -1,0 +1,1 @@
+"""Trainer adapter helpers."""

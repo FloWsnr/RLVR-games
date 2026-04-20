@@ -28,3 +28,9 @@ Implemented task probes live under `rlvr_physics.tasks.games`:
   invalid action handling, dense score rewards, and a stateful session.
 - `games.chess_tactics.v1`: python-chess mate-in-one tactics, SAN/UCI move
   parsing, text and PNG renderers, and a single-step session.
+
+The first adapter helpers live under `rlvr_physics.adapters`:
+
+- `datasets`: generic prompt rows, task registries, and scalar reward scoring.
+- `trl`: Hugging Face Dataset conversion and TRL-style reward callables.
+- `verl`: verl parquet-style row conversion and reward callables.
