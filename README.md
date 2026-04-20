@@ -36,6 +36,13 @@ Implemented physics probes live under `rlvr_physics.tasks.physics`:
   hypothesis actions, L1-L4-style prior modes, hidden numeric verification, and
   experiment-cost rewards.
 
+Task implementations are packages with public facades. The facade preserves
+imports such as `rlvr_physics.tasks.games.countdown`, while focused internal
+modules split specs, instance construction, renderers, verifier/rules logic,
+and sessions. Reusable task implementation helpers live under
+`rlvr_physics.tasks._shared`; core invariants still belong in
+`rlvr_physics.core`.
+
 The first adapter helpers live under `rlvr_physics.adapters`:
 
 - `datasets`: generic prompt rows, task instance registries, and scalar scoring.

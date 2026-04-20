@@ -18,7 +18,7 @@ from rlvr_physics.tasks.physics.discovery import (
 
 
 def test_discovery_records_load_from_packaged_json() -> None:
-    data_file = resources.files("rlvr_physics.tasks.physics.data").joinpath(
+    data_file = resources.files("rlvr_physics.tasks.physics.discovery.data").joinpath(
         PHYSICS_DISCOVERY_RECORDS_FILE
     )
     records = physics_discovery_records()

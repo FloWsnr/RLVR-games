@@ -440,6 +440,7 @@ rlvr_physics/adapters/
   trl.py          # TRL reward and environment adapters
 
 rlvr_physics/tasks/
+  _shared/       # reusable task implementation helpers, not core invariants
   arithmetic/
   games/
   physics/
@@ -455,6 +456,14 @@ config/tasks/
 Adapters should be added only when an example proves the need. It is fine for
 the first implementation to include only generic dataset export and one trainer
 adapter.
+
+Individual task families may be packages once a single file starts mixing
+instance construction, task rules, renderers, verifiers, and sessions. Package
+`__init__.py` files should act as public facades for stable imports, while
+internal modules keep authoritative logic separate from peripherals. Cross-task
+reuse should go through `rlvr_physics.tasks._shared` only when the helper is
+task-implementation support; reusable payload invariants and validation belong
+in `rlvr_physics.core`.
 
 ## First Prototypes
 

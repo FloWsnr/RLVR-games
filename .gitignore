@@ -1,6 +1,4 @@
-data/
-!rlvr_physics/tasks/physics/data/
-!rlvr_physics/tasks/physics/data/**
+/data/
 worktrees/
 references/
 
