@@ -1,22 +1,20 @@
-"""Generic prompt-row and reward helpers for trainer adapters."""
+"""Generic prompt-row and scalar scoring helpers."""
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from rlvr_physics.core.factory import TaskFactory
 from rlvr_physics.core.instances import (
     TaskInstance,
     freeze_mapping,
     mapping_to_dict,
 )
-from rlvr_physics.core.session import TaskSession, TaskSubmission
-
-
-SessionFactory = Callable[[TaskInstance], TaskSession]
+from rlvr_physics.core.session import TaskSubmission
 
 
 @dataclass(frozen=True)
-class PromptDatasetRow:
+class PromptRow:
     """Trainer-safe prompt row for one immutable task instance.
 
     Parameters
@@ -36,7 +34,7 @@ class PromptDatasetRow:
     reward_model:
         Public reward model metadata.
     extra_info:
-        Trainer-specific public metadata used for filtering or reward lookup.
+        Public metadata used for filtering, curriculum, or task lookup.
     """
 
     task_id: str
@@ -72,8 +70,8 @@ class PromptDatasetRow:
 
 
 @dataclass(frozen=True)
-class ScalarAdapterScore:
-    """Public reward result returned by adapter scoring helpers.
+class ScalarScore:
+    """Public scalar result returned by scoring helpers.
 
     Parameters
     ----------
@@ -121,7 +119,7 @@ class ScalarAdapterScore:
         }
 
 
-def make_instance_registry(
+def make_task_instance_registry(
     instances: Sequence[TaskInstance],
 ) -> dict[str, TaskInstance]:
     """Return an immutable-task lookup keyed by task id.
@@ -129,7 +127,7 @@ def make_instance_registry(
     Parameters
     ----------
     instances:
-        Task instances to make available to reward adapters.
+        Task instances to make available to adapters or scoring helpers.
     """
 
     registry: dict[str, TaskInstance] = {}
@@ -140,27 +138,27 @@ def make_instance_registry(
     return registry
 
 
-def make_prompt_dataset_row(
+def make_prompt_row(
     instance: TaskInstance,
-    session_factory: SessionFactory,
+    task_factory: TaskFactory,
     seed: int,
     extra_info: Mapping[str, object],
-) -> PromptDatasetRow:
+) -> PromptRow:
     """Render one task instance into a trainer-safe prompt row.
 
     Parameters
     ----------
     instance:
         Immutable task instance to render.
-    session_factory:
-        Factory that creates one scalar task session for ``instance``.
+    task_factory:
+        Factory that creates scalar sessions for the configured task family.
     seed:
         Deterministic session seed used for rendering.
     extra_info:
         Public metadata to attach to the row.
     """
 
-    session = session_factory(instance)
+    session = task_factory.create_session(instance)
     reset = session.reset(seed=seed)
     prompt = reset.turn.observation.text()
     if not prompt:
@@ -175,6 +173,12 @@ def make_prompt_dataset_row(
 
     metadata = {
         "instance": instance.public_view(),
+        "task_spec": {
+            "kind": task_factory.spec.kind,
+            "domain": task_factory.spec.domain,
+            "source": task_factory.spec.source.source_type,
+            "reward": task_factory.spec.reward.reward_type,
+        },
         "turn": {
             "index": reset.turn.turn_index,
             "submission_modes": reset.turn.submission_modes,
@@ -189,8 +193,9 @@ def make_prompt_dataset_row(
     reward_model = {
         "style": "rlvr_executable",
         "task_id": instance.task_id,
+        "reward_type": task_factory.spec.reward.reward_type,
     }
-    return PromptDatasetRow(
+    return PromptRow(
         task_id=instance.task_id,
         task_kind=instance.kind,
         domain=instance.domain,
@@ -202,31 +207,30 @@ def make_prompt_dataset_row(
     )
 
 
-def score_final_text(
+def score_text_completion(
     instance: TaskInstance,
     completion: object,
-    session_factory: SessionFactory,
+    task_factory: TaskFactory,
     seed: int,
-) -> ScalarAdapterScore:
-    """Score one completion by running a fresh scalar task session.
+) -> ScalarScore:
+    """Score one text completion by running a fresh scalar task session.
 
     Parameters
     ----------
     instance:
         Immutable task instance to score against.
     completion:
-        Trainer completion payload.
-    session_factory:
-        Factory that creates one scalar task session for ``instance``.
+        Completion payload from a trainer or caller.
+    task_factory:
+        Factory that creates scalar sessions for the configured task family.
     seed:
         Deterministic session seed used for scoring.
     """
 
-    session = session_factory(instance)
+    session = task_factory.create_session(instance)
     session.reset(seed=seed)
-    text = completion_to_text(completion)
-    result = session.submit(TaskSubmission.final_text(text))
-    return ScalarAdapterScore(
+    result = session.submit(TaskSubmission.final_text(completion_to_text(completion)))
+    return ScalarScore(
         task_id=instance.task_id,
         accepted=result.accepted,
         reward=result.reward,
@@ -237,14 +241,44 @@ def score_final_text(
     )
 
 
+def task_id_from_mapping(fields: Mapping[str, object]) -> str:
+    """Return a task id from common row or reward payload fields.
+
+    Parameters
+    ----------
+    fields:
+        Row or reward context containing a direct task id, trainer label,
+        reward-model payload, or nested ``extra_info`` mapping.
+    """
+
+    for key in ("task_id", "id", "label", "ground_truth"):
+        value = fields.get(key)
+        if isinstance(value, str):
+            return value
+    reward_model = fields.get("reward_model")
+    if isinstance(reward_model, Mapping):
+        task_id = reward_model.get("task_id")
+        if isinstance(task_id, str):
+            return task_id
+        ground_truth = reward_model.get("ground_truth")
+        if isinstance(ground_truth, str):
+            return ground_truth
+    extra_info = fields.get("extra_info")
+    if isinstance(extra_info, Mapping):
+        task_id = extra_info.get("task_id")
+        if isinstance(task_id, str):
+            return task_id
+    raise KeyError("row must include task_id, id, label, or ground_truth")
+
+
 def completion_to_text(completion: object) -> str:
-    """Convert common trainer completion payloads to final-answer text.
+    """Convert common completion payloads to final-answer text.
 
     Parameters
     ----------
     completion:
-        Completion payload from a trainer. Strings, chat-message mappings, and
-        sequences of chat-message mappings are supported.
+        Completion payload. Strings, chat-message mappings, and sequences of
+        chat-message mappings are supported.
     """
 
     if isinstance(completion, str):

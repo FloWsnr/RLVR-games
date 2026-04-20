@@ -234,8 +234,9 @@ Expected lifecycle:
 4. parse and verify the completion
 5. return reward, metadata, and a trajectory
 
-This path must export cleanly to TRL, OpenRLHF single-turn reward functions, and
-verl-style parquet plus custom reward functions.
+This path must export cleanly to generic prompt rows and TRL reward functions.
+Other trainer-specific reward surfaces should be examples or later adapters,
+not pressure on the core API.
 
 ### Stateful Tasks
 
@@ -258,8 +259,9 @@ Expected lifecycle:
 5. validate and apply a transition or verifier step
 6. return reward and either another turn or a terminal/truncated result
 
-This path must export cleanly to environment factories, OpenRLHF multi-turn
-agent instances, OpenEnv/Gym wrappers, and NeMo Gym resources servers.
+This path must export cleanly to TRL environment factories. Other environment
+or service surfaces should remain later examples until real integrations prove
+their shape.
 
 ### Games As Probes
 
@@ -302,10 +304,10 @@ optional logging metrics.
 
 Compatibility targets:
 
+- generic prompt rows plus scalar scoring helpers
 - TRL custom reward functions over prompts, completions, and row metadata
-- OpenRLHF custom reward files or remote reward servers
-- verl custom reward functions over data source, solution string, ground truth,
-  and extra info
+- future examples for OpenRLHF, verl, or reward services after the core API
+  stabilizes
 - offline SFT/DPO conversion from verified trajectories
 
 ### Environment Adapters
@@ -325,10 +327,9 @@ episode:
 Compatibility targets:
 
 - TRL `environment_factory`
-- OpenRLHF `AgentInstanceBase`-style `reset` and `step`
-- OpenEnv or Gymnasium-style `reset` and `step`
-- NeMo Gym resources server methods such as session seeding, task tools, and
-  `verify`
+- future examples for OpenRLHF `AgentInstanceBase`, verl `BaseInteraction`,
+  OpenEnv/Gymnasium, and NeMo Gym resources after the core session contract
+  settles
 
 ### Message Adapters
 
@@ -406,6 +407,7 @@ Keep the package shallow until real tasks demand more structure:
 
 ```text
 rlvr_physics/core/
+  factory.py      # TaskFactory protocol and configured factory helper
   instances.py    # immutable task instance and payload types
   session.py      # TaskSession protocol and result dataclasses
   trajectory.py   # event log types and helpers
@@ -413,12 +415,9 @@ rlvr_physics/core/
   specs.py        # YAML/task spec loading
 
 rlvr_physics/adapters/
-  datasets.py     # prompt row and parquet-style export helpers
+  datasets.py     # generic prompt row and scalar scoring helpers
+  multiturn.py    # shared scalar-session environment helpers
   trl.py          # TRL reward and environment adapters
-  openrlhf.py     # OpenRLHF reward/agent adapters
-  verl.py         # verl row/reward adapters
-  nemo_gym.py     # NeMo Gym resources/server adapter helpers
-  gymnasium.py    # optional reset/step wrapper
 
 rlvr_physics/tasks/
   arithmetic/
@@ -529,6 +528,7 @@ The initial core is good enough when:
 - No tokenizer, log-prob, or advantage logic in task core.
 - No heavy HTTP service framework until an adapter needs it.
 - No Gym compatibility layer unless a real integration requires it.
+- No first-class OpenRLHF or verl adapter while the core API is still moving.
 - No broad dataset abstraction before record-backed tasks need it.
 - No deep base-class hierarchy for every task.
 - No commitment to exact public field names before prototypes prove them.

@@ -9,6 +9,8 @@ renderer peripherals, and trainer adapters.
 
 The initial task probes are Reasoning Gym `countdown`, seeded 2048, chess
 tactics with `python-chess`, and then a small physics numeric reasoning task.
+The active first-class trainer adapter target is currently TRL; OpenRLHF and
+verl should stay deferred examples until the scalar core API settles.
 
 ## Design Rules
 

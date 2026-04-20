@@ -14,6 +14,11 @@ from rlvr_physics.core.instances import (
     stable_hash,
     to_plain_data,
 )
+from rlvr_physics.core.factory import (
+    ConfiguredTaskFactory,
+    TaskFactory,
+    TaskSessionBuilder,
+)
 from rlvr_physics.core.rendering import (
     ImageContent,
     ObservationContent,
@@ -42,14 +47,17 @@ from rlvr_physics.core.trajectory import TaskTrajectory, TrajectoryEvent
 __all__ = [
     "ImageContent",
     "ObservationContent",
+    "ConfiguredTaskFactory",
     "RenderedObservation",
     "RendererSpec",
     "RewardSpec",
     "SourceSpec",
     "TaskInstance",
     "TaskLimits",
+    "TaskFactory",
     "TaskResetResult",
     "TaskSession",
+    "TaskSessionBuilder",
     "TaskSpec",
     "TaskStepResult",
     "TaskSubmission",

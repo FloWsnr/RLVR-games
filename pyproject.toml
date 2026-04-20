@@ -11,7 +11,6 @@ requires-python = ">=3.13"
 dependencies = [
     "chess>=1.11.2",
     "pillow>=11.0.0",
-    "pyarrow>=18.0.0",
     "pydantic>=2.13.2",
     "pyyaml>=6.0.2",
     "reasoning-gym>=0.1.25",
@@ -21,21 +20,15 @@ dependencies = [
 dev = [
     "accelerate>=1.13.0",
     "datasets>=4.8.4",
-    "flash-attn==2.8.3 ; python_version == '3.13' and platform_machine == 'x86_64' and sys_platform == 'linux'",
-    "openrlhf",
+    "jmespath>=1.0.1",
     "pyright>=1.1.408",
     "pytest>=9.0.3",
     "ruff>=0.11.0",
     "transformers>=5.5.4",
     "trl>=1.2.0",
-    "verl>=0.7.1",
 ]
 
 [tool.pytest.ini_options]
 addopts = "--capture=sys"
 pythonpath = ["."]
 testpaths = ["tests"]
-
-[tool.uv.sources]
-flash-attn = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.0/flash_attn-2.8.3%2Bcu128torch2.9-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl" }
-openrlhf = { git = "https://github.com/OpenRLHF/OpenRLHF.git", branch = "main" }

@@ -2,24 +2,38 @@
 
 from rlvr_physics.adapters.datasets import (
     completion_to_text,
-    make_instance_registry,
-    make_prompt_dataset_row,
-    score_final_text,
+    make_prompt_row,
+    make_task_instance_registry,
+    score_text_completion,
+    task_id_from_mapping,
 )
+from rlvr_physics.core.factory import ConfiguredTaskFactory
 from rlvr_physics.core.instances import TaskInstance
 from rlvr_physics.core.session import TaskSession
-from rlvr_physics.tasks.games.countdown import CountdownSession, make_countdown_instance
+from rlvr_physics.tasks.games.countdown import (
+    CountdownSession,
+    countdown_task_spec,
+    make_countdown_instance,
+)
 
 
 def _countdown_text_session(instance: TaskInstance) -> TaskSession:
     return CountdownSession(instance, "text")
 
 
-def test_prompt_dataset_row_is_public_and_scoreable() -> None:
+def _countdown_factory() -> ConfiguredTaskFactory:
+    return ConfiguredTaskFactory(
+        spec=countdown_task_spec(seed=17, size=1),
+        session_builder=_countdown_text_session,
+    )
+
+
+def test_prompt_row_is_public_and_scoreable() -> None:
     instance = make_countdown_instance(seed=17, source_index=0)
-    row = make_prompt_dataset_row(
+    factory = _countdown_factory()
+    row = make_prompt_row(
         instance=instance,
-        session_factory=_countdown_text_session,
+        task_factory=factory,
         seed=3,
         extra_info={"split": "train", "ability": "countdown"},
     )
@@ -28,14 +42,16 @@ def test_prompt_dataset_row_is_public_and_scoreable() -> None:
     assert row.task_id == instance.task_id
     assert "Target:" in row.prompt
     assert row_data["extra_info"]["split"] == "train"
+    assert row_data["metadata"]["task_spec"]["reward"] == "graded_countdown"
     assert row_data["reward_model"]["style"] == "rlvr_executable"
+    assert row_data["reward_model"]["reward_type"] == "graded_countdown"
     assert "reference_expression" not in repr(row_data)
 
     completion = str(instance.privileged_payload["reference_expression"])
-    score = score_final_text(
+    score = score_text_completion(
         instance=instance,
         completion=completion,
-        session_factory=_countdown_text_session,
+        task_factory=factory,
         seed=4,
     )
 
@@ -44,11 +60,23 @@ def test_prompt_dataset_row_is_public_and_scoreable() -> None:
     assert score.public_info["reason"] == "correct"
 
 
+def test_task_id_lookup_accepts_prompt_row_reward_model_shape() -> None:
+    instance = make_countdown_instance(seed=17, source_index=0)
+    row = make_prompt_row(
+        instance=instance,
+        task_factory=_countdown_factory(),
+        seed=3,
+        extra_info={},
+    )
+
+    assert task_id_from_mapping({"reward_model": row.reward_model}) == instance.task_id
+
+
 def test_instance_registry_rejects_duplicate_task_ids() -> None:
     instance = make_countdown_instance(seed=17, source_index=0)
 
     try:
-        make_instance_registry((instance, instance))
+        make_task_instance_registry((instance, instance))
     except ValueError as error:
         assert instance.task_id in str(error)
     else:
