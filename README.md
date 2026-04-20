@@ -9,9 +9,9 @@ verifier logic, and useful trajectories. Exact APIs, dataclass fields, adapters,
 and module layout are design bets until the first single-step and stateful task
 prototypes prove them.
 
-The first architecture probes are Reasoning Gym `countdown`, seeded 2048, and
-chess tactics with `python-chess`, followed by a small physics numeric reasoning
-task once the core is proven.
+The first architecture probes are Reasoning Gym `countdown`, seeded 2048,
+chess tactics with `python-chess`, and an interactive physics discovery task
+family seeded from a small PhysGym-derived record subset.
 
 ## Current Implementation
 
@@ -20,7 +20,7 @@ immutable `TaskInstance` payloads, public/privileged payload separation,
 renderer content blocks, scalar session result dataclasses, append-only
 trajectories, a small task factory protocol, and Python task spec objects.
 
-Implemented task probes live under `rlvr_physics.tasks.games`:
+Implemented game probes live under `rlvr_physics.tasks.games`:
 
 - `games.countdown.v1`: Reasoning Gym Countdown sampling, text and PNG
   renderers, AST/Fraction expression verification, and a single-step session.
@@ -28,6 +28,13 @@ Implemented task probes live under `rlvr_physics.tasks.games`:
   invalid action handling, dense score rewards, and a stateful session.
 - `games.chess_tactics.v1`: python-chess mate-in-one tactics, SAN/UCI move
   parsing, text and SVG image renderers, and a single-step session.
+
+Implemented physics probes live under `rlvr_physics.tasks.physics`:
+
+- `physics.discovery.v1`: interactive equation discovery over curated
+  PhysGym-derived scalar laws, text observations, JSON experiment and
+  hypothesis actions, L1-L4-style prior modes, hidden numeric verification, and
+  experiment-cost rewards.
 
 The first adapter helpers live under `rlvr_physics.adapters`:
 

@@ -8,7 +8,8 @@ around immutable task instances, authoritative task backbones, scalar sessions,
 renderer peripherals, and trainer adapters.
 
 The initial task probes are Reasoning Gym `countdown`, seeded 2048, chess
-tactics with `python-chess`, and then a small physics numeric reasoning task.
+tactics with `python-chess`, and interactive physics discovery seeded from a
+small PhysGym-derived record subset.
 The active first-class trainer adapter target is currently TRL; OpenRLHF and
 verl should stay deferred examples until the scalar core API settles.
 

@@ -1,5 +1,17 @@
 """Executable task families."""
 
-from rlvr_physics.tasks import games as games
+from importlib import import_module
+from types import ModuleType
 
-__all__ = ["games"]
+games: ModuleType
+physics: ModuleType
+
+__all__ = ["games", "physics"]
+
+
+def __getattr__(name: str) -> ModuleType:
+    """Lazily import task subpackages."""
+
+    if name in __all__:
+        return import_module(f"{__name__}.{name}")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

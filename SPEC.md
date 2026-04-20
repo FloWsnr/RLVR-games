@@ -245,6 +245,7 @@ Stateful tasks keep canonical state and may produce multiple turns.
 Examples:
 
 - physics puzzles and simulations
+- interactive physics equation discovery with experiment and hypothesis budgets
 - partially observable tasks
 - tool-use tasks
 - code-editing loops with test feedback
@@ -278,6 +279,25 @@ Good first game probes should be deterministic, small, and cheap:
 
 The game backbone should be written with the same pattern expected for physics:
 canonical state first, renderer second, trainer adapters last.
+
+### Physics Discovery Tasks
+
+Interactive physics discovery tasks expose a hidden scalar law through controlled
+numeric experiments. A session starts from an immutable law record, renders the
+available prior information, accepts experiment actions that choose input
+valuations, returns numeric observations, and accepts hypothesis submissions that
+are verified against privileged holdout points or symbolic logic.
+
+The first implementation target is `physics.discovery.v1`, seeded by a curated
+PhysGym-derived subset. PhysGym's original 97 records should be treated as
+source laws/templates rather than independent task families. Generated
+parameter draws are task instances or rollout observations; evaluation splits
+should track source law identity to avoid confusing interpolation over known
+laws with general physics discovery.
+
+The verifier should stay executable and deterministic. LLM-as-judge equivalence
+checks may be useful for offline analysis, but they should not be part of the
+default trainer-facing reward path while the scalar core API is settling.
 
 ## Trainer Adapter Requirements
 

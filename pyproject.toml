@@ -28,6 +28,15 @@ dev = [
     "trl>=1.2.0",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ["rlvr_physics"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"rlvr_physics/tasks/physics/data/physgym_curated_records.json" = "rlvr_physics/tasks/physics/data/physgym_curated_records.json"
+
+[tool.hatch.build.targets.sdist.force-include]
+"rlvr_physics/tasks/physics/data/physgym_curated_records.json" = "rlvr_physics/tasks/physics/data/physgym_curated_records.json"
+
 [tool.pytest.ini_options]
 addopts = "--capture=sys"
 pythonpath = ["."]
