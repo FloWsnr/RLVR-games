@@ -6,6 +6,7 @@ import json
 from typing import Mapping
 
 from rlvr_physics.tasks.physics.discovery.constants import (
+    DEFAULT_RANGE,
     PHYSICS_DISCOVERY_RECORDS_FILE,
 )
 from rlvr_physics.tasks.physics.discovery.types import PhysicsDiscoveryRecord
@@ -68,6 +69,11 @@ def _parse_physics_discovery_record(
         raw_record.get("output_variable"),
         f"physics discovery record {source_id} has invalid output_variable",
     )
+    parameter_ranges = _parse_parameter_ranges(
+        raw_record.get("parameter_ranges"),
+        input_variables,
+        f"physics discovery record {source_id} has invalid parameter_ranges",
+    )
     if not isinstance(tag, str):
         raise ValueError(f"physics discovery record {source_id} has invalid tag")
     if not isinstance(context, str):
@@ -85,6 +91,7 @@ def _parse_physics_discovery_record(
         equation=equation,
         input_variables=input_variables,
         output_variable=output_variable,
+        parameter_ranges=parameter_ranges,
     )
 
 
@@ -97,3 +104,36 @@ def _require_string_mapping(value: object, error_message: str) -> Mapping[str, o
             raise ValueError(error_message)
         values[key] = item
     return values
+
+
+def _parse_parameter_ranges(
+    value: object, input_variables: Mapping[str, object], error_message: str
+) -> Mapping[str, object]:
+    ranges: dict[str, object] = {
+        str(name): DEFAULT_RANGE for name in input_variables.keys()
+    }
+    if value is None:
+        return ranges
+    if not isinstance(value, dict):
+        raise ValueError(error_message)
+    for key, item in value.items():
+        if not isinstance(key, str) or key not in ranges:
+            raise ValueError(error_message)
+        ranges[key] = _require_range_pair(item, error_message)
+    return ranges
+
+
+def _require_range_pair(value: object, error_message: str) -> tuple[float, float]:
+    if not isinstance(value, list | tuple) or len(value) != 2:
+        raise ValueError(error_message)
+    low = _require_number(value[0], error_message)
+    high = _require_number(value[1], error_message)
+    if low >= high:
+        raise ValueError(error_message)
+    return (low, high)
+
+
+def _require_number(value: object, error_message: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(error_message)
+    return float(value)

@@ -11,14 +11,15 @@ from rlvr_physics.core.instances import (
     stable_hash,
 )
 from rlvr_physics.tasks.physics.discovery.constants import (
-    DEFAULT_RANGE,
     PHYSICS_DISCOVERY_KIND,
     PHYSICS_DISCOVERY_SOURCE,
     PHYSICS_DOMAIN,
 )
+from rlvr_physics.tasks.physics.discovery.expressions import evaluate_expression
 from rlvr_physics.tasks.physics.discovery.records import record_by_source_id
 from rlvr_physics.tasks.physics.discovery.types import PhysicsDiscoveryRecord
 from rlvr_physics.tasks.physics.discovery.utils import (
+    float_mapping,
     range_pair,
     single_mapping_key,
     validate_positive_quota,
@@ -69,15 +70,14 @@ def make_physics_discovery_instance(
     visible_inputs = _visible_input_variables(record, prior_mode, variable_mapping)
     visible_output = _visible_output_variable(record, prior_mode, visible_output_name)
     visible_equation = _rename_symbols(record.equation, variable_mapping)
-    parameter_ranges = {
-        visible_name: DEFAULT_RANGE for visible_name in visible_inputs.keys()
-    }
+    parameter_ranges = _visible_parameter_ranges(record, variable_mapping)
     hidden_points = make_hidden_points(
         seed=seed,
         source_id=source_id,
         variable_names=tuple(visible_inputs.keys()),
         count=24,
         parameter_ranges=parameter_ranges,
+        equation=visible_equation,
     )
     context = _visible_context(record.context, prior_mode)
     task_id = (
@@ -138,6 +138,7 @@ def make_hidden_points(
     variable_names: tuple[str, ...],
     count: int,
     parameter_ranges: Mapping[str, object],
+    equation: str,
 ) -> tuple[Mapping[str, object], ...]:
     """Create deterministic hidden verification points."""
 
@@ -154,13 +155,33 @@ def make_hidden_points(
     )
     rng = Random(rng_seed)
     points: list[Mapping[str, object]] = []
-    for _index in range(count):
-        point: dict[str, object] = {}
-        for name in variable_names:
-            low, high = range_pair(parameter_ranges[name], f"range for {name}")
-            point[name] = round(rng.uniform(low, high), 6)
+    attempts = 0
+    max_attempts = count * 500
+    while len(points) < count and attempts < max_attempts:
+        attempts += 1
+        point = _sample_point(rng, variable_names, parameter_ranges)
+        try:
+            evaluate_expression(equation, float_mapping(point))
+        except (ArithmeticError, ValueError, TypeError, OverflowError):
+            continue
         points.append(freeze_mapping(point))
+    if len(points) < count:
+        raise ValueError(
+            f"could not sample valid hidden points for physics source id {source_id}"
+        )
     return tuple(points)
+
+
+def _sample_point(
+    rng: Random,
+    variable_names: tuple[str, ...],
+    parameter_ranges: Mapping[str, object],
+) -> dict[str, object]:
+    point: dict[str, object] = {}
+    for name in variable_names:
+        low, high = range_pair(parameter_ranges[name], f"range for {name}")
+        point[name] = round(rng.uniform(low, high), 6)
+    return point
 
 
 def _visible_context(context: str, prior_mode: str) -> str:
@@ -193,6 +214,17 @@ def _visible_output_variable(
     if prior_mode in ("no_description", "no_description_anonymous"):
         description = "Some variable."
     return freeze_mapping({visible_output_name: description})
+
+
+def _visible_parameter_ranges(
+    record: PhysicsDiscoveryRecord, variable_mapping: Mapping[str, str]
+) -> Mapping[str, object]:
+    visible: dict[str, object] = {}
+    for original in record.input_variables.keys():
+        original_name = str(original)
+        visible_name = variable_mapping[original_name]
+        visible[visible_name] = record.parameter_ranges[original_name]
+    return freeze_mapping(visible)
 
 
 def _rename_symbols(expression: str, variable_mapping: Mapping[str, str]) -> str:

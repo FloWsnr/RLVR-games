@@ -11,7 +11,7 @@ prototypes prove them.
 
 The first architecture probes are Reasoning Gym `countdown`, seeded 2048,
 chess tactics with `python-chess`, and an interactive physics discovery task
-family seeded from a small PhysGym-derived record subset.
+family seeded from the full PhysGym record set.
 
 ## Current Implementation
 
@@ -31,8 +31,8 @@ Implemented game probes live under `rlvr_physics.tasks.games`:
 
 Implemented physics probes live under `rlvr_physics.tasks.physics`:
 
-- `physics.discovery.v1`: interactive equation discovery over curated
-  PhysGym-derived scalar laws, text observations, JSON experiment and
+- `physics.discovery.v1`: interactive equation discovery over 97 PhysGym
+  scalar laws, text observations, JSON experiment and
   hypothesis actions, L1-L4-style prior modes, hidden numeric verification, and
   experiment-cost rewards.
 

@@ -77,6 +77,6 @@ def physics_discovery_task_spec(
             "exports": {
                 "environment": {"actions": ("run_experiment", "submit_hypothesis")}
             },
-            "source": "PhysGym curated records",
+            "source": "PhysGym full records",
         },
     )

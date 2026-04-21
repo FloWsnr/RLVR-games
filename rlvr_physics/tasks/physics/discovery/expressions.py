@@ -67,10 +67,9 @@ def _evaluate_ast_node(node: ast.AST, variables: Mapping[str, float]) -> float:
     if isinstance(node, ast.Name):
         if node.id in variables:
             return variables[node.id]
-        if node.id == "pi":
-            return math.pi
-        if node.id == "e":
-            return math.e
+        constant = _named_constant(node.id)
+        if constant is not None:
+            return constant
         raise ValueError(f"unknown name: {node.id}")
     if isinstance(node, ast.UnaryOp):
         value = _evaluate_ast_node(node.operand, variables)
@@ -129,10 +128,28 @@ def _allowed_function(node: ast.AST) -> Callable[..., float]:
         "exp": math.exp,
         "log": math.log,
         "abs": _absolute_value,
+        "asin": math.asin,
+        "acos": math.acos,
+        "atan": math.atan,
+        "arcsin": math.asin,
+        "arccos": math.acos,
+        "arctan": math.atan,
+        "arccosh": math.acosh,
+        "acosh": math.acosh,
     }
     if name not in functions:
         raise ValueError(f"unsupported function: {name}")
     return functions[name]
+
+
+def _named_constant(name: str) -> float | None:
+    constants = {
+        "pi": math.pi,
+        "e": math.e,
+        "c": 299792458.0,
+        "mu_0": 4.0 * math.pi * 1e-7,
+    }
+    return constants.get(name)
 
 
 def _absolute_value(value: float) -> float:

@@ -8,7 +8,8 @@ PHYSICS_DISCOVERY_PRIOR_MODES = (
     "no_description",
     "no_description_anonymous",
 )
-PHYSICS_DISCOVERY_SOURCE = "physgym.curated_subset"
-PHYSICS_DISCOVERY_RECORDS_FILE = "physgym_curated_records.json"
+PHYSICS_DISCOVERY_SOURCE = "physgym.full"
+PHYSICS_DISCOVERY_RECORDS_FILE = "physgym_records.json"
 DEFAULT_RANGE = (0.5, 5.0)
-ALLOWED_FUNCTION_NAMES = "sqrt, sin, cos, tan, exp, log, abs"
+ALLOWED_CONSTANT_NAMES = "pi, e, c, mu_0"
+ALLOWED_FUNCTION_NAMES = "sqrt, sin, cos, tan, exp, log, abs, arccos, arccosh, arctan"

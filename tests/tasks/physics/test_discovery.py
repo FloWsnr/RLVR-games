@@ -1,6 +1,12 @@
 """Tests for interactive physics discovery tasks."""
 
+from collections import Counter
+from itertools import product
 from importlib import resources
+import json
+import math
+from random import Random
+from typing import Mapping
 
 import pytest
 
@@ -14,7 +20,31 @@ from rlvr_physics.tasks.physics.discovery import (
     make_physics_discovery_instance,
     physics_discovery_records,
     physics_discovery_task_spec,
+    render_physics_discovery_text,
 )
+from rlvr_physics.tasks.physics.discovery.actions import validate_experiment_inputs
+from rlvr_physics.tasks.physics.discovery.expressions import evaluate_expression
+from rlvr_physics.tasks.physics.discovery.utils import range_pair
+
+
+def _public_probe_points(
+    parameter_ranges: Mapping[str, object], source_id: int
+) -> tuple[Mapping[str, object], ...]:
+    names = tuple(str(name) for name in parameter_ranges.keys())
+    ranges = {
+        name: range_pair(parameter_ranges[name], f"range for {name}") for name in names
+    }
+    points: list[Mapping[str, object]] = [
+        {name: (low + high) / 2.0 for name, (low, high) in ranges.items()}
+    ]
+    for bits in product((0, 1), repeat=len(names)):
+        points.append(
+            {name: ranges[name][bit] for name, bit in zip(names, bits, strict=True)}
+        )
+    rng = Random(10_000 + source_id)
+    for _index in range(32):
+        points.append({name: rng.uniform(*ranges[name]) for name in names})
+    return tuple(points)
 
 
 def test_discovery_records_load_from_packaged_json() -> None:
@@ -24,15 +54,80 @@ def test_discovery_records_load_from_packaged_json() -> None:
     records = physics_discovery_records()
 
     assert data_file.is_file()
-    assert len(records) == 6
-    assert tuple(record.source_id for record in records) == (
-        285,
-        134,
-        478,
-        72,
-        256,
-        458,
-    )
+    assert len(records) == 97
+    assert records[0].source_id == 495
+    assert records[-1].source_id == 89
+    assert Counter(record.tag for record in records) == {
+        "ADVANCED": 3,
+        "ELECTRICITY": 31,
+        "MECHANICS": 39,
+        "MODERN": 7,
+        "OPTICS": 7,
+        "THERMODYNAMICS": 10,
+    }
+
+
+def test_all_discovery_source_equations_self_verify() -> None:
+    records = physics_discovery_records()
+
+    for record in records:
+        instance = make_physics_discovery_instance(
+            source_id=record.source_id,
+            seed=17,
+            prior_mode="default",
+            sample_quota=1,
+            hypothesis_quota=1,
+        )
+        evaluation = evaluate_physics_hypothesis(instance, record.equation)
+
+        assert evaluation.accepted, record.source_id
+        assert evaluation.correct, record.source_id
+
+
+def test_all_discovery_records_public_ranges_evaluate_on_probe_points() -> None:
+    records = physics_discovery_records()
+
+    for record in records:
+        instance = make_physics_discovery_instance(
+            source_id=record.source_id,
+            seed=23,
+            prior_mode="default",
+            sample_quota=1,
+            hypothesis_quota=1,
+        )
+        parameter_ranges = require_mapping(
+            instance.public_payload["parameter_ranges"], "parameter_ranges"
+        )
+        equation = require_str(instance.privileged_payload["equation"], "equation")
+        for inputs in _public_probe_points(parameter_ranges, record.source_id):
+            validated_inputs = validate_experiment_inputs(instance, inputs)
+
+            assert math.isfinite(evaluate_expression(equation, validated_inputs))
+
+
+def test_all_discovery_rendered_experiment_examples_are_valid() -> None:
+    records = physics_discovery_records()
+
+    for record in records:
+        instance = make_physics_discovery_instance(
+            source_id=record.source_id,
+            seed=31,
+            prior_mode="default",
+            sample_quota=1,
+            hypothesis_quota=1,
+        )
+        rendered = render_physics_discovery_text(instance, (), (), 0, 0)
+        example = next(
+            line
+            for line in rendered.text().splitlines()
+            if line.startswith('{"action": "run_experiment"')
+        )
+        parsed = json.loads(example)
+        inputs = require_mapping(parsed["inputs"], "inputs")
+        equation = require_str(instance.privileged_payload["equation"], "equation")
+        validated_inputs = validate_experiment_inputs(instance, inputs)
+
+        assert math.isfinite(evaluate_expression(equation, validated_inputs))
 
 
 def test_discovery_records_and_anonymous_prior_mode_are_deterministic() -> None:
@@ -59,7 +154,7 @@ def test_discovery_records_and_anonymous_prior_mode_are_deterministic() -> None:
     )
     equation = require_str(first.privileged_payload["equation"], "equation")
 
-    assert len(physics_discovery_records()) == 6
+    assert len(physics_discovery_records()) == 97
     assert first.task_id == second.task_id
     assert tuple(input_variables.keys()) == (
         "var_1",

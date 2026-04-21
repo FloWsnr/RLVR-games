@@ -24,6 +24,8 @@ class PhysicsDiscoveryRecord:
         Mapping from variable name to public description.
     output_variable:
         Mapping with one output variable name and public description.
+    parameter_ranges:
+        Numeric input ranges used for public experiments and hidden sampling.
     """
 
     source_id: int
@@ -32,6 +34,7 @@ class PhysicsDiscoveryRecord:
     equation: str
     input_variables: Mapping[str, object]
     output_variable: Mapping[str, object]
+    parameter_ranges: Mapping[str, object]
 
     def __post_init__(self) -> None:
         """Freeze record mappings after construction."""
@@ -41,6 +44,9 @@ class PhysicsDiscoveryRecord:
         )
         object.__setattr__(
             self, "output_variable", freeze_mapping(self.output_variable)
+        )
+        object.__setattr__(
+            self, "parameter_ranges", freeze_mapping(self.parameter_ranges)
         )
 
 

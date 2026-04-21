@@ -1,6 +1,7 @@
 """Text renderer for physics discovery."""
 
 import json
+from typing import Mapping
 
 from rlvr_physics.core.instances import (
     TaskInstance,
@@ -10,7 +11,10 @@ from rlvr_physics.core.instances import (
     require_str,
 )
 from rlvr_physics.core.rendering import RenderedObservation, text_observation
-from rlvr_physics.tasks.physics.discovery.constants import ALLOWED_FUNCTION_NAMES
+from rlvr_physics.tasks.physics.discovery.constants import (
+    ALLOWED_CONSTANT_NAMES,
+    ALLOWED_FUNCTION_NAMES,
+)
 from rlvr_physics.tasks.physics.discovery.types import (
     ExperimentObservation,
     HypothesisAttempt,
@@ -80,13 +84,14 @@ def render_physics_discovery_text(
             f"- Hypotheses tested: {hypotheses_used}/{hypothesis_quota}",
             "",
             "Submit JSON to run an experiment:",
-            _example_experiment_action(tuple(input_variables.keys())),
+            _example_experiment_action(tuple(input_variables.keys()), parameter_ranges),
             "",
             "Submit JSON or final text to propose a hypothesis:",
             '{"action": "submit_hypothesis", "equation": "expression using the variables"}',
             (
-                "Allowed expression syntax: +, -, *, /, **, parentheses, constants "
-                f"pi/e, and functions {ALLOWED_FUNCTION_NAMES}."
+                "Allowed expression syntax: +, -, *, /, **, parentheses, "
+                f"constants {ALLOWED_CONSTANT_NAMES}, and functions "
+                f"{ALLOWED_FUNCTION_NAMES}."
             ),
             "",
             "Observation history:",
@@ -116,8 +121,11 @@ def _format_observation(observation: ExperimentObservation, output_name: str) ->
     return f"- {observation.sample_id}: inputs({input_text}) -> {output_name}={observation.output:.10g}"
 
 
-def _example_experiment_action(variable_names: tuple[str, ...]) -> str:
-    values = {
-        name: round(1.0 + 0.5 * index, 3) for index, name in enumerate(variable_names)
-    }
+def _example_experiment_action(
+    variable_names: tuple[str, ...], parameter_ranges: Mapping[str, object]
+) -> str:
+    values: dict[str, object] = {}
+    for name in variable_names:
+        low, high = range_pair(parameter_ranges[name], f"range for {name}")
+        values[name] = round((low + high) / 2.0, 3)
     return json.dumps({"action": "run_experiment", "inputs": values})

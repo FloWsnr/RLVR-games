@@ -32,10 +32,10 @@ dev = [
 packages = ["rlvr_physics"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"rlvr_physics/tasks/physics/discovery/data/physgym_curated_records.json" = "rlvr_physics/tasks/physics/discovery/data/physgym_curated_records.json"
+"rlvr_physics/tasks/physics/discovery/data/physgym_records.json" = "rlvr_physics/tasks/physics/discovery/data/physgym_records.json"
 
 [tool.hatch.build.targets.sdist.force-include]
-"rlvr_physics/tasks/physics/discovery/data/physgym_curated_records.json" = "rlvr_physics/tasks/physics/discovery/data/physgym_curated_records.json"
+"rlvr_physics/tasks/physics/discovery/data/physgym_records.json" = "rlvr_physics/tasks/physics/discovery/data/physgym_records.json"
 
 [tool.pytest.ini_options]
 addopts = "--capture=sys"
