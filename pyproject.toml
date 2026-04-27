@@ -8,34 +8,17 @@ version = "0.1.0"
 description = "Trainer-agnostic executable verifier tasks for RLVR"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = [
-    "chess>=1.11.2",
-    "pillow>=11.0.0",
-    "pydantic>=2.13.2",
-    "pyyaml>=6.0.2",
-    "reasoning-gym>=0.1.25",
-]
+dependencies = []
 
 [dependency-groups]
 dev = [
-    "accelerate>=1.13.0",
-    "datasets>=4.8.4",
-    "jmespath>=1.0.1",
     "pyright>=1.1.408",
     "pytest>=9.0.3",
     "ruff>=0.11.0",
-    "transformers>=5.5.4",
-    "trl>=1.2.0",
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["rlvr_physics"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"rlvr_physics/tasks/physics/discovery/data/physgym_records.json" = "rlvr_physics/tasks/physics/discovery/data/physgym_records.json"
-
-[tool.hatch.build.targets.sdist.force-include]
-"rlvr_physics/tasks/physics/discovery/data/physgym_records.json" = "rlvr_physics/tasks/physics/discovery/data/physgym_records.json"
 
 [tool.pytest.ini_options]
 addopts = "--capture=sys"

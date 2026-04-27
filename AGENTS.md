@@ -5,13 +5,7 @@
 See [SPEC.md](/home/flwi01/coding/RLVR-physics/SPEC.md). This repository should
 be a trainer-agnostic RLVR task library for executable, verifiable tasks built
 around immutable task instances, authoritative task backbones, scalar sessions,
-renderer peripherals, and trainer adapters.
-
-The initial task probes are Reasoning Gym `countdown`, seeded 2048, chess
-tactics with `python-chess`, and interactive physics discovery seeded from a
-full PhysGym-derived record set.
-The active first-class trainer adapter target is currently TRL; OpenRLHF and
-verl should stay deferred examples until the scalar core API settles.
+renderer peripherals, and deferred trainer integration surfaces.
 
 ## Design Rules
 

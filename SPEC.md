@@ -8,13 +8,13 @@ model-facing observations, accept model outputs or tool actions, verify behavior
 with executable logic, assign rewards, and record useful trajectories.
 
 The long-term focus is physics and scientific reasoning. The core must also
-work for math, coding, logic puzzles, and small games, because those domains are
-cheap proving grounds for the same abstractions: deterministic task generation,
-clear observations, executable verification, and repeatable rewards.
+work for math, coding, and logic puzzles, because those domains are cheap
+proving grounds for the same abstractions: deterministic task generation, clear
+observations, executable verification, and repeatable rewards.
 
 The library is not a trainer. It should integrate cleanly with large-scale LLM
 RL systems by exposing simple dataset, reward-function, environment, and HTTP
-adapter surfaces while keeping task state and verification independent of any
+integration surfaces while keeping task state and verification independent of any
 particular rollout engine.
 
 ## Research Inputs
@@ -24,8 +24,8 @@ The current ecosystem points to two dominant trainer-facing contracts:
 - Dataset-style RLVR: prompt rows plus reward/verifier functions. This is the
   common path for math, code, and large-batch reasoning training.
 - Environment-style RL: scalar sessions with `reset` and step-like interaction.
-  This is the path for tool use, games, software tasks, browser/workplace
-  agents, and other multi-turn domains.
+  This is the path for tool use, software tasks, browser/workplace agents, and
+  other multi-turn domains.
 
 The most relevant external API pressures are:
 
@@ -45,11 +45,11 @@ The most relevant external API pressures are:
   resources side owns task state, tools, and verification; the agent side owns
   rollout orchestration; the trainer owns concurrency.
 - OpenEnv and Gym-style systems still matter as a simple `reset`/`step`
-  compatibility target, especially for games and small interactive tasks.
+  compatibility target for small interactive tasks.
 
 Design implication: the core should describe one executable task episode, not a
-batch. Adapters should translate that scalar core into each trainer's preferred
-row, reward function, environment class, or server.
+batch. Future integration layers should translate that scalar core into each
+trainer's preferred row, reward function, environment class, or server.
 
 ## Strong Invariants
 
@@ -85,10 +85,10 @@ records. It contains everything required to replay a task deterministically:
 - task kind and domain
 - seed or source record identity
 - public inputs that may be rendered to the model
-- privileged verifier payload, such as exact answers, physical constants,
-  hidden game state, or unit tests
+- privileged verifier payload, such as exact answers, physical constants, or
+  unit tests
 - limits, such as maximum turns, timeout, token budget hint, or action budget
-- metadata used for curriculum, filtering, and adapter export
+- metadata used for curriculum, filtering, and trainer export
 
 The instance is not a session. Trainers may request many completions for the
 same instance. Each completion gets a fresh session initialized from the same
@@ -108,8 +108,8 @@ family. It owns the domain rules:
 - terminal and truncation conditions
 
 The backbone should be the one place where task truth lives. Peripherals such as
-renderers, message adapters, dataset exporters, and trainer integrations should
-depend on it rather than duplicate task rules.
+renderers, message converters, dataset exporters, and trainer integrations
+should depend on it rather than duplicate task rules.
 
 Backbones may be implemented as small classes, functions, or modules. The core
 should require behavior, not inheritance from a single base class.
@@ -145,8 +145,8 @@ The exact names can change after prototypes, but the semantics should remain:
 - `trajectory` records the verified interaction history.
 
 Single-step verifier tasks are sessions with one turn and one final submission.
-Stateful games, simulations, and tool-use tasks use the same session contract
-over multiple turns.
+Stateful simulations and tool-use tasks use the same session contract over
+multiple turns.
 
 ### Renderers
 
@@ -157,7 +157,7 @@ Renderers turn canonical task state and public metadata into observations:
 - structured tool descriptions
 - tool result messages
 - images or multimodal content blocks
-- compact state views for games or simulations
+- compact state views for simulations or tool state
 
 Renderers should be deterministic for a given state, renderer config, and seed.
 They must not own verifier state. If a renderer hides information, that hidden
@@ -173,8 +173,8 @@ should support at least:
 - tool call name plus structured arguments
 - invalid or unparsable submission record
 
-Parsing may happen in an adapter or in the backbone, but the verified trajectory
-must record both the raw model output and the interpreted submission.
+Parsing may happen in an integration layer or in the backbone, but the verified
+trajectory must record both the raw model output and the interpreted submission.
 
 ### Step Results
 
@@ -192,7 +192,7 @@ Each submission should produce a result with these concepts:
 - `events`: trajectory records emitted by this step
 
 Reward is the trainer-facing scalar. A task may also expose interpretable reward
-features, but trainer adapters decide how much of that to surface.
+features, but trainer integrations decide how much of that to surface.
 
 ### Trajectories
 
@@ -209,7 +209,7 @@ training export and debugging:
 - reward, score, terminal, and truncation events
 
 Token ids, log-probs, KL terms, and advantage values are not core trajectory
-fields. Trainer adapters may attach trainer-side trace identifiers so task
+fields. Trainer integrations may attach trainer-side trace identifiers so task
 records can be joined with token-level rollout data later.
 
 ## Task Shapes
@@ -234,9 +234,9 @@ Expected lifecycle:
 4. parse and verify the completion
 5. return reward, metadata, and a trajectory
 
-This path must export cleanly to generic prompt rows and TRL reward functions.
-Other trainer-specific reward surfaces should be examples or later adapters,
-not pressure on the core API.
+This path should eventually export cleanly to generic prompt rows and trainer
+reward functions. Trainer-specific reward surfaces should remain outside the
+core API.
 
 ### Stateful Tasks
 
@@ -245,11 +245,9 @@ Stateful tasks keep canonical state and may produce multiple turns.
 Examples:
 
 - physics puzzles and simulations
-- interactive physics equation discovery with experiment and hypothesis budgets
 - partially observable tasks
 - tool-use tasks
 - code-editing loops with test feedback
-- small games used as architecture probes
 
 Expected lifecycle:
 
@@ -260,51 +258,16 @@ Expected lifecycle:
 5. validate and apply a transition or verifier step
 6. return reward and either another turn or a terminal/truncated result
 
-This path must export cleanly to TRL environment factories. Other environment
-or service surfaces should remain later examples until real integrations prove
-their shape.
+This path should eventually export cleanly to trainer-owned environment
+factories. Environment or service surfaces should remain outside the core until
+real integrations prove their shape.
 
-### Games As Probes
+## Trainer Integration Requirements
 
-Games are not the main mission, but they are useful early test domains because
-they force the core to handle state, invalid actions, partial observability,
-turn limits, and trajectories without heavy simulation dependencies.
+Future trainer integrations should translate the scalar core into external
+framework surfaces. They should be thin, testable, and disposable.
 
-Good first game probes should be deterministic, small, and cheap:
-
-- Nim or take-away games for exact strategy and terminal reward
-- Mastermind-style hidden-state deduction with textual feedback
-- grid or sliding puzzles with bounded action spaces
-- tic-tac-toe only if the goal is interactive state handling, not novelty
-
-The game backbone should be written with the same pattern expected for physics:
-canonical state first, renderer second, trainer adapters last.
-
-### Physics Discovery Tasks
-
-Interactive physics discovery tasks expose a hidden scalar law through controlled
-numeric experiments. A session starts from an immutable law record, renders the
-available prior information, accepts experiment actions that choose input
-valuations, returns numeric observations, and accepts hypothesis submissions that
-are verified against privileged holdout points or symbolic logic.
-
-The first implementation target is `physics.discovery.v1`, seeded by the full
-97-record PhysGym law set. PhysGym records should be treated as source
-laws/templates rather than independent task families. Generated
-parameter draws are task instances or rollout observations; evaluation splits
-should track source law identity to avoid confusing interpolation over known
-laws with general physics discovery.
-
-The verifier should stay executable and deterministic. LLM-as-judge equivalence
-checks may be useful for offline analysis, but they should not be part of the
-default trainer-facing reward path while the scalar core API is settling.
-
-## Trainer Adapter Requirements
-
-Adapters translate the scalar core into external framework surfaces. They should
-be thin, testable, and disposable.
-
-### Dataset And Reward Adapters
+### Dataset And Reward Surfaces
 
 The dataset path should export immutable task instances as rows with:
 
@@ -318,19 +281,18 @@ The dataset path should export immutable task instances as rows with:
   safe
 - `extra_info` for split, source index, difficulty, and curriculum tags
 
-The reward adapter should reconstruct or look up the immutable task instance,
+The reward integration should reconstruct or look up the immutable task instance,
 run the backbone verifier against each completion, and return floats plus
 optional logging metrics.
 
 Compatibility targets:
 
 - generic prompt rows plus scalar scoring helpers
-- TRL custom reward functions over prompts, completions, and row metadata
-- future examples for OpenRLHF, verl, or reward services after the core API
-  stabilizes
+- trainer reward functions over prompts, completions, and row metadata
+- future examples for reward services after the core API stabilizes
 - offline SFT/DPO conversion from verified trajectories
 
-### Environment Adapters
+### Environment Surfaces
 
 The environment path should wrap a `TaskSession` as a trainer-owned scalar
 episode:
@@ -346,14 +308,13 @@ episode:
 
 Compatibility targets:
 
-- TRL `environment_factory`
-- future examples for OpenRLHF `AgentInstanceBase`, verl `BaseInteraction`,
-  OpenEnv/Gymnasium, and NeMo Gym resources after the core session contract
-  settles
+- trainer-owned environment factories
+- future examples for agent interaction and resource-server integrations after
+  the core session contract settles
 
-### Message Adapters
+### Message Surfaces
 
-Message adapters convert rendered observations into framework-specific message
+Message converters translate rendered observations into framework-specific message
 formats:
 
 - Hugging Face chat-template-compatible message lists
@@ -365,9 +326,9 @@ formats:
 The core should not require a tokenizer or chat template. Tokenization belongs
 to the trainer.
 
-### HTTP And Service Adapters
+### HTTP And Service Surfaces
 
-Some trainers want reward or environment services. A service adapter may expose
+Some trainers want reward or environment services. A service layer may expose
 the same core through HTTP, but service concerns must remain peripheral:
 
 - process management
@@ -382,18 +343,18 @@ The underlying task result should remain the same as local execution.
 
 ## Task Specs
 
-Task specs should make task setup reproducible and adapter-friendly. A YAML spec
+Task specs should make task setup reproducible and trainer-friendly. A YAML spec
 should build a factory for immutable task instances and scalar sessions.
 
 Likely rules:
 
 - use neutral `kind:` dispatch
 - keep examples under `config/tasks/<kind>/`
-- avoid game-specific or physics-specific top-level schema concepts
+- avoid domain-specific top-level schema concepts
 - make source, generator, seed policy, renderer, verifier, reward, and limits
   explicit when they affect reproducibility
 - separate public prompt metadata from privileged verifier payload
-- include adapter export hints only when they do not leak trainer-specific
+- include trainer export hints only when they do not leak trainer-specific
   behavior into the backbone
 
 Provisional shape:
@@ -434,28 +395,18 @@ rlvr_physics/core/
   rendering.py    # observation/content abstractions
   specs.py        # YAML/task spec loading
 
-rlvr_physics/adapters/
-  datasets.py     # generic prompt row and scalar scoring helpers
-  multiturn.py    # shared scalar-session environment helpers
-  trl.py          # TRL reward and environment adapters
-
 rlvr_physics/tasks/
-  _shared/       # reusable task implementation helpers, not core invariants
   arithmetic/
-  games/
   physics/
   coding/
 
 config/tasks/
   arithmetic/
-  games/
   physics/
   coding/
 ```
 
-Adapters should be added only when an example proves the need. It is fine for
-the first implementation to include only generic dataset export and one trainer
-adapter.
+Trainer integrations should be added only when an example proves the need.
 
 Individual task families may be packages once a single file starts mixing
 instance construction, task rules, renderers, verifiers, and sessions. Package
@@ -467,61 +418,8 @@ in `rlvr_physics.core`.
 
 ## First Prototypes
 
-The first implementation should prove the core with three focused tasks. These
-are architecture probes, not permanent product scope.
-
-1. Reasoning Gym `countdown`
-   - single-step prompt/completion verifier task
-   - external procedural dataset integration
-   - seeded instance generation through Reasoning Gym metadata
-   - multiple valid completions, because many arithmetic expressions can solve
-     the same target
-   - parser plus executable verifier rather than exact string matching
-   - dataset row export with question, answer, metadata, source dataset,
-     source index, and difficulty
-   - reward adapter test for prompt/completion trainers
-
-   This proves the dataset-style RLVR path and should be the first task
-   implemented. The task payload should separate public numbers and target from
-   privileged reference expression, source metadata, and verifier details.
-
-2. Seeded 2048
-   - single-player multi-step stateful task
-   - canonical board, score, turn count, max tile, and spawn history
-   - action vocabulary with four moves: up, down, left, right
-   - invalid action handling when a move does not change the board
-   - seeded stochastic transitions using an RNG stream or, preferably for early
-     deterministic tests, a precomputed spawn tape
-   - dense score rewards, optional sparse milestone rewards, terminal outcome
-     when no legal moves remain, and truncation at a turn budget
-   - text renderer first, with image renderer left as a later peripheral
-   - environment adapter test for reset/step or tool-call trainers
-
-   This proves the stateful session path. Initial goals should be small, such
-   as reaching tile 64, reaching tile 128, surviving a fixed number of turns, or
-   maximizing score over a fixed turn budget. Reaching the 2048 tile should not
-   be required for early tests.
-
-3. Chess tactics with `python-chess`
-   - two-player-rules task using an external rules engine
-   - start with mate-in-one before mate-in-two
-   - public payload includes FEN, side to move, board rendering, and allowed
-     notation
-   - submissions may be SAN or UCI moves
-   - verifier parses the move, checks legality, applies the move, and checks
-     checkmate for mate-in-one
-   - mate-in-two verifier should require that the first move has a legal mating
-     continuation against every legal opponent reply
-   - privileged payload includes puzzle id, solution move set or continuation
-     table, mate depth, and source metadata
-   - reward features should distinguish parse failure, illegal move, legal
-     non-solution, and correct tactic
-
-   This proves external-engine integration, legal action validation, two-player
-   turn semantics, notation renderers, and adversarial verification without the
-   long-horizon complexity of full chess self-play.
-
-After these three tasks, add a first physics numeric reasoning task:
+The next concrete task should prove the core with a focused physics numeric
+reasoning task:
 
 - deterministic generated parameters
 - computed ground truth with tolerances and units
@@ -531,8 +429,8 @@ After these three tasks, add a first physics numeric reasoning task:
   constraints
 
 Coding verifier tasks should wait until the core needs sandbox or subprocess
-boundaries. Do not add broad abstractions before the three initial tasks expose
-repeated structure.
+boundaries. Do not add broad abstractions before concrete tasks expose repeated
+structure.
 
 ## Acceptance Criteria For The Core
 
@@ -555,9 +453,9 @@ The initial core is good enough when:
 - No in-repo trainer, optimizer, inference server, or rollout scheduler.
 - No batching or vectorized environment abstraction in task core.
 - No tokenizer, log-prob, or advantage logic in task core.
-- No heavy HTTP service framework until an adapter needs it.
+- No heavy HTTP service framework until an integration needs it.
 - No Gym compatibility layer unless a real integration requires it.
-- No first-class OpenRLHF or verl adapter while the core API is still moving.
+- No first-class trainer-specific integration while the core API is still moving.
 - No broad dataset abstraction before record-backed tasks need it.
 - No deep base-class hierarchy for every task.
 - No commitment to exact public field names before prototypes prove them.
@@ -568,11 +466,11 @@ The initial core is good enough when:
   and one stateful task are implemented?
 - Should trajectories be plain dataclasses, typed event logs, JSONL records, or
   a combination?
-- Which trainer adapter should be implemented first after generic dataset
+- Which trainer integration should be implemented first after generic dataset
   export?
 - How should task payloads be serialized for very large hidden state, images, or
   code sandboxes?
-- How much tool schema generation belongs in core versus trainer adapters?
+- How much tool schema generation belongs in core versus trainer integrations?
 - Which physics task should be the first real target: projectile motion,
   circuits, mechanics constraints, or simulation-based puzzles?
 - When do dataset utilities become necessary?

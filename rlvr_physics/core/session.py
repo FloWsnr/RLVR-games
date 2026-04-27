@@ -34,7 +34,7 @@ class TaskSubmission:
     raw:
         Raw model text or action string.
     parsed:
-        Adapter- or task-interpreted payload.
+        Task- or integration-interpreted payload.
     """
 
     kind: str

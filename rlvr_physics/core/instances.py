@@ -50,7 +50,7 @@ class TaskInstance:
     task_id:
         Stable task identity for replay and joins with trainer records.
     kind:
-        Versioned task kind, such as ``games.countdown.v1``.
+        Versioned task kind, such as ``physics.numeric.v1``.
     domain:
         Broad domain or ability label.
     seed:
@@ -62,7 +62,7 @@ class TaskInstance:
     limits:
         Rollout limits for sessions created from this instance.
     metadata:
-        Public adapter and curriculum metadata.
+        Public export and curriculum metadata.
     """
 
     task_id: str

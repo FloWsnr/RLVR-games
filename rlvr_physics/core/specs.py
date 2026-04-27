@@ -61,7 +61,7 @@ class RewardSpec:
 
 @dataclass(frozen=True)
 class TaskSpec:
-    """Adapter-friendly task setup description.
+    """Trainer-friendly task setup description.
 
     Parameters
     ----------
