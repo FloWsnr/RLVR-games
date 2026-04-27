@@ -5,6 +5,8 @@ import pytest
 from rlvr_physics.core.instances import (
     TaskInstance,
     TaskLimits,
+)
+from rlvr_physics.core.payloads import (
     stable_hash,
     to_plain_data,
 )

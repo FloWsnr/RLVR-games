@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from itertools import count
 from typing import Mapping, Protocol
 
-from rlvr_physics.core.instances import freeze_mapping, stable_hash
+from rlvr_physics.core.payloads import freeze_mapping, stable_hash
 from rlvr_physics.core.rendering import RenderedObservation
 from rlvr_physics.core.trajectory import TaskTrajectory, TrajectoryEvent
 

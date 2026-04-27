@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Mapping
 
-from rlvr_physics.core.instances import freeze_mapping
+from rlvr_physics.core.payloads import freeze_mapping
 
 
 @dataclass(frozen=True)

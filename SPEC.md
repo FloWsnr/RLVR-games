@@ -389,7 +389,8 @@ Keep the package shallow until real tasks demand more structure:
 ```text
 rlvr_physics/core/
   factory.py      # TaskFactory protocol and configured factory helper
-  instances.py    # immutable task instance and payload types
+  instances.py    # immutable task instance types
+  payloads.py     # payload freezing, plain-data conversion, and stable hashes
   session.py      # TaskSession protocol and result dataclasses
   trajectory.py   # event log types and helpers
   rendering.py    # observation/content abstractions

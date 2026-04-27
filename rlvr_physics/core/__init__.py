@@ -3,14 +3,10 @@
 from rlvr_physics.core.instances import (
     TaskInstance,
     TaskLimits,
+)
+from rlvr_physics.core.payloads import (
     freeze_mapping,
     mapping_to_dict,
-    require_bool,
-    require_int,
-    require_mapping,
-    require_optional_str,
-    require_str,
-    require_tuple_of_ints,
     stable_hash,
     to_plain_data,
 )
@@ -70,12 +66,6 @@ __all__ = [
     "image_observation",
     "mapping_to_dict",
     "new_session_id",
-    "require_bool",
-    "require_int",
-    "require_mapping",
-    "require_optional_str",
-    "require_str",
-    "require_tuple_of_ints",
     "stable_hash",
     "text_observation",
     "to_plain_data",
