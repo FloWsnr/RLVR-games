@@ -21,7 +21,14 @@ from rlvr_physics.core.trajectory import TaskTrajectory
 
 
 class FactoryTestSession:
-    """Minimal scalar session used by factory tests."""
+    """Minimal scalar session used by factory tests.
+
+    Parameters
+    ----------
+    instance:
+        Immutable test task instance whose identifiers and limits are exposed
+        through reset results.
+    """
 
     def __init__(self, instance: TaskInstance) -> None:
         self._instance = instance
@@ -32,7 +39,19 @@ class FactoryTestSession:
         self._turn: TaskTurn | None = None
 
     def reset(self, seed: int) -> TaskResetResult:
-        """Start the minimal test session."""
+        """Start the minimal test session.
+
+        Parameters
+        ----------
+        seed:
+            Reset seed accepted to satisfy the session protocol. This fixture
+            does not use it because the task instance is already fixed.
+
+        Returns
+        -------
+        TaskResetResult
+            Reset payload containing the first turn and fixture trajectory.
+        """
 
         _ = seed
         self._turn = TaskTurn(
@@ -51,19 +70,42 @@ class FactoryTestSession:
 
     @property
     def turn(self) -> TaskTurn | None:
-        """Return the current turn."""
+        """Return the current turn.
+
+        Returns
+        -------
+        TaskTurn | None
+            Current test turn, or ``None`` before reset.
+        """
 
         return self._turn
 
     def submit(self, submission: TaskSubmission) -> TaskStepResult:
-        """Reject submissions because this fixture only tests factory reset."""
+        """Reject submissions because this fixture only tests factory reset.
+
+        Parameters
+        ----------
+        submission:
+            Submission accepted to satisfy the session protocol.
+
+        Raises
+        ------
+        NotImplementedError
+            Always raised because the fixture does not score submissions.
+        """
 
         _ = submission
         raise NotImplementedError("factory test session does not score submissions")
 
     @property
     def trajectory(self) -> TaskTrajectory:
-        """Return the fixture trajectory."""
+        """Return the fixture trajectory.
+
+        Returns
+        -------
+        TaskTrajectory
+            Append-only trajectory attached to this fixture session.
+        """
 
         return self._trajectory
 
@@ -100,6 +142,17 @@ def test_configured_task_factory_creates_scalar_sessions() -> None:
 
 
 def _factory_test_session(instance: TaskInstance) -> TaskSession:
-    """Create a minimal session for factory tests."""
+    """Create a minimal session for factory tests.
+
+    Parameters
+    ----------
+    instance:
+        Immutable test task instance for the session.
+
+    Returns
+    -------
+    TaskSession
+        Fresh scalar session backed by ``instance``.
+    """
 
     return FactoryTestSession(instance)

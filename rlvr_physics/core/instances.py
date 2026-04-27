@@ -20,6 +20,17 @@ class TaskLimits:
         Token budget hint for prompt/completion trainers.
     action_budget:
         Action or tool-call budget hint for stateful tasks.
+
+    Attributes
+    ----------
+    max_turns:
+        Maximum number of model submissions accepted before truncation.
+    timeout_seconds:
+        Optional wall-clock budget hint for trainers that enforce timeouts.
+    token_budget:
+        Optional token budget hint for prompt/completion trainers.
+    action_budget:
+        Optional action or tool-call budget hint for stateful tasks.
     """
 
     max_turns: int
@@ -28,7 +39,14 @@ class TaskLimits:
     action_budget: int | None = None
 
     def as_public_dict(self) -> Mapping[str, object]:
-        """Return trainer-safe limit metadata."""
+        """Return trainer-safe limit metadata.
+
+        Returns
+        -------
+        Mapping[str, object]
+            Frozen mapping containing ``max_turns`` and any optional limit
+            fields that are not ``None``.
+        """
 
         values: dict[str, object] = {"max_turns": self.max_turns}
         if self.timeout_seconds is not None:
@@ -62,6 +80,25 @@ class TaskInstance:
         Rollout limits for sessions created from this instance.
     metadata:
         Public export and curriculum metadata.
+
+    Attributes
+    ----------
+    task_id:
+        Stable task identity for replay and joins with trainer records.
+    kind:
+        Versioned task kind, such as ``physics.numeric.v1``.
+    domain:
+        Broad domain or ability label.
+    seed:
+        Seed or source-specific deterministic identity.
+    public_payload:
+        Frozen data that may be rendered to the model.
+    privileged_payload:
+        Frozen verifier-only data that must not leak through public metadata.
+    limits:
+        Rollout limits for sessions created from this instance.
+    metadata:
+        Frozen public export and curriculum metadata.
     """
 
     task_id: str
@@ -83,7 +120,14 @@ class TaskInstance:
         object.__setattr__(self, "metadata", freeze_mapping(self.metadata))
 
     def public_view(self) -> Mapping[str, object]:
-        """Return metadata that can be safely exposed to a trainer."""
+        """Return metadata that can be safely exposed to a trainer.
+
+        Returns
+        -------
+        Mapping[str, object]
+            Frozen mapping containing public identity, limits, metadata, and
+            public payload fields. Privileged payload data is excluded.
+        """
 
         return freeze_mapping(
             {
@@ -98,7 +142,20 @@ class TaskInstance:
         )
 
     def content_hash(self) -> str:
-        """Return a deterministic hash of the complete task instance."""
+        """Return a deterministic hash of the complete task instance.
+
+        Returns
+        -------
+        str
+            SHA-256 hex digest computed from the task identity, public payload,
+            privileged payload, public limits, and metadata.
+
+        Raises
+        ------
+        TypeError
+            Raised if any instance data cannot be converted or JSON-encoded by
+            the stable hashing helper.
+        """
 
         return stable_hash(
             {

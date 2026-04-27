@@ -20,6 +20,17 @@ class TrajectoryEvent:
         Trainer-safe payload.
     debug:
         Privileged local payload for evaluation and debugging.
+
+    Attributes
+    ----------
+    event_type:
+        Event category, such as ``reset``, ``observation``, or ``reward``.
+    turn_index:
+        Turn associated with the event.
+    public:
+        Frozen trainer-safe payload.
+    debug:
+        Frozen privileged local payload for evaluation and debugging.
     """
 
     event_type: str
@@ -44,6 +55,13 @@ class TaskTrajectory:
         Stable task identifier.
     session_id:
         Stable session identifier.
+
+    Attributes
+    ----------
+    task_id:
+        Stable task identifier.
+    session_id:
+        Stable session identifier.
     """
 
     task_id: str
@@ -52,7 +70,13 @@ class TaskTrajectory:
 
     @property
     def events(self) -> tuple[TrajectoryEvent, ...]:
-        """Return a read-only tuple of recorded events."""
+        """Return a read-only tuple of recorded events.
+
+        Returns
+        -------
+        tuple[TrajectoryEvent, ...]
+            Snapshot tuple containing the events recorded so far.
+        """
 
         return tuple(self._events)
 
@@ -63,7 +87,24 @@ class TaskTrajectory:
         public: Mapping[str, object],
         debug: Mapping[str, object],
     ) -> TrajectoryEvent:
-        """Append and return a trajectory event."""
+        """Append and return a trajectory event.
+
+        Parameters
+        ----------
+        event_type:
+            Event category, such as ``reset``, ``observation``, or ``reward``.
+        turn_index:
+            Turn associated with the event.
+        public:
+            Trainer-safe payload for the event.
+        debug:
+            Privileged local payload for evaluation and debugging.
+
+        Returns
+        -------
+        TrajectoryEvent
+            Frozen event appended to this trajectory.
+        """
 
         event = TrajectoryEvent(
             event_type=event_type, turn_index=turn_index, public=public, debug=debug
@@ -72,6 +113,12 @@ class TaskTrajectory:
         return event
 
     def snapshot(self) -> tuple[TrajectoryEvent, ...]:
-        """Return an immutable view of recorded events."""
+        """Return an immutable view of recorded events.
+
+        Returns
+        -------
+        tuple[TrajectoryEvent, ...]
+            Snapshot tuple containing the events recorded so far.
+        """
 
         return self.events

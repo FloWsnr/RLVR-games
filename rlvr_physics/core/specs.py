@@ -9,7 +9,18 @@ from rlvr_physics.core.payloads import freeze_mapping
 
 @dataclass(frozen=True)
 class SourceSpec:
-    """Reproducible source configuration for task instances."""
+    """Reproducible source configuration for task instances.
+
+    Attributes
+    ----------
+    source_type:
+        Identifier for the instance source, such as a generator or dataset.
+    seed:
+        Deterministic seed passed to the source.
+    parameters:
+        Source-specific configuration payload. Values are recursively frozen
+        after construction.
+    """
 
     source_type: str
     seed: int
@@ -23,7 +34,16 @@ class SourceSpec:
 
 @dataclass(frozen=True)
 class RendererSpec:
-    """Renderer configuration advertised by a task."""
+    """Renderer configuration advertised by a task.
+
+    Attributes
+    ----------
+    renderer_type:
+        Identifier for the renderer implementation.
+    parameters:
+        Renderer-specific configuration payload. Values are recursively frozen
+        after construction.
+    """
 
     renderer_type: str
     parameters: Mapping[str, object] = field(default_factory=dict)
@@ -36,7 +56,16 @@ class RendererSpec:
 
 @dataclass(frozen=True)
 class VerifierSpec:
-    """Verifier configuration advertised by a task."""
+    """Verifier configuration advertised by a task.
+
+    Attributes
+    ----------
+    verifier_type:
+        Identifier for the verifier implementation or strategy.
+    parameters:
+        Verifier-specific configuration payload. Values are recursively frozen
+        after construction.
+    """
 
     verifier_type: str
     parameters: Mapping[str, object] = field(default_factory=dict)
@@ -49,7 +78,16 @@ class VerifierSpec:
 
 @dataclass(frozen=True)
 class RewardSpec:
-    """Reward configuration advertised by a task."""
+    """Reward configuration advertised by a task.
+
+    Attributes
+    ----------
+    reward_type:
+        Identifier for the reward implementation or scoring policy.
+    parameters:
+        Reward-specific configuration payload. Values are recursively frozen
+        after construction.
+    """
 
     reward_type: str
     parameters: Mapping[str, object]
@@ -64,7 +102,7 @@ class RewardSpec:
 class TaskSpec:
     """Trainer-friendly task setup description.
 
-    Parameters
+    Attributes
     ----------
     kind:
         Versioned task kind.

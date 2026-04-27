@@ -12,7 +12,22 @@ _SESSION_COUNTER = count()
 
 
 def new_session_id(task_id: str, seed: int) -> str:
-    """Return a process-unique session id for one rollout."""
+    """Return a process-local session identifier for one rollout.
+
+    Parameters
+    ----------
+    task_id:
+        Stable identifier for the task instance being rolled out.
+    seed:
+        Session seed used for the rollout.
+
+    Returns
+    -------
+    str
+        Session identifier derived from the task id, seed, and a process-local
+        ordinal. Repeated calls with the same arguments include different
+        ordinals within the current process.
+    """
 
     ordinal = next(_SESSION_COUNTER)
     return (
@@ -27,7 +42,7 @@ def new_session_id(task_id: str, seed: int) -> str:
 class TaskSubmission:
     """A raw model submission plus optional interpreted payload.
 
-    Parameters
+    Attributes
     ----------
     kind:
         Submission category, such as ``final_text`` or ``action``.
@@ -48,13 +63,36 @@ class TaskSubmission:
 
     @classmethod
     def final_text(cls, text: str) -> "TaskSubmission":
-        """Create a raw final-text submission."""
+        """Create a raw final-text submission.
+
+        Parameters
+        ----------
+        text:
+            Final answer text emitted by the model.
+
+        Returns
+        -------
+        TaskSubmission
+            Submission with kind ``final_text`` and an empty parsed payload.
+        """
 
         return cls(kind="final_text", raw=text, parsed={})
 
     @classmethod
     def action(cls, action: str) -> "TaskSubmission":
-        """Create an action submission."""
+        """Create an action submission.
+
+        Parameters
+        ----------
+        action:
+            Action text emitted by the model.
+
+        Returns
+        -------
+        TaskSubmission
+            Submission with kind ``action`` and the action mirrored into the
+            parsed payload.
+        """
 
         return cls(kind="action", raw=action, parsed={"action": action})
 
@@ -63,7 +101,7 @@ class TaskSubmission:
 class TaskTurn:
     """One model-facing task turn.
 
-    Parameters
+    Attributes
     ----------
     turn_index:
         Zero-based turn number.
@@ -96,7 +134,17 @@ class TaskTurn:
 
 @dataclass(frozen=True)
 class TaskResetResult:
-    """Result returned when a scalar task session resets."""
+    """Result returned when a scalar task session resets.
+
+    Attributes
+    ----------
+    session_id:
+        Identifier for the newly started session.
+    turn:
+        First model-facing turn of the rollout.
+    trajectory:
+        Trajectory object associated with the session.
+    """
 
     session_id: str
     turn: TaskTurn
@@ -107,7 +155,7 @@ class TaskResetResult:
 class TaskStepResult:
     """Result returned after a model submission.
 
-    Parameters
+    Attributes
     ----------
     accepted:
         Whether the submission was well-formed enough to evaluate or apply.
@@ -147,28 +195,72 @@ class TaskStepResult:
 
     @property
     def done(self) -> bool:
-        """Return whether this result ended the rollout."""
+        """Return whether this result ended the rollout.
+
+        Returns
+        -------
+        bool
+            ``True`` when the result is terminal or truncated.
+        """
 
         return self.terminal or self.truncated
 
 
 class TaskSession(Protocol):
-    """Minimal scalar task session protocol."""
+    """Minimal scalar task session protocol.
+
+    Implementations manage one scalar rollout at a time and expose a verified
+    trajectory for trainer integration.
+    """
 
     def reset(self, seed: int) -> TaskResetResult:
-        """Start a fresh rollout and return the first turn."""
+        """Start a fresh rollout and return the first turn.
+
+        Parameters
+        ----------
+        seed:
+            Deterministic seed for the rollout.
+
+        Returns
+        -------
+        TaskResetResult
+            New session identifier, first turn, and trajectory state.
+        """
         ...
 
     @property
     def turn(self) -> TaskTurn | None:
-        """Return the current turn, or ``None`` after termination."""
+        """Return the current turn.
+
+        Returns
+        -------
+        TaskTurn or None
+            Current model-facing turn, or ``None`` after termination.
+        """
         ...
 
     def submit(self, submission: TaskSubmission) -> TaskStepResult:
-        """Apply or verify a model submission."""
+        """Apply or verify a model submission.
+
+        Parameters
+        ----------
+        submission:
+            Raw and optionally parsed model output to evaluate or apply.
+
+        Returns
+        -------
+        TaskStepResult
+            Step outcome, reward, optional next turn, metadata, and events.
+        """
         ...
 
     @property
     def trajectory(self) -> TaskTrajectory:
-        """Return the verified session trajectory."""
+        """Return the verified session trajectory.
+
+        Returns
+        -------
+        TaskTrajectory
+            Append-only trajectory for the active or completed session.
+        """
         ...
