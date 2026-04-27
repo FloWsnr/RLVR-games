@@ -9,11 +9,11 @@ Run this skill after larger tasks or changes. A meaningful change is any non-tri
 
 ## Goal
 
-Use a separate review agent to challenge the latest change before handoff. The review should be independent and skeptical, with the primary goal of finding bugs, regressions, weak assumptions, and missing coverage. Reviewing takes time. Make sure to let the agent finish its work, don't abort it early.
+Use a separate review subagent to challenge the latest change before handoff. You are explicitly allowed to dispatch a subagent. The review should be independent and skeptical, with the primary goal of finding bugs, regressions, weak assumptions, and missing coverage. Reviewing takes time. Make sure to let the agent finish its work, don't abort it early.
 
 ## Required Workflow
 
-1. After completing a meaningful change, start an independent review agent with `model: gpt-5.4` and `reasoning_effort: xhigh`.
+1. After completing a meaningful change, start an independent review subagent with `model: gpt-5.4` and `reasoning_effort: xhigh`.
 2. Keep the review context intentionally narrow. Do not fork the full conversation by default. Pass only the task-local information the reviewer needs.
 3. Give the reviewer a short neural summary of:
    - the user objective
@@ -32,7 +32,11 @@ The reviewer should receive a compact, neutral summary. Good inputs state what c
 Use a prompt in this shape:
 
 ```text
-Review this change independently. Look for bugs, behavioral regressions, invalid assumptions, edge cases, and missing tests. Also ask whether the refactor fits in the overall architectural direction, including for future work and scaling.
+Your role is a highly critical code reviewer (red-team). You are allowed to take as much time as you need to review the change.
+
+Review this change independently. Look for bugs, behavioral regressions, invalid assumptions, edge cases, and missing tests. Also think about whether the refactor fits in the overall architectural direction, including for future work and scaling. Look at the `SPEC.md` for the mission.
+
+During the review, place special attention to high-level design and architecture choices. Rate your findings by severity, i.e. is this a big design issue or just a minor weakness?
 
 Task summary:
 - ...

@@ -22,19 +22,15 @@ Before committing, check ALL changed Python files for:
 3. **Linting errors** — run ruff to check for any linting issues and fix them
 4. **Type errors** — run pyright to check for type errors and fix them
 
-**For large changesets (4+ files changed):** Use fast subagents in parallel to check each file simultaneously. Each subagent should read one file and report any unused imports or function-level imports found.
-
-**For small changesets (1-3 files):** Check the files directly without subagents.
-
 If issues are found, fix them before proceeding to the commit. Do NOT ask the user — just fix them silently and include the fixes in the commit.
 
 ### Step 3: Tests
 
 Make sure we ran all relevant tests already. If not, run them now and fix any failures before committing.
 
-### Step 4: Update AGENTs.md, and README.md if relevant
+### Step 4: Update AGENTs.md, SPEC.md, and README.md if relevant
 
-If the commit includes important changes in API or functionality, update the `AGENTS.md` documentation file to reflect these changes. This ensures that the documentation stays accurate and helpful for future reference. Also check and update the `README.md` files if relevant.
+If the commit includes important changes in API or functionality, update the `AGENTS.md` documentation file to reflect these changes. This ensures that the documentation stays accurate and helpful for future reference. Also check and update the `SPEC.md` and `README.md` files if relevant.
 
 
 ### Step 5: Stage and Commit
