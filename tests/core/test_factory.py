@@ -1,7 +1,7 @@
 """Tests for task factory helpers."""
 
 from rlvr_physics.core.factory import ConfiguredTaskFactory
-from rlvr_physics.core.instances import TaskInstance, TaskLimits
+from rlvr_physics.core.instances import TaskInstance
 from rlvr_physics.core.rendering import text_observation
 from rlvr_physics.core.session import (
     TaskResetResult,
@@ -59,7 +59,7 @@ class FactoryTestSession:
             observation=text_observation("text", "factory prompt"),
             submission_modes=("final_text",),
             action_schema={},
-            public_limits=self._instance.limits.as_public_dict(),
+            public_limits=self._instance.public_limits(),
             public_info={"task_id": self._instance.task_id},
         )
         return TaskResetResult(
@@ -118,7 +118,7 @@ def test_configured_task_factory_creates_scalar_sessions() -> None:
         seed=17,
         public_payload={},
         privileged_payload={},
-        limits=TaskLimits(max_turns=1),
+        max_turns=1,
     )
     spec = TaskSpec(
         kind=instance.kind,
@@ -127,7 +127,7 @@ def test_configured_task_factory_creates_scalar_sessions() -> None:
         renderers=(RendererSpec(renderer_type="text"),),
         verifier=VerifierSpec(verifier_type="fixture"),
         reward=RewardSpec(reward_type="fixture", parameters={}),
-        limits=instance.limits,
+        max_turns=instance.max_turns,
     )
     factory = ConfiguredTaskFactory(
         spec=spec,

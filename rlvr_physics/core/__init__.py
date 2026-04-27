@@ -2,7 +2,6 @@
 
 from rlvr_physics.core.instances import (
     TaskInstance,
-    TaskLimits,
 )
 from rlvr_physics.core.payloads import (
     freeze_mapping,
@@ -49,7 +48,6 @@ __all__ = [
     "RewardSpec",
     "SourceSpec",
     "TaskInstance",
-    "TaskLimits",
     "TaskFactory",
     "TaskResetResult",
     "TaskSession",

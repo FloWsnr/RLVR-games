@@ -87,7 +87,8 @@ records. It contains everything required to replay a task deterministically:
 - public inputs that may be rendered to the model
 - privileged verifier payload, such as exact answers, physical constants, or
   unit tests
-- limits, such as maximum turns, timeout, token budget hint, or action budget
+- direct rollout limit fields, such as maximum turns, timeout, token budget
+  hint, or action budget
 - metadata used for curriculum, filtering, and trainer export
 
 The instance is not a session. Trainers may request many completions for the
@@ -351,8 +352,8 @@ Likely rules:
 - use neutral `kind:` dispatch
 - keep examples under `config/tasks/<kind>/`
 - avoid domain-specific top-level schema concepts
-- make source, generator, seed policy, renderer, verifier, reward, and limits
-  explicit when they affect reproducibility
+- make source, generator, seed policy, renderer, verifier, reward, and rollout
+  limit fields explicit when they affect reproducibility
 - separate public prompt metadata from privileged verifier payload
 - include trainer export hints only when they do not leak trainer-specific
   behavior into the backbone
@@ -372,8 +373,7 @@ verifier:
 reward:
   correct: 1.0
   invalid: 0.0
-limits:
-  max_turns: 1
+max_turns: 1
 exports:
   dataset:
     ability: math

@@ -24,6 +24,8 @@ renderer peripherals, and deferred trainer integration surfaces.
   (`uv run pyright`), and tests (`uv run pytest`).
 - Keep types explicit. Avoid optional/default parameters when they hide
   behavior.
+- Keep rollout limits as direct fields on `TaskInstance` and `TaskSpec`;
+  trainer-facing views may expose them as nested public limit mappings.
 - Do not use `from __future__ import annotations`.
 - Write numpy-style docstrings for functions and classes.
 - Keep task packages split by concern once a task grows beyond a small probe:

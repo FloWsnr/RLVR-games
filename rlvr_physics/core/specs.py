@@ -3,7 +3,6 @@
 from dataclasses import dataclass, field
 from typing import Mapping
 
-from rlvr_physics.core.instances import TaskLimits
 from rlvr_physics.core.payloads import freeze_mapping
 
 
@@ -116,8 +115,15 @@ class TaskSpec:
         Verifier behavior summary.
     reward:
         Reward behavior summary.
-    limits:
-        Default rollout limits.
+    max_turns:
+        Default maximum number of model submissions accepted before
+        truncation.
+    timeout_seconds:
+        Optional wall-clock budget hint for trainers that enforce timeouts.
+    token_budget:
+        Optional token budget hint for prompt/completion trainers.
+    action_budget:
+        Optional action or tool-call budget hint for stateful tasks.
     metadata:
         Public export and curriculum hints.
     """
@@ -128,7 +134,10 @@ class TaskSpec:
     renderers: tuple[RendererSpec, ...]
     verifier: VerifierSpec
     reward: RewardSpec
-    limits: TaskLimits
+    max_turns: int
+    timeout_seconds: float | None = None
+    token_budget: int | None = None
+    action_budget: int | None = None
     metadata: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:

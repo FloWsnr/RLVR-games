@@ -13,9 +13,10 @@ prototypes prove them.
 ## Current Implementation
 
 The first round now includes a shallow core API in `rlvr_physics.core`:
-immutable `TaskInstance` payloads, public/privileged payload separation,
-renderer content blocks, scalar session result dataclasses, append-only
-trajectories, a small task factory protocol, and Python task spec objects.
+immutable `TaskInstance` payloads with direct rollout limit fields,
+public/privileged payload separation, renderer content blocks, scalar session
+result dataclasses, append-only trajectories, a small task factory protocol,
+and Python task spec objects.
 
 No concrete task families are currently packaged. New task implementations
 should live behind public package facades and split specs, instance

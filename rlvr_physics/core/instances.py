@@ -7,58 +7,6 @@ from rlvr_physics.core.payloads import freeze_mapping, stable_hash
 
 
 @dataclass(frozen=True)
-class TaskLimits:
-    """Public task limits that constrain one rollout.
-
-    Parameters
-    ----------
-    max_turns:
-        Maximum number of model submissions accepted before truncation.
-    timeout_seconds:
-        Wall-clock budget hint for trainers that enforce timeouts.
-    token_budget:
-        Token budget hint for prompt/completion trainers.
-    action_budget:
-        Action or tool-call budget hint for stateful tasks.
-
-    Attributes
-    ----------
-    max_turns:
-        Maximum number of model submissions accepted before truncation.
-    timeout_seconds:
-        Optional wall-clock budget hint for trainers that enforce timeouts.
-    token_budget:
-        Optional token budget hint for prompt/completion trainers.
-    action_budget:
-        Optional action or tool-call budget hint for stateful tasks.
-    """
-
-    max_turns: int
-    timeout_seconds: float | None = None
-    token_budget: int | None = None
-    action_budget: int | None = None
-
-    def as_public_dict(self) -> Mapping[str, object]:
-        """Return trainer-safe limit metadata.
-
-        Returns
-        -------
-        Mapping[str, object]
-            Frozen mapping containing ``max_turns`` and any optional limit
-            fields that are not ``None``.
-        """
-
-        values: dict[str, object] = {"max_turns": self.max_turns}
-        if self.timeout_seconds is not None:
-            values["timeout_seconds"] = self.timeout_seconds
-        if self.token_budget is not None:
-            values["token_budget"] = self.token_budget
-        if self.action_budget is not None:
-            values["action_budget"] = self.action_budget
-        return freeze_mapping(values)
-
-
-@dataclass(frozen=True)
 class TaskInstance:
     """Immutable payload sampled for one task.
 
@@ -76,8 +24,14 @@ class TaskInstance:
         Data that may be rendered to the model.
     privileged_payload:
         Verifier-only data that must not leak through public metadata.
-    limits:
-        Rollout limits for sessions created from this instance.
+    max_turns:
+        Maximum number of model submissions accepted before truncation.
+    timeout_seconds:
+        Wall-clock budget hint for trainers that enforce timeouts.
+    token_budget:
+        Token budget hint for prompt/completion trainers.
+    action_budget:
+        Action or tool-call budget hint for stateful tasks.
     metadata:
         Public export and curriculum metadata.
 
@@ -95,8 +49,14 @@ class TaskInstance:
         Frozen data that may be rendered to the model.
     privileged_payload:
         Frozen verifier-only data that must not leak through public metadata.
-    limits:
-        Rollout limits for sessions created from this instance.
+    max_turns:
+        Maximum number of model submissions accepted before truncation.
+    timeout_seconds:
+        Optional wall-clock budget hint for trainers that enforce timeouts.
+    token_budget:
+        Optional token budget hint for prompt/completion trainers.
+    action_budget:
+        Optional action or tool-call budget hint for stateful tasks.
     metadata:
         Frozen public export and curriculum metadata.
     """
@@ -107,7 +67,10 @@ class TaskInstance:
     seed: int
     public_payload: Mapping[str, object]
     privileged_payload: Mapping[str, object]
-    limits: TaskLimits
+    max_turns: int
+    timeout_seconds: float | None = None
+    token_budget: int | None = None
+    action_budget: int | None = None
     metadata: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -118,6 +81,25 @@ class TaskInstance:
             self, "privileged_payload", freeze_mapping(self.privileged_payload)
         )
         object.__setattr__(self, "metadata", freeze_mapping(self.metadata))
+
+    def public_limits(self) -> Mapping[str, object]:
+        """Return trainer-safe rollout limits.
+
+        Returns
+        -------
+        Mapping[str, object]
+            Frozen mapping containing ``max_turns`` and any optional limit
+            fields that are not ``None``.
+        """
+
+        values: dict[str, object] = {"max_turns": self.max_turns}
+        if self.timeout_seconds is not None:
+            values["timeout_seconds"] = self.timeout_seconds
+        if self.token_budget is not None:
+            values["token_budget"] = self.token_budget
+        if self.action_budget is not None:
+            values["action_budget"] = self.action_budget
+        return freeze_mapping(values)
 
     def public_view(self) -> Mapping[str, object]:
         """Return metadata that can be safely exposed to a trainer.
@@ -135,7 +117,7 @@ class TaskInstance:
                 "kind": self.kind,
                 "domain": self.domain,
                 "seed": self.seed,
-                "limits": self.limits.as_public_dict(),
+                "limits": self.public_limits(),
                 "metadata": self.metadata,
                 "payload": self.public_payload,
             }
@@ -165,7 +147,7 @@ class TaskInstance:
                 "seed": self.seed,
                 "public_payload": self.public_payload,
                 "privileged_payload": self.privileged_payload,
-                "limits": self.limits.as_public_dict(),
+                "limits": self.public_limits(),
                 "metadata": self.metadata,
             }
         )
