@@ -76,6 +76,23 @@ These are the parts worth locking early:
 
 ## Core Concepts
 
+### Configured Task
+
+A configured task is the trainer-facing bundle for one task family
+configuration. It owns the public setup description and the callables needed to
+produce scalar execution:
+
+- a `TaskSpec` describing the configured task family
+- an instance builder that creates immutable `TaskInstance` payloads from seeds
+  or configured sources
+- a session builder that creates fresh scalar `TaskSession` objects from
+  immutable instances
+
+Configured tasks are not rollout sessions and do not own batches. Trainer
+integrations may use them to build or load instances, create one session per
+completion or episode, and keep adapter code independent of concrete task
+packages.
+
 ### Task Instance
 
 A task instance is the immutable payload sampled from a generator or loaded from
@@ -183,8 +200,8 @@ Each submission should produce a result with these concepts:
 
 - `accepted`: whether the submission was well-formed enough to evaluate or
   apply
-- `reward`: scalar reward for the step or episode
-- `score`: optional domain score used for filtering or reporting
+- `reward_result`: structured reward payload containing the scalar reward,
+  optional score, and reward metadata
 - `terminal`: whether the task ended successfully or unsuccessfully
 - `truncated`: whether limits ended the task before natural termination
 - `observation`: next model-facing turn when the task continues
@@ -194,6 +211,11 @@ Each submission should produce a result with these concepts:
 
 Reward is the trainer-facing scalar. A task may also expose interpretable reward
 features, but trainer integrations decide how much of that to surface.
+
+Reward policies should return a shared reward result shape containing the scalar
+reward, optional domain score, trainer-safe reward metadata, and privileged
+debug metadata. Task-specific reward code may live beside a task backbone, but
+the returned payload should stay consistent across task families.
 
 ### Trajectories
 
@@ -345,7 +367,7 @@ The underlying task result should remain the same as local execution.
 ## Task Specs
 
 Task specs should make task setup reproducible and trainer-friendly. A YAML spec
-should build a factory for immutable task instances and scalar sessions.
+should build a configured task for immutable task instances and scalar sessions.
 
 Likely rules:
 
@@ -388,9 +410,10 @@ Keep the package shallow until real tasks demand more structure:
 
 ```text
 rlvr_physics/core/
-  factory.py      # TaskFactory protocol and configured factory helper
+  factory.py      # ConfiguredTask helper for instances and sessions
   instances.py    # immutable task instance types
   payloads.py     # payload freezing, plain-data conversion, and stable hashes
+  rewards.py      # shared reward result types
   session.py      # TaskSession protocol and result dataclasses
   trajectory.py   # event log types and helpers
   rendering.py    # observation/content abstractions
@@ -410,24 +433,31 @@ config/tasks/
 Trainer integrations should be added only when an example proves the need.
 
 Individual task families may be packages once a single file starts mixing
-instance construction, task rules, renderers, verifiers, and sessions. Package
-`__init__.py` files should act as public facades for stable imports, while
-internal modules keep authoritative logic separate from peripherals. Cross-task
-reuse should go through `rlvr_physics.tasks._shared` only when the helper is
-task-implementation support; reusable payload invariants and validation belong
-in `rlvr_physics.core`.
+instance construction, backbones, renderers, verifiers, rewards, and sessions.
+Package `__init__.py` files should act as public facades for stable imports,
+while internal modules keep authoritative logic separate from peripherals.
+Cross-task reuse should go through `rlvr_physics.tasks._shared` only when the
+helper is task-implementation support; reusable payload invariants and
+validation belong in `rlvr_physics.core`.
 
-## First Prototypes
+## Prototype Expectations
 
-The next concrete task should prove the core with a focused physics numeric
-reasoning task:
+Early task prototypes should validate the scalar core without committing the
+project to broad abstractions or trainer-specific adapters. The first useful set
+should include both a single-step verifier path and a stateful or tool-use path,
+preferably in physics or scientific reasoning once the generic surfaces are
+usable.
 
-- deterministic generated parameters
-- computed ground truth with tolerances and units
-- public prompt and privileged solution separated
-- reward features for exactness, units, and invalid parse
-- likely first domains: projectile motion, simple circuits, or mechanics
-  constraints
+Each prototype should prove a small number of core behaviors:
+
+- deterministic instance construction from explicit seeds or source records
+- computed privileged ground truth separated from public observations
+- renderer output derived from canonical state rather than duplicated task logic
+- final-answer or tool-action submissions interpreted into structured payloads
+- rollout limits represented directly on immutable instances and public turns
+- reward features that explain exactness, invalid submissions, and truncation
+- verified trajectory events for reset, observation, submission parsing, state
+  transitions, verifier results, rewards, and truncations
 
 Coding verifier tasks should wait until the core needs sandbox or subprocess
 boundaries. Do not add broad abstractions before concrete tasks expose repeated

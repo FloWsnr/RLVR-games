@@ -5,27 +5,35 @@ Trainer-agnostic executable verifier tasks for RLVR.
 This repo is intentionally early-stage. The firm commitments are in
 [SPEC.md](SPEC.md): immutable task instances, one authoritative task backbone,
 scalar sessions, renderer peripherals, trainer-owned concurrency, executable
-verifier logic, and useful trajectories. Exact APIs, dataclass fields,
-integration surfaces, and module layout are design bets until the first
-single-step and stateful task
-prototypes prove them.
+verifier logic, and useful trajectories.
 
-## Current Implementation
+## Structure
 
-The first round now includes a shallow core API in `rlvr_physics.core`:
-immutable `TaskInstance` payloads with direct rollout limit fields,
-public/privileged payload separation, renderer content blocks, scalar session
-result dataclasses, append-only trajectories, a small task factory protocol,
-and Python task spec objects.
+```text
+rlvr_physics/
+  core/
+    factory.py      # configured task helper
+    instances.py    # immutable task instance payloads
+    payloads.py     # freezing, plain-data conversion, stable hashes
+    rendering.py    # observation and content block dataclasses
+    rewards.py      # shared reward result payload
+    session.py      # scalar session protocol and result dataclasses
+    specs.py        # Python task spec dataclasses
+    trajectory.py   # append-only trajectory events
+  tasks/
+    physics/
+      cart_inference/
+        backbone.py   # authoritative constant-acceleration rules
+        instances.py  # deterministic instance construction
+        rewards.py    # task-specific reward assignment
+        sessions.py   # scalar runtime session
+        specs.py      # public task configuration and spec helpers
+        task.py       # configured task builder
 
-No concrete task families are currently packaged. New task implementations
-should live behind public package facades and split specs, instance
-construction, renderers, verifier/rules logic, and sessions once they grow
-beyond a small probe.
-
-No trainer integration helpers are currently packaged. Dataset, reward,
-environment, and service integrations should be added only after concrete tasks
-prove the scalar core API.
+tests/
+  core/
+  tasks/physics/cart_inference/
+```
 
 ## Development
 
@@ -33,4 +41,13 @@ Install the full development environment with:
 
 ```bash
 uv sync --group dev
+```
+
+Run the validation stack with:
+
+```bash
+uv run ruff check
+uv run ruff format
+uv run pyright
+uv run pytest
 ```
