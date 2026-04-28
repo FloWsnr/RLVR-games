@@ -1,6 +1,7 @@
 """Tests for shared session result types."""
 
 from rlvr_physics.core.rendering import text_observation
+from rlvr_physics.core.rewards import RewardResult
 from rlvr_physics.core.session import (
     TaskStepResult,
     TaskSubmission,
@@ -30,8 +31,7 @@ def test_step_result_done_property_and_turn_payload() -> None:
     event = trajectory.append("reward", 0, {"reward": 1.0}, {"answer": 42})
     result = TaskStepResult(
         accepted=True,
-        reward=1.0,
-        score=1.0,
+        reward_result=RewardResult(reward=1.0, score=1.0),
         terminal=True,
         truncated=False,
         observation=turn,
@@ -41,6 +41,8 @@ def test_step_result_done_property_and_turn_payload() -> None:
     )
 
     assert result.done
+    assert result.reward == 1.0
+    assert result.score == 1.0
     assert result.observation is turn
     assert result.events == (event,)
 

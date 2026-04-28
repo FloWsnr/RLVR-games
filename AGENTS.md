@@ -24,13 +24,12 @@ renderer peripherals, and deferred trainer integration surfaces.
   (`uv run pyright`), and tests (`uv run pytest`).
 - Keep types explicit. Avoid optional/default parameters when they hide
   behavior.
-- Keep rollout limits as direct fields on `TaskInstance` and `TaskSpec`;
-  trainer-facing views may expose them as nested public limit mappings.
 - Do not use `from __future__ import annotations`.
 - Write numpy-style docstrings for functions and classes.
 - Keep task packages split by concern once a task grows beyond a small probe:
-  specs, instance construction, authoritative rules/verifiers, renderers, and
-  sessions should live in separate modules behind a public package facade.
+  specs, instance construction, authoritative backbones/verifiers, rewards,
+  renderers, and sessions should live in separate modules behind a public
+  package facade.
 - Put cross-task implementation helpers in `rlvr_physics.tasks._shared`; promote
   helpers to `rlvr_physics.core` only when they are core payload/session
   invariants rather than task convenience code.
@@ -38,6 +37,7 @@ renderer peripherals, and deferred trainer integration surfaces.
   directory. Name them descriptively.
 - Update `README.md`, `SPEC.md`, and `AGENTS.md` when changing mission,
   architecture, task domains, or public API.
+- Don't place all functions/classes in `__init__.py` files. Use `__init__.py` only for the public/user-facing API of a package.
 
 ## Git Hygiene
 

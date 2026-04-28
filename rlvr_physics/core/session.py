@@ -6,6 +6,7 @@ from typing import Mapping, Protocol
 
 from rlvr_physics.core.payloads import freeze_mapping, stable_hash
 from rlvr_physics.core.rendering import RenderedObservation
+from rlvr_physics.core.rewards import RewardResult
 from rlvr_physics.core.trajectory import TaskTrajectory, TrajectoryEvent
 
 _SESSION_COUNTER = count()
@@ -159,10 +160,8 @@ class TaskStepResult:
     ----------
     accepted:
         Whether the submission was well-formed enough to evaluate or apply.
-    reward:
-        Trainer-facing scalar reward.
-    score:
-        Domain score for filtering or reporting.
+    reward_result:
+        Structured trainer-facing reward result.
     terminal:
         Whether the task naturally ended.
     truncated:
@@ -178,8 +177,7 @@ class TaskStepResult:
     """
 
     accepted: bool
-    reward: float
-    score: float | None
+    reward_result: RewardResult
     terminal: bool
     truncated: bool
     observation: TaskTurn | None
@@ -192,6 +190,30 @@ class TaskStepResult:
 
         object.__setattr__(self, "public_info", freeze_mapping(self.public_info))
         object.__setattr__(self, "debug_info", freeze_mapping(self.debug_info))
+
+    @property
+    def reward(self) -> float:
+        """Return the trainer-facing scalar reward.
+
+        Returns
+        -------
+        float
+            Scalar reward from ``reward_result``.
+        """
+
+        return self.reward_result.reward
+
+    @property
+    def score(self) -> float | None:
+        """Return the optional domain score.
+
+        Returns
+        -------
+        float or None
+            Domain score from ``reward_result``.
+        """
+
+        return self.reward_result.score
 
     @property
     def done(self) -> bool:
@@ -250,7 +272,8 @@ class TaskSession(Protocol):
         Returns
         -------
         TaskStepResult
-            Step outcome, reward, optional next turn, metadata, and events.
+            Step outcome, structured reward result, optional next turn,
+            metadata, and events.
         """
         ...
 

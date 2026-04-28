@@ -1,6 +1,8 @@
-"""Tests for task factory helpers."""
+"""Tests for configured task helpers in core.factory."""
 
-from rlvr_physics.core.factory import ConfiguredTaskFactory
+import pytest
+
+from rlvr_physics.core.factory import ConfiguredTask
 from rlvr_physics.core.instances import TaskInstance
 from rlvr_physics.core.rendering import text_observation
 from rlvr_physics.core.session import (
@@ -20,8 +22,8 @@ from rlvr_physics.core.specs import (
 from rlvr_physics.core.trajectory import TaskTrajectory
 
 
-class FactoryTestSession:
-    """Minimal scalar session used by factory tests.
+class ConfiguredTaskTestSession:
+    """Minimal scalar session used by configured task tests.
 
     Parameters
     ----------
@@ -34,7 +36,7 @@ class FactoryTestSession:
         self._instance = instance
         self._trajectory = TaskTrajectory(
             task_id=instance.task_id,
-            session_id="factory-test-session",
+            session_id="configured-task-test-session",
         )
         self._turn: TaskTurn | None = None
 
@@ -56,7 +58,7 @@ class FactoryTestSession:
         _ = seed
         self._turn = TaskTurn(
             turn_index=0,
-            observation=text_observation("text", "factory prompt"),
+            observation=text_observation("text", "configured task prompt"),
             submission_modes=("final_text",),
             action_schema={},
             public_limits=self._instance.public_limits(),
@@ -81,7 +83,7 @@ class FactoryTestSession:
         return self._turn
 
     def submit(self, submission: TaskSubmission) -> TaskStepResult:
-        """Reject submissions because this fixture only tests factory reset.
+        """Reject submissions because this fixture only tests session reset.
 
         Parameters
         ----------
@@ -95,7 +97,7 @@ class FactoryTestSession:
         """
 
         _ = submission
-        raise NotImplementedError("factory test session does not score submissions")
+        raise NotImplementedError("configured task test session does not score")
 
     @property
     def trajectory(self) -> TaskTrajectory:
@@ -110,39 +112,103 @@ class FactoryTestSession:
         return self._trajectory
 
 
-def test_configured_task_factory_creates_scalar_sessions() -> None:
-    instance = TaskInstance(
-        task_id="factory-test",
-        kind="tests.factory.v1",
+def test_configured_task_builds_instances_and_creates_scalar_sessions() -> None:
+    spec = TaskSpec(
+        kind="tests.configured_task.v1",
         domain="tests",
-        seed=17,
+        source=SourceSpec(source_type="tests.configured_task", seed=17),
+        renderers=(RendererSpec(renderer_type="text"),),
+        verifier=VerifierSpec(verifier_type="fixture"),
+        reward=RewardSpec(reward_type="fixture", parameters={}),
+        max_turns=1,
+    )
+    task = ConfiguredTask(
+        spec=spec,
+        instance_builder=_build_configured_task_test_instance,
+        session_builder=_configured_task_test_session,
+    )
+
+    instance = task.build_instance(seed=17)
+    session = task.create_session(instance)
+    reset = session.reset(seed=3)
+
+    assert task.spec.kind == instance.kind
+    assert instance.task_id == "configured-task-test-17"
+    assert reset.turn.public_info["task_id"] == instance.task_id
+
+
+def test_configured_task_rejects_instances_from_other_tasks() -> None:
+    spec = TaskSpec(
+        kind="tests.configured_task.v1",
+        domain="tests",
+        source=SourceSpec(source_type="tests.configured_task", seed=17),
+        renderers=(RendererSpec(renderer_type="text"),),
+        verifier=VerifierSpec(verifier_type="fixture"),
+        reward=RewardSpec(reward_type="fixture", parameters={}),
+        max_turns=1,
+    )
+    task = ConfiguredTask(
+        spec=spec,
+        instance_builder=_build_mismatched_configured_task_test_instance,
+        session_builder=_configured_task_test_session,
+    )
+
+    with pytest.raises(ValueError, match="instance kind"):
+        task.build_instance(seed=17)
+
+
+def _build_configured_task_test_instance(seed: int) -> TaskInstance:
+    """Build an immutable test instance.
+
+    Parameters
+    ----------
+    seed:
+        Deterministic test instance seed.
+
+    Returns
+    -------
+    TaskInstance
+        Immutable test task instance.
+    """
+
+    return TaskInstance(
+        task_id=f"configured-task-test-{seed}",
+        kind="tests.configured_task.v1",
+        domain="tests",
+        seed=seed,
         public_payload={},
         privileged_payload={},
         max_turns=1,
     )
-    spec = TaskSpec(
-        kind=instance.kind,
-        domain=instance.domain,
-        source=SourceSpec(source_type="tests.factory", seed=17),
-        renderers=(RendererSpec(renderer_type="text"),),
-        verifier=VerifierSpec(verifier_type="fixture"),
-        reward=RewardSpec(reward_type="fixture", parameters={}),
-        max_turns=instance.max_turns,
+
+
+def _build_mismatched_configured_task_test_instance(seed: int) -> TaskInstance:
+    """Build an instance whose kind does not match the configured spec.
+
+    Parameters
+    ----------
+    seed:
+        Deterministic test instance seed.
+
+    Returns
+    -------
+    TaskInstance
+        Immutable mismatched task instance.
+    """
+
+    return TaskInstance(
+        task_id=f"configured-task-test-{seed}",
+        kind="tests.other_task.v1",
+        domain="tests",
+        seed=seed,
+        public_payload={},
+        privileged_payload={},
+        max_turns=1,
     )
-    factory = ConfiguredTaskFactory(
-        spec=spec,
-        session_builder=_factory_test_session,
-    )
-
-    session = factory.create_session(instance)
-    reset = session.reset(seed=3)
-
-    assert factory.spec.kind == instance.kind
-    assert reset.turn.public_info["task_id"] == instance.task_id
 
 
-def _factory_test_session(instance: TaskInstance) -> TaskSession:
-    """Create a minimal session for factory tests.
+def _configured_task_test_session(instance: TaskInstance) -> TaskSession:
+    """Create a minimal session for configured task tests.
 
     Parameters
     ----------
@@ -155,4 +221,4 @@ def _factory_test_session(instance: TaskInstance) -> TaskSession:
         Fresh scalar session backed by ``instance``.
     """
 
-    return FactoryTestSession(instance)
+    return ConfiguredTaskTestSession(instance)

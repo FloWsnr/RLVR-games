@@ -10,8 +10,8 @@ from rlvr_physics.core.payloads import (
     to_plain_data,
 )
 from rlvr_physics.core.factory import (
-    ConfiguredTaskFactory,
-    TaskFactory,
+    ConfiguredTask,
+    TaskInstanceBuilder,
     TaskSessionBuilder,
 )
 from rlvr_physics.core.rendering import (
@@ -22,6 +22,7 @@ from rlvr_physics.core.rendering import (
     image_observation,
     text_observation,
 )
+from rlvr_physics.core.rewards import RewardResult
 from rlvr_physics.core.session import (
     TaskResetResult,
     TaskSession,
@@ -42,13 +43,14 @@ from rlvr_physics.core.trajectory import TaskTrajectory, TrajectoryEvent
 __all__ = [
     "ImageContent",
     "ObservationContent",
-    "ConfiguredTaskFactory",
+    "ConfiguredTask",
     "RenderedObservation",
+    "RewardResult",
     "RendererSpec",
     "RewardSpec",
     "SourceSpec",
     "TaskInstance",
-    "TaskFactory",
+    "TaskInstanceBuilder",
     "TaskResetResult",
     "TaskSession",
     "TaskSessionBuilder",

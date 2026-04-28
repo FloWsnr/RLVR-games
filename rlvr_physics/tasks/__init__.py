@@ -1,3 +1,5 @@
 """Executable task families."""
 
-__all__: list[str] = []
+from rlvr_physics.tasks import physics
+
+__all__ = ["physics"]
