@@ -13,7 +13,7 @@ Use a separate review subagent to challenge the latest change before handoff. Yo
 
 ## Required Workflow
 
-1. After completing a meaningful change, start an independent review subagent with `model: gpt-5.4` and `reasoning_effort: xhigh`.
+1. After completing a meaningful change, start an independent review subagent with `model: gpt-5.5` and `reasoning_effort: xhigh`.
 2. Keep the review context intentionally narrow. Do not fork the full conversation by default. Pass only the task-local information the reviewer needs.
 3. Give the reviewer a short neural summary of:
    - the user objective
