@@ -24,16 +24,21 @@ Before committing, check ALL changed Python files for:
 
 If issues are found, fix them before proceeding to the commit. Do NOT ask the user — just fix them silently and include the fixes in the commit.
 
-### Step 3: Tests
+### Step 3: Check SPEC.md
+
+Check if our changes align with the current `SPEC.md`, i.e. our mission and constraints.
+If not discussed with the user, ask if this change in API or functionality is intentional.
+
+### Step 4: Tests
 
 Make sure we ran all relevant tests already. If not, run them now and fix any failures before committing.
 
-### Step 4: Update AGENTs.md, SPEC.md, and README.md if relevant
+### Step 5: Update AGENTs.md, SPEC.md, and README.md if relevant
 
 If the commit includes important changes in API or functionality, update the `AGENTS.md` documentation file to reflect these changes. This ensures that the documentation stays accurate and helpful for future reference. Also check and update the `SPEC.md` and `README.md` files if relevant.
 
 
-### Step 5: Stage and Commit
+### Step 6: Stage and Commit
 
 1. Stage only the session-relevant files by name (never `git add -A` or `git add .`)
 2. Run `git log --oneline -5` to match the repository's commit message style
