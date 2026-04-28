@@ -1,35 +1,31 @@
 """Tests for the cart inference scalar session."""
 
 from rlvr_physics.core.session import TaskSubmission
-from rlvr_physics.tasks.physics.cart_inference.instances import (
-    build_cart_inference_instance,
-)
-from rlvr_physics.tasks.physics.cart_inference.sessions import CartInferenceSession
-from rlvr_physics.tasks.physics.cart_inference.specs import DEFAULT_CONFIG
+from tests.tasks.physics.cart_inference.conftest import CartInferenceFixture
 
 
-def test_session_accepts_structured_final_answer_action() -> None:
-    instance = build_cart_inference_instance(seed=123, config=DEFAULT_CONFIG)
-    session = CartInferenceSession(instance)
-    reset = session.reset(seed=456)
-    exact_position_m = instance.privileged_payload["exact_target_position_m"]
+def test_session_accepts_structured_final_answer_action(
+    cart_task_fixture: CartInferenceFixture,
+) -> None:
+    fixture = cart_task_fixture
 
-    result = session.submit(
-        TaskSubmission.action(f'{{"action": "final_answer", "x": {exact_position_m}}}')
+    result = fixture.session.submit(
+        TaskSubmission.action(
+            f'{{"action": "final_answer", "x": {fixture.exact_target_position_m}}}'
+        )
     )
 
-    assert reset.turn.submission_modes == ("action",)
+    assert fixture.reset.turn.submission_modes == ("action",)
+    assert fixture.renderer_name == "cart_inference.inline_text"
     assert result.accepted
     assert result.terminal
     assert result.reward == 1.0
 
 
-def test_session_rejects_raw_final_text_for_cart_task() -> None:
-    instance = build_cart_inference_instance(seed=123, config=DEFAULT_CONFIG)
-    session = CartInferenceSession(instance)
-    session.reset(seed=456)
-
-    result = session.submit(TaskSubmission.final_text("x = 0 m"))
+def test_session_rejects_raw_final_text_for_cart_task(
+    cart_task_fixture: CartInferenceFixture,
+) -> None:
+    result = cart_task_fixture.session.submit(TaskSubmission.final_text("x = 0 m"))
 
     assert not result.accepted
     assert not result.terminal
