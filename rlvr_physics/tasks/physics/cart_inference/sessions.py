@@ -27,6 +27,7 @@ from rlvr_physics.tasks.physics.cart_inference.renderers import (
     render_cart_observation,
     validate_cart_renderer_type,
 )
+from rlvr_physics.tasks.physics.cart_inference.prompting import cart_initial_feedback
 
 
 class CartInferenceSession:
@@ -81,9 +82,7 @@ class CartInferenceSession:
         self._backbone.reset_rollout()
         self._turn = self._build_turn(
             turn_index=0,
-            feedback=(
-                "A cart moves on a horizontal track with constant unknown acceleration."
-            ),
+            feedback=cart_initial_feedback(),
             current_measurement=None,
         )
         return TaskResetResult(

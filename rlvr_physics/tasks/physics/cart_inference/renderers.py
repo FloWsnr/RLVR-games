@@ -14,6 +14,10 @@ from rlvr_physics.tasks.physics.cart_inference.backbone import (
     FINAL_ANSWER_ACTION,
     MEASURE_POSITION_ACTION,
 )
+from rlvr_physics.tasks.physics.cart_inference.prompting import (
+    cart_text_prompt_template,
+    render_prompt_template,
+)
 
 CART_TEXT_RENDERER = "cart_inference.text"
 CART_IMAGE_RENDERER = "cart_inference.image"
@@ -169,45 +173,47 @@ def render_cart_text(context: CartRenderContext) -> str:
         Model-facing text prompt.
     """
 
-    state = context
-    lines = [
-        context.feedback,
-        "",
-        "Initial state:",
-        f"- position x0 = {_fmt(state.initial_position_m)} m",
-        f"- velocity v0 = {_fmt(state.initial_velocity_mps)} m/s",
-        "",
-        "Measurement access:",
-        (
-            f"- request {MEASURE_POSITION_ACTION}(time) with "
-            f"{_fmt(state.min_measurement_time_s)} <= time <= "
-            f"{_fmt(state.max_measurement_time_s)} seconds"
-        ),
-        f"- measurement noise is bounded by +/- {_fmt(state.measurement_noise_abs_m)} m",
-        f"- measurements used: {context.measurements_used} / {context.action_budget}",
-        f"- measurements remaining: {context.measurements_remaining}",
-        "",
-        "Current measurement:",
-    ]
+    return render_prompt_template(
+        cart_text_prompt_template(),
+        {
+            "feedback": context.feedback,
+            "initial_position_m": _fmt(context.initial_position_m),
+            "initial_velocity_mps": _fmt(context.initial_velocity_mps),
+            "measure_position_action": MEASURE_POSITION_ACTION,
+            "min_measurement_time_s": _fmt(context.min_measurement_time_s),
+            "max_measurement_time_s": _fmt(context.max_measurement_time_s),
+            "measurement_noise_abs_m": _fmt(context.measurement_noise_abs_m),
+            "measurements_used": context.measurements_used,
+            "action_budget": context.action_budget,
+            "measurements_remaining": context.measurements_remaining,
+            "current_measurement_line": _render_current_measurement_line(context),
+            "target_time_s": _fmt(context.target_time_s),
+            "final_answer_action": FINAL_ANSWER_ACTION,
+        },
+    )
+
+
+def _render_current_measurement_line(context: CartRenderContext) -> str:
+    """Build the current measurement line for the text prompt.
+
+    Parameters
+    ----------
+    context:
+        Public cart rollout state to render.
+
+    Returns
+    -------
+    str
+        Current measurement line, or a no-measurement placeholder.
+    """
+
     if context.current_measurement is not None:
         measurement = context.current_measurement
-        lines.append(
+        return (
             f"- t={_fmt(measurement.time_s)} s, "
             f"x={_fmt(measurement.measured_position_m)} m"
         )
-    else:
-        lines.append("- none on this turn")
-
-    lines.extend(
-        [
-            "",
-            (
-                f"Predict the cart position at t={_fmt(state.target_time_s)} s. "
-                f"Submit {FINAL_ANSWER_ACTION}(x) with x in meters."
-            ),
-        ]
-    )
-    return "\n".join(lines)
+    return "- none on this turn"
 
 
 def render_cart_image(context: CartRenderContext) -> RenderedObservation:

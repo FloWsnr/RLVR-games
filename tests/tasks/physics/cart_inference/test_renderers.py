@@ -1,7 +1,9 @@
 """Tests for cart inference renderers."""
 
+from importlib import resources
 from struct import unpack
 
+import pytest
 from rlvr_physics.core.instances import TaskInstance
 from rlvr_physics.core.rendering import ImageContent, PNG_MIME_TYPE, TextContent
 from rlvr_physics.core.session import TaskSubmission
@@ -16,8 +18,15 @@ from rlvr_physics.tasks.physics.cart_inference.renderers import (
     _render_cart_svg,
     render_cart_observation,
 )
+from rlvr_physics.tasks.physics.cart_inference.prompting import (
+    cart_initial_feedback,
+    cart_text_prompt_template,
+    render_prompt_template,
+)
 from rlvr_physics.tasks.physics.cart_inference.sessions import CartInferenceSession
 from rlvr_physics.tasks.physics.cart_inference.specs import DEFAULT_CONFIG
+
+_CART_PACKAGE = "rlvr_physics.tasks.physics.cart_inference"
 
 
 def test_text_renderer_reports_current_measurement_only() -> None:
@@ -39,6 +48,24 @@ def test_text_renderer_reports_current_measurement_only() -> None:
     assert "t=5 s" not in observation.text()
     assert "measurements used: 2 / 3" in observation.text()
     assert "measurements remaining: 1" in observation.text()
+
+
+def test_cart_prompt_templates_are_task_local_files() -> None:
+    assert cart_text_prompt_template() == _cart_prompt_file_text("text_observation.md")
+    assert cart_initial_feedback() == _cart_prompt_file_text("initial_feedback.md")
+
+
+def test_prompt_template_renderer_allows_literal_json_braces() -> None:
+    template = 'Submit JSON like {"x": 1.23}; x0={{initial_position_m}} m.'
+
+    rendered = render_prompt_template(template, {"initial_position_m": "0.5"})
+
+    assert rendered == 'Submit JSON like {"x": 1.23}; x0=0.5 m.'
+
+
+def test_prompt_template_renderer_rejects_unknown_markers() -> None:
+    with pytest.raises(ValueError, match="missing_value"):
+        render_prompt_template("x0={{missing_value}} m", {})
 
 
 def test_image_renderer_returns_png_image_with_text_fallback() -> None:
@@ -192,3 +219,25 @@ def _png_size(data: bytes) -> tuple[int, int]:
     """Return the width and height from a PNG IHDR chunk."""
 
     return unpack(">II", data[16:24])
+
+
+def _cart_prompt_file_text(filename: str) -> str:
+    """Return normalized text from a cart task prompt asset.
+
+    Parameters
+    ----------
+    filename:
+        Prompt asset filename inside the cart task ``prompts`` directory.
+
+    Returns
+    -------
+    str
+        Normalized prompt asset text.
+    """
+
+    return (
+        resources.files(_CART_PACKAGE)
+        .joinpath("prompts", filename)
+        .read_text(encoding="utf-8")
+        .rstrip()
+    )

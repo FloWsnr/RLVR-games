@@ -26,6 +26,8 @@ rlvr_physics/
       cart_inference/
         backbone.py   # authoritative constant-acceleration rules
         instances.py  # deterministic instance construction
+        prompting.py  # task-local prompt resource loading
+        prompts/      # model-facing prompt text templates
         renderers.py  # deterministic text and PNG image observations
         rewards.py    # task-specific reward assignment
         sessions.py   # scalar runtime session

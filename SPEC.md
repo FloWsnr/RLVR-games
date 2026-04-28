@@ -181,10 +181,16 @@ model-facing image content.
 Renderers should be deterministic for a given state, renderer config, and seed.
 They must not own verifier state. If a renderer hides information, that hidden
 information must still live in the canonical instance or state.
+
+Substantial model-facing prompt wording should live in task-local prompt files,
+with renderers responsible for deterministic formatting, public state insertion,
+and content block construction.
+
 Turn renderers should not accumulate prior observations or actions. For
 multi-turn tasks, they should render the current public state, current tool
 result, or current feedback, while trainer integrations keep the conversation
 transcript or rollout trace when a model needs previous turns.
+
 Configured task builders may capture a selected renderer in the session builder;
 task specs should still advertise the supported renderer set.
 

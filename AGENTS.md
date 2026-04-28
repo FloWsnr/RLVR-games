@@ -15,7 +15,7 @@ renderer peripherals, and deferred trainer integration surfaces.
 - Lock invariants before implementation details. Keep exact APIs and layouts
   provisional until real tasks prove them.
 
-## General Code Expectations
+## General Code Rules
 
 - Add focused pytest coverage.
 - Prefer deterministic tests with explicit seeds.
@@ -30,17 +30,12 @@ renderer peripherals, and deferred trainer integration surfaces.
   specs, instance construction, authoritative backbones/verifiers, rewards,
   renderers, and sessions should live in separate modules behind a public
   package facade.
-- Put cross-task implementation helpers in `rlvr_physics.tasks._shared`; promote
-  helpers to `rlvr_physics.core` only when they are core payload/session
-  invariants rather than task convenience code.
-- Image observations emitted to trainers must be PNG payloads. Tasks may build
-  SVG internally, but should rasterize it before creating model-facing image
-  content.
 - If asked to use worktrees, create new worktrees in the `./worktrees/`
   directory. Name them descriptively.
 - Update `README.md`, `SPEC.md`, and `AGENTS.md` when changing mission,
   architecture, task domains, or public API.
 - Don't export every symbol in `__init__.py` files. Use `__init__.py` only for the public/user-facing API of a package.
+- If you encounter changes you didn't do yourself, you can usually assume they are from another agent or user. Therefore, don't revert them. If you have questions about them, ask the other agent or user.
 
 ## Git Hygiene
 
