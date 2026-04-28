@@ -71,7 +71,9 @@ def cart_task_fixture(
     """Return a configured cart task with reset session and renderer info."""
 
     instance = cart_task.build_instance(seed=CART_INSTANCE_SEED)
-    session = CartInferenceSession(instance)
+    session = cart_task.create_session(instance)
+    if not isinstance(session, CartInferenceSession):
+        raise TypeError("cart_task must create CartInferenceSession")
     reset = session.reset(seed=CART_SESSION_SEED)
     exact_position = instance.privileged_payload["exact_target_position_m"]
     if not isinstance(exact_position, int | float) or isinstance(exact_position, bool):

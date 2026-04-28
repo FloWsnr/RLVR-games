@@ -1,6 +1,7 @@
 """Tests for the cart inference scalar session."""
 
 from rlvr_physics.core.session import TaskSubmission
+from rlvr_physics.tasks.physics.cart_inference.renderers import CART_TEXT_RENDERER
 from tests.tasks.physics.cart_inference.conftest import CartInferenceFixture
 
 
@@ -16,7 +17,7 @@ def test_session_accepts_structured_final_answer_action(
     )
 
     assert fixture.reset.turn.submission_modes == ("action",)
-    assert fixture.renderer_name == "cart_inference.inline_text"
+    assert fixture.renderer_name == CART_TEXT_RENDERER
     assert result.accepted
     assert result.terminal
     assert result.reward == 1.0

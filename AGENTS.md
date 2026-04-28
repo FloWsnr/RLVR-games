@@ -15,7 +15,7 @@ renderer peripherals, and deferred trainer integration surfaces.
 - Lock invariants before implementation details. Keep exact APIs and layouts
   provisional until real tasks prove them.
 
-## Code Expectations
+## General Code Expectations
 
 - Add focused pytest coverage.
 - Prefer deterministic tests with explicit seeds.

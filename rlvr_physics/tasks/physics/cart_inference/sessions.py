@@ -1,7 +1,6 @@
 """Scalar session implementation for the cart inference task."""
 
 from rlvr_physics.core.instances import TaskInstance
-from rlvr_physics.core.rendering import text_observation
 from rlvr_physics.core.session import (
     TaskResetResult,
     TaskStepResult,
@@ -23,6 +22,13 @@ from rlvr_physics.tasks.physics.cart_inference.backbone import (
 from rlvr_physics.tasks.physics.cart_inference.rewards import (
     reward_final_answer,
 )
+from rlvr_physics.tasks.physics.cart_inference.renderers import (
+    CartMeasurementView,
+    CartPublicStateView,
+    CartRenderContext,
+    render_cart_observation,
+    validate_cart_renderer_type,
+)
 
 
 class CartInferenceSession:
@@ -39,20 +45,25 @@ class CartInferenceSession:
         Immutable cart inference task instance.
     """
 
-    def __init__(self, instance: TaskInstance) -> None:
+    def __init__(self, instance: TaskInstance, renderer_type: str) -> None:
         """Initialize a mutable scalar runtime session.
 
         Parameters
         ----------
         instance:
             Immutable cart inference task instance.
+        renderer_type:
+            Renderer identifier used for every observation in this session.
         """
 
+        validate_cart_renderer_type(renderer_type)
         self.instance = instance
+        self._renderer_type = renderer_type
         self._backbone = CartInferenceBackbone(instance)
         self._session_id: str | None = None
         self._trajectory: TaskTrajectory | None = None
         self._turn: TaskTurn | None = None
+        self._measurement_history: list[CartMeasurementView] = []
         self._submissions_used: int = 0
 
     def reset(self, seed: int) -> TaskResetResult:
@@ -74,6 +85,7 @@ class CartInferenceSession:
             task_id=self.instance.task_id, session_id=self._session_id
         )
         self._submissions_used = 0
+        self._measurement_history = []
         self._backbone.reset_rollout()
         self._turn = self._build_turn(
             turn_index=0,
@@ -252,6 +264,12 @@ class CartInferenceSession:
                 "true_position_m": measurement.true_position_m,
                 "noise_m": measurement.noise_m,
             },
+        )
+        self._measurement_history.append(
+            CartMeasurementView(
+                time_s=measurement.time_s,
+                measured_position_m=measurement.measured_position_m,
+            )
         )
         feedback = (
             f"Measurement at t={measurement.time_s:g}s: "
@@ -468,31 +486,23 @@ class CartInferenceSession:
         """Build the next model-facing turn."""
 
         state = self._backbone.state
-        prompt = "\n".join(
-            [
-                feedback,
-                "",
-                f"Initial position: {state.initial_position_m:g} m.",
-                f"Initial velocity: {state.initial_velocity_mps:g} m/s.",
-                (
-                    "You may request a position measurement with "
-                    f"{MEASURE_POSITION_ACTION}(time), where time is between "
-                    f"{state.min_measurement_time_s:g}s and "
-                    f"{state.max_measurement_time_s:g}s."
-                ),
-                (
-                    "Measurement noise is deterministically bounded by "
-                    f"{state.measurement_noise_abs_m:g} m."
-                ),
-                (
-                    f"Predict the cart position at t={state.target_time_s:g}s "
-                    f"and submit {FINAL_ANSWER_ACTION} with x in meters."
-                ),
-            ]
+        render_context = CartRenderContext(
+            state=CartPublicStateView(
+                initial_position_m=state.initial_position_m,
+                initial_velocity_mps=state.initial_velocity_mps,
+                target_time_s=state.target_time_s,
+                min_measurement_time_s=state.min_measurement_time_s,
+                max_measurement_time_s=state.max_measurement_time_s,
+                measurement_noise_abs_m=state.measurement_noise_abs_m,
+            ),
+            feedback=feedback,
+            measurements=tuple(self._measurement_history),
+            action_budget=self._backbone.action_budget,
+            measurements_remaining=self._measurements_remaining(),
         )
         return TaskTurn(
             turn_index=turn_index,
-            observation=text_observation("cart_inference.inline_text", prompt),
+            observation=render_cart_observation(self._renderer_type, render_context),
             submission_modes=("action",),
             action_schema={
                 "actions": {

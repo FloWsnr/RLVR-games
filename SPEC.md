@@ -180,6 +180,8 @@ Renderers turn canonical task state and public metadata into observations:
 Renderers should be deterministic for a given state, renderer config, and seed.
 They must not own verifier state. If a renderer hides information, that hidden
 information must still live in the canonical instance or state.
+Configured task builders may capture a selected renderer in the session builder;
+task specs should still advertise the supported renderer set.
 
 ### Submissions
 

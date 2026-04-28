@@ -9,6 +9,10 @@ from rlvr_physics.core.specs import (
     TaskSpec,
     VerifierSpec,
 )
+from rlvr_physics.tasks.physics.cart_inference.renderers import (
+    CART_IMAGE_RENDERER,
+    CART_TEXT_RENDERER,
+)
 
 CART_INFERENCE_KIND = "physics.cart_inference.v1"
 CART_INFERENCE_DOMAIN = "physics"
@@ -173,7 +177,11 @@ def cart_inference_spec(config: CartInferenceConfig) -> TaskSpec:
             parameters=parameters,
         ),
         renderers=(
-            RendererSpec(renderer_type="cart_inference.inline_text", parameters={}),
+            RendererSpec(renderer_type=CART_TEXT_RENDERER, parameters={}),
+            RendererSpec(
+                renderer_type=CART_IMAGE_RENDERER,
+                parameters={"mime_type": "image/svg+xml"},
+            ),
         ),
         verifier=VerifierSpec(
             verifier_type="constant_acceleration_numeric",

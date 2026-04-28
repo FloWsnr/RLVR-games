@@ -3,6 +3,10 @@
 from rlvr_physics.tasks.physics.cart_inference.instances import (
     build_cart_inference_instance,
 )
+from rlvr_physics.tasks.physics.cart_inference.renderers import (
+    CART_IMAGE_RENDERER,
+    CART_TEXT_RENDERER,
+)
 from rlvr_physics.tasks.physics.cart_inference.sessions import CartInferenceSession
 from rlvr_physics.tasks.physics.cart_inference.specs import (
     CART_INFERENCE_DOMAIN,
@@ -17,6 +21,8 @@ from rlvr_physics.tasks.physics.cart_inference.task import cart_inference_task
 __all__ = [
     "CART_INFERENCE_DOMAIN",
     "CART_INFERENCE_KIND",
+    "CART_IMAGE_RENDERER",
+    "CART_TEXT_RENDERER",
     "DEFAULT_CONFIG",
     "CartInferenceConfig",
     "CartInferenceSession",
