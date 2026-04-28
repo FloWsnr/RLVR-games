@@ -1,9 +1,9 @@
 """Tests for cart inference renderers."""
 
-from xml.etree import ElementTree
+from struct import unpack
 
-from rlvr_physics.core.rendering import ImageContent, TextContent
 from rlvr_physics.core.instances import TaskInstance
+from rlvr_physics.core.rendering import ImageContent, PNG_MIME_TYPE, TextContent
 from rlvr_physics.core.session import TaskSubmission
 from rlvr_physics.tasks.physics.cart_inference.instances import (
     build_cart_inference_instance,
@@ -13,6 +13,7 @@ from rlvr_physics.tasks.physics.cart_inference.renderers import (
     CART_TEXT_RENDERER,
     CartMeasurementView,
     CartRenderContext,
+    _render_cart_svg,
     render_cart_observation,
 )
 from rlvr_physics.tasks.physics.cart_inference.sessions import CartInferenceSession
@@ -40,7 +41,7 @@ def test_text_renderer_reports_current_measurement_only() -> None:
     assert "measurements remaining: 1" in observation.text()
 
 
-def test_image_renderer_returns_svg_image_with_text_fallback() -> None:
+def test_image_renderer_returns_png_image_with_text_fallback() -> None:
     instance = build_cart_inference_instance(seed=123, config=DEFAULT_CONFIG)
     session = CartInferenceSession(instance, CART_IMAGE_RENDERER)
 
@@ -51,9 +52,9 @@ def test_image_renderer_returns_svg_image_with_text_fallback() -> None:
     assert len(observation.contents) == 2
     assert isinstance(observation.contents[0], ImageContent)
     assert isinstance(observation.contents[1], TextContent)
-    assert observation.contents[0].mime_type == "image/svg+xml"
-    assert observation.contents[0].data.startswith(b"<svg")
-    ElementTree.fromstring(observation.contents[0].data.decode("utf-8"))
+    assert observation.contents[0].mime_type == PNG_MIME_TYPE
+    assert observation.contents[0].data.startswith(b"\x89PNG\r\n\x1a\n")
+    assert _png_size(observation.contents[0].data) == (960, 640)
     assert "Initial state:" not in observation.contents[0].alt_text
     assert "Initial state:" in observation.text()
 
@@ -66,6 +67,21 @@ def test_image_renderer_omits_privileged_state() -> None:
 
     observation = reset.turn.observation
     assert isinstance(observation.contents[0], ImageContent)
+    svg_text = _render_cart_svg(
+        CartRenderContext(
+            initial_position_m=1.25,
+            initial_velocity_mps=-0.75,
+            target_time_s=12.0,
+            min_measurement_time_s=0.0,
+            max_measurement_time_s=10.0,
+            measurement_noise_abs_m=0.02,
+            feedback="A cart moves on a horizontal track.",
+            current_measurement=None,
+            measurements_used=0,
+            action_budget=3,
+            measurements_remaining=3,
+        )
+    )
     hidden_fragments = (
         "9.876543",
         "9.87654",
@@ -73,14 +89,10 @@ def test_image_renderer_omits_privileged_state() -> None:
         "987654321",
         "0.123456",
     )
-    rendered_payloads = (
-        observation.contents[0].data.decode("utf-8"),
-        observation.contents[0].alt_text,
-        observation.text(),
-    )
-    for payload in rendered_payloads:
-        for fragment in hidden_fragments:
-            assert fragment not in payload
+    for fragment in hidden_fragments:
+        assert fragment not in svg_text
+        assert fragment not in observation.contents[0].alt_text
+        assert fragment not in observation.text()
 
 
 def test_render_context_exposes_only_public_state_fields() -> None:
@@ -113,15 +125,17 @@ def test_image_renderer_reports_current_measurement_only() -> None:
     second_result = session.submit(TaskSubmission.action("measure_position(6)"))
 
     assert first_result.observation is not None
-    assert "t=5 s" in first_result.observation.observation.text()
+    first_observation = first_result.observation.observation
+    assert isinstance(first_observation.contents[0], ImageContent)
+    assert "t=5 s" in first_observation.text()
     assert second_result.observation is not None
     observation = second_result.observation.observation
     assert isinstance(observation.contents[0], ImageContent)
-    image_text = observation.contents[0].data.decode("utf-8")
-    ElementTree.fromstring(image_text)
-    assert "Current measurement" in image_text
-    assert "t=6 s" in image_text
-    assert "t=5 s" not in image_text
+    assert first_observation.contents[0].data != observation.contents[0].data
+    assert observation.contents[0].data.startswith(b"\x89PNG\r\n\x1a\n")
+    assert "Current measurement:" in observation.text()
+    assert "t=6 s" in observation.text()
+    assert "t=5 s" not in observation.text()
 
 
 def test_renderer_context_accepts_current_measurement() -> None:
@@ -143,7 +157,8 @@ def test_renderer_context_accepts_current_measurement() -> None:
 
     assert isinstance(observation.contents[0], ImageContent)
     assert "t=5 s" in observation.text()
-    assert "Measurements: 1 / 3" in observation.contents[0].data.decode("utf-8")
+    assert observation.contents[0].mime_type == PNG_MIME_TYPE
+    assert observation.contents[0].data.startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def _hidden_sentinel_instance() -> TaskInstance:
@@ -171,3 +186,9 @@ def _hidden_sentinel_instance() -> TaskInstance:
         max_turns=5,
         action_budget=3,
     )
+
+
+def _png_size(data: bytes) -> tuple[int, int]:
+    """Return the width and height from a PNG IHDR chunk."""
+
+    return unpack(">II", data[16:24])

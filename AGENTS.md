@@ -33,6 +33,9 @@ renderer peripherals, and deferred trainer integration surfaces.
 - Put cross-task implementation helpers in `rlvr_physics.tasks._shared`; promote
   helpers to `rlvr_physics.core` only when they are core payload/session
   invariants rather than task convenience code.
+- Image observations emitted to trainers must be PNG payloads. Tasks may build
+  SVG internally, but should rasterize it before creating model-facing image
+  content.
 - If asked to use worktrees, create new worktrees in the `./worktrees/`
   directory. Name them descriptively.
 - Update `README.md`, `SPEC.md`, and `AGENTS.md` when changing mission,

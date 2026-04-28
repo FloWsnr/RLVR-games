@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from rlvr_physics.core.rendering import PNG_MIME_TYPE
 from rlvr_physics.core.specs import (
     RendererSpec,
     RewardSpec,
@@ -180,7 +181,7 @@ def cart_inference_spec(config: CartInferenceConfig) -> TaskSpec:
             RendererSpec(renderer_type=CART_TEXT_RENDERER, parameters={}),
             RendererSpec(
                 renderer_type=CART_IMAGE_RENDERER,
-                parameters={"mime_type": "image/svg+xml"},
+                parameters={"mime_type": PNG_MIME_TYPE},
             ),
         ),
         verifier=VerifierSpec(

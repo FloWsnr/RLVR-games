@@ -20,11 +20,13 @@ rlvr_physics/
     session.py      # scalar session protocol and result dataclasses
     specs.py        # Python task spec dataclasses
   tasks/
+    _shared/
+      rendering.py  # cross-task SVG rasterization helpers
     physics/
       cart_inference/
         backbone.py   # authoritative constant-acceleration rules
         instances.py  # deterministic instance construction
-        renderers.py  # deterministic text and SVG image observations
+        renderers.py  # deterministic text and PNG image observations
         rewards.py    # task-specific reward assignment
         sessions.py   # scalar runtime session
         specs.py      # public task configuration and spec helpers

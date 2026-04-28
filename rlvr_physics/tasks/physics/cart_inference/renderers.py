@@ -9,6 +9,7 @@ from rlvr_physics.core.rendering import (
     image_observation,
     text_observation,
 )
+from rlvr_physics.tasks._shared.rendering import rasterize_svg
 from rlvr_physics.tasks.physics.cart_inference.backbone import (
     FINAL_ANSWER_ACTION,
     MEASURE_POSITION_ACTION,
@@ -16,7 +17,6 @@ from rlvr_physics.tasks.physics.cart_inference.backbone import (
 
 CART_TEXT_RENDERER = "cart_inference.text"
 CART_IMAGE_RENDERER = "cart_inference.image"
-SVG_MIME_TYPE = "image/svg+xml"
 SVG_FONT_FAMILY = "Arial, sans-serif"
 
 
@@ -211,7 +211,7 @@ def render_cart_text(context: CartRenderContext) -> str:
 
 
 def render_cart_image(context: CartRenderContext) -> RenderedObservation:
-    """Build an SVG image observation for one cart inference turn.
+    """Build a raster image observation for one cart inference turn.
 
     Parameters
     ----------
@@ -221,18 +221,17 @@ def render_cart_image(context: CartRenderContext) -> RenderedObservation:
     Returns
     -------
     RenderedObservation
-        Observation with an SVG image block followed by text fallback.
+        Observation with a PNG image block followed by text fallback.
     """
 
     text = render_cart_text(context)
     svg_payload = _render_cart_svg(context)
+    raster_image = rasterize_svg(svg_payload)
     return image_observation(
         renderer_name=CART_IMAGE_RENDERER,
-        data=svg_payload.encode("utf-8"),
-        mime_type=SVG_MIME_TYPE,
-        alt_text=(
-            "SVG chart of the current public cart state and current measurement."
-        ),
+        data=raster_image.data,
+        mime_type=raster_image.mime_type,
+        alt_text=("Chart of the current public cart state and current measurement."),
         text=text,
     )
 

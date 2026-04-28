@@ -174,6 +174,10 @@ Renderers turn canonical task state and public metadata into observations:
 - images or multimodal content blocks
 - compact state views for simulations or tool state
 
+Image observations emitted to trainers should use PNG payloads. Task renderers
+may construct SVG internally, but should rasterize it before creating
+model-facing image content.
+
 Renderers should be deterministic for a given state, renderer config, and seed.
 They must not own verifier state. If a renderer hides information, that hidden
 information must still live in the canonical instance or state.
@@ -420,6 +424,7 @@ rlvr_physics/core/
   specs.py        # YAML/task spec loading
 
 rlvr_physics/tasks/
+  _shared/    # cross-task helpers such as SVG rasterization
   arithmetic/
   physics/
   coding/

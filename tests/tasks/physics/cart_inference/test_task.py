@@ -1,6 +1,7 @@
 """Tests for the cart inference configured task builder."""
 
 from rlvr_physics.core.factory import ConfiguredTask
+from rlvr_physics.core.rendering import PNG_MIME_TYPE
 from rlvr_physics.tasks.physics.cart_inference import (
     CART_IMAGE_RENDERER,
     cart_inference_task,
@@ -47,3 +48,15 @@ def test_cart_inference_spec_advertises_text_and_image_renderers(
     renderer_types = {renderer.renderer_type for renderer in cart_task.spec.renderers}
 
     assert renderer_types == {CART_TEXT_RENDERER, CART_IMAGE_RENDERER}
+
+
+def test_cart_inference_spec_advertises_png_image_renderer(
+    cart_task: ConfiguredTask,
+) -> None:
+    image_renderer = next(
+        renderer
+        for renderer in cart_task.spec.renderers
+        if renderer.renderer_type == CART_IMAGE_RENDERER
+    )
+
+    assert image_renderer.parameters["mime_type"] == PNG_MIME_TYPE
