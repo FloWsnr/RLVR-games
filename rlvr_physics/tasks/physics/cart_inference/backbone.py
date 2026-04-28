@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from hashlib import sha256
 import json
+from math import isfinite
 import re
 from typing import Mapping
 
@@ -507,7 +508,11 @@ def measure_position(
         Raised when ``time_s`` is outside the public measurement range.
     """
 
-    if time_s < state.min_measurement_time_s or time_s > state.max_measurement_time_s:
+    if (
+        not isfinite(time_s)
+        or time_s < state.min_measurement_time_s
+        or time_s > state.max_measurement_time_s
+    ):
         raise ValueError(
             "measurement time must be between "
             f"{state.min_measurement_time_s:g}s and "
@@ -631,13 +636,17 @@ def _required_numeric_argument(action: ParsedAction, name: str) -> float:
     if isinstance(value, bool):
         raise SubmissionParseError(f"{name} must be numeric")
     if isinstance(value, int | float):
-        return float(value)
-    if isinstance(value, str):
+        numeric_value = float(value)
+    elif isinstance(value, str):
         try:
-            return float(value)
+            numeric_value = float(value)
         except ValueError as error:
             raise SubmissionParseError(f"{name} must be numeric") from error
-    raise SubmissionParseError(f"{name} must be numeric")
+    else:
+        raise SubmissionParseError(f"{name} must be numeric")
+    if not isfinite(numeric_value):
+        raise SubmissionParseError(f"{name} must be finite")
+    return numeric_value
 
 
 def _parse_action_mapping(values: Mapping[str, object]) -> ParsedAction | None:
@@ -674,12 +683,18 @@ def _json_object(raw: str) -> Mapping[str, object] | None:
     """Parse raw JSON into a mapping when possible."""
 
     try:
-        decoded = json.loads(raw)
-    except json.JSONDecodeError:
+        decoded = json.loads(raw, parse_constant=_reject_json_constant)
+    except (json.JSONDecodeError, ValueError):
         return None
     if isinstance(decoded, Mapping):
         return decoded
     return None
+
+
+def _reject_json_constant(raw: str) -> object:
+    """Reject non-standard JSON numeric constants."""
+
+    raise ValueError(f"invalid JSON numeric constant: {raw}")
 
 
 def _parse_single_number(raw: str) -> float:

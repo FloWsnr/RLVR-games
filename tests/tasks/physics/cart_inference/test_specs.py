@@ -46,3 +46,24 @@ def test_cart_inference_config_requires_final_answer_turn(
 
     with pytest.raises(ValueError, match="action_budget"):
         cart_inference_spec(invalid_config)
+
+
+def test_cart_inference_config_rejects_non_finite_numeric_values(
+    cart_config: CartInferenceConfig,
+) -> None:
+    """Cart configs reject non-finite public numeric fields."""
+
+    invalid_config = CartInferenceConfig(
+        min_measurement_time_s=cart_config.min_measurement_time_s,
+        max_measurement_time_s=float("inf"),
+        target_time_s=cart_config.target_time_s,
+        measurement_noise_abs_m=cart_config.measurement_noise_abs_m,
+        answer_tolerance_abs_m=cart_config.answer_tolerance_abs_m,
+        max_turns=cart_config.max_turns,
+        timeout_seconds=cart_config.timeout_seconds,
+        token_budget=cart_config.token_budget,
+        action_budget=cart_config.action_budget,
+    )
+
+    with pytest.raises(ValueError, match="max_measurement_time_s must be finite"):
+        cart_inference_spec(invalid_config)

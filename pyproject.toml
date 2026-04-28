@@ -13,6 +13,9 @@ dependencies = [
     "svg-py>=1.10.0",
 ]
 
+[project.scripts]
+play = "rlvr_physics.play.cli:main"
+
 [dependency-groups]
 dev = [
     "pyright>=1.1.409",

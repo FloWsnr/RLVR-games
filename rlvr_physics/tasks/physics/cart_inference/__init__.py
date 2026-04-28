@@ -3,6 +3,7 @@
 from rlvr_physics.tasks.physics.cart_inference.instances import (
     build_cart_inference_instance,
 )
+from rlvr_physics.tasks.physics.cart_inference.play import CART_PLAYABLE
 from rlvr_physics.tasks.physics.cart_inference.renderers import (
     CART_IMAGE_RENDERER,
     CART_TEXT_RENDERER,
@@ -22,6 +23,7 @@ __all__ = [
     "CART_INFERENCE_DOMAIN",
     "CART_INFERENCE_KIND",
     "CART_IMAGE_RENDERER",
+    "CART_PLAYABLE",
     "CART_TEXT_RENDERER",
     "DEFAULT_CONFIG",
     "CartInferenceConfig",

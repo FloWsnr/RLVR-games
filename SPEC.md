@@ -245,6 +245,28 @@ and advantage values. Future local evaluation or offline export code may add a
 `TrajectoryRecorder` wrapper around `TaskSession`, but recorder concerns should
 remain peripheral to the task truth and step contract.
 
+### Public Interaction Play-tests
+
+Every substantial task family should expose a reusable public play-test surface
+without reimplementing process IO. The shared play interaction layer owns:
+
+- the JSONL reset and step event protocol
+- conversion of `TaskTurn`, `TaskResetResult`, and `TaskStepResult` into public
+  JSON-compatible payloads
+- one-submission-per-line stdin/stdout loops
+- public-info metadata filtering for blind local play
+- text and image observation serialization
+
+Task packages should contribute only a small `PlayableTask` descriptor and any
+task-specific parameter parsing needed to build a `ConfiguredTask`. The shared
+runner must depend on the scalar `TaskSession` contract, not on task-specific
+backbones, actions, or verifier internals.
+
+Play-tests are not trainer integrations. They are local evaluation peripherals
+for checking multi-turn interactions, collecting transcripts, estimating task
+difficulty, and running fresh blind sessions through the same public surface a
+model or benchmark driver would see.
+
 ## Task Shapes
 
 ### Single-Step Verifier Tasks
@@ -428,6 +450,12 @@ rlvr_physics/core/
   session.py      # TaskSession protocol and result dataclasses
   rendering.py    # observation/content abstractions
   specs.py        # YAML/task spec loading
+
+rlvr_physics/play/
+  cli.py          # generic play command entrypoint
+  interaction.py  # JSONL protocol and public session loop
+  registry.py     # registered playable task descriptors
+  task.py         # PlayableTask descriptors and CLI helpers
 
 rlvr_physics/tasks/
   _shared/    # cross-task helpers such as SVG rasterization

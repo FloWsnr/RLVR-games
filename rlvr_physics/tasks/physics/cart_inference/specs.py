@@ -1,6 +1,7 @@
 """Public specification helpers for the cart inference task."""
 
 from dataclasses import dataclass
+from math import isfinite
 
 from rlvr_physics.core.rendering import PNG_MIME_TYPE
 from rlvr_physics.core.specs import (
@@ -106,6 +107,13 @@ def validate_cart_inference_config(config: CartInferenceConfig) -> None:
 
     if config.min_measurement_time_s < 0.0:
         raise ValueError("min_measurement_time_s must be non-negative")
+    _validate_finite_float(config.min_measurement_time_s, "min_measurement_time_s")
+    _validate_finite_float(config.max_measurement_time_s, "max_measurement_time_s")
+    _validate_finite_float(config.target_time_s, "target_time_s")
+    _validate_finite_float(config.measurement_noise_abs_m, "measurement_noise_abs_m")
+    _validate_finite_float(config.answer_tolerance_abs_m, "answer_tolerance_abs_m")
+    if config.timeout_seconds is not None:
+        _validate_finite_float(config.timeout_seconds, "timeout_seconds")
     if config.max_measurement_time_s <= config.min_measurement_time_s:
         raise ValueError("max_measurement_time_s must exceed min_measurement_time_s")
     if config.target_time_s <= config.max_measurement_time_s:
@@ -124,6 +132,13 @@ def validate_cart_inference_config(config: CartInferenceConfig) -> None:
         raise ValueError("timeout_seconds must be positive when provided")
     if config.token_budget is not None and config.token_budget <= 0:
         raise ValueError("token_budget must be positive when provided")
+
+
+def _validate_finite_float(value: float, name: str) -> None:
+    """Validate that a numeric config value is finite."""
+
+    if not isfinite(value):
+        raise ValueError(f"{name} must be finite")
 
 
 def config_parameters(config: CartInferenceConfig) -> dict[str, object]:
