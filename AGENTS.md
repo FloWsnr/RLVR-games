@@ -31,7 +31,7 @@ renderer peripherals, and deferred trainer integration surfaces.
   renderers, and sessions should live in separate modules behind a public
   package facade.
 - If asked to use worktrees, create new worktrees in the `./worktrees/`
-  directory. Name them descriptively.
+  directory. Name them descriptively, starting with `codex/`.
 - Update `README.md`, `SPEC.md`, and `AGENTS.md` when changing mission,
   architecture, task domains, or public API.
 - Don't export every symbol in `__init__.py` files. Use `__init__.py` only for the public/user-facing API of a package.
