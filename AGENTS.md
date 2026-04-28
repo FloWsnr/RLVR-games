@@ -37,7 +37,7 @@ renderer peripherals, and deferred trainer integration surfaces.
   directory. Name them descriptively.
 - Update `README.md`, `SPEC.md`, and `AGENTS.md` when changing mission,
   architecture, task domains, or public API.
-- Don't place all functions/classes in `__init__.py` files. Use `__init__.py` only for the public/user-facing API of a package.
+- Don't export every symbol in `__init__.py` files. Use `__init__.py` only for the public/user-facing API of a package.
 
 ## Git Hygiene
 
