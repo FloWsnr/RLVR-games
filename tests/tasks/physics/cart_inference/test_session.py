@@ -1,11 +1,11 @@
 """Tests for the cart inference scalar session."""
 
 from rlvr_physics.core.session import TaskSubmission
-from rlvr_physics.tasks.physics.cart_inference import (
-    DEFAULT_CONFIG,
-    CartInferenceSession,
+from rlvr_physics.tasks.physics.cart_inference.instances import (
     build_cart_inference_instance,
 )
+from rlvr_physics.tasks.physics.cart_inference.sessions import CartInferenceSession
+from rlvr_physics.tasks.physics.cart_inference.specs import DEFAULT_CONFIG
 
 
 def test_session_accepts_structured_final_answer_action() -> None:

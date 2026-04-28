@@ -1,7 +1,9 @@
 """Tests for cart inference reward policy."""
 
-from rlvr_physics.tasks.physics.cart_inference import (
+from rlvr_physics.tasks.physics.cart_inference.backbone import (
     FinalAnswerEvaluation,
+)
+from rlvr_physics.tasks.physics.cart_inference.rewards import (
     reward_final_answer,
 )
 

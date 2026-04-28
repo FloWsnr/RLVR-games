@@ -3,16 +3,8 @@
 from rlvr_physics.core.instances import (
     TaskInstance,
 )
-from rlvr_physics.core.payloads import (
-    freeze_mapping,
-    mapping_to_dict,
-    stable_hash,
-    to_plain_data,
-)
 from rlvr_physics.core.factory import (
     ConfiguredTask,
-    TaskInstanceBuilder,
-    TaskSessionBuilder,
 )
 from rlvr_physics.core.rendering import (
     ImageContent,
@@ -29,7 +21,6 @@ from rlvr_physics.core.session import (
     TaskStepResult,
     TaskSubmission,
     TaskTurn,
-    new_session_id,
 )
 from rlvr_physics.core.specs import (
     RendererSpec,
@@ -50,10 +41,8 @@ __all__ = [
     "RewardSpec",
     "SourceSpec",
     "TaskInstance",
-    "TaskInstanceBuilder",
     "TaskResetResult",
     "TaskSession",
-    "TaskSessionBuilder",
     "TaskSpec",
     "TaskStepResult",
     "TaskSubmission",
@@ -62,11 +51,6 @@ __all__ = [
     "TextContent",
     "TrajectoryEvent",
     "VerifierSpec",
-    "freeze_mapping",
     "image_observation",
-    "mapping_to_dict",
-    "new_session_id",
-    "stable_hash",
     "text_observation",
-    "to_plain_data",
 ]

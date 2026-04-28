@@ -3,13 +3,17 @@
 import pytest
 
 from rlvr_physics.core.session import TaskSubmission
-from rlvr_physics.tasks.physics.cart_inference import (
-    DEFAULT_CONFIG,
+from rlvr_physics.tasks.physics.cart_inference.backbone import (
     ActionBudgetExceeded,
     CartInferenceBackbone,
+)
+from rlvr_physics.tasks.physics.cart_inference.instances import (
     build_cart_inference_instance,
+)
+from rlvr_physics.tasks.physics.cart_inference.rewards import (
     reward_final_answer,
 )
+from rlvr_physics.tasks.physics.cart_inference.specs import DEFAULT_CONFIG
 
 
 def test_backbone_measurement_updates_budget_and_resets() -> None:
