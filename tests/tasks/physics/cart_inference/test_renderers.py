@@ -1,5 +1,7 @@
 """Tests for cart inference renderers."""
 
+from xml.etree import ElementTree
+
 from rlvr_physics.core.rendering import ImageContent, TextContent
 from rlvr_physics.core.instances import TaskInstance
 from rlvr_physics.core.session import TaskSubmission
@@ -51,6 +53,7 @@ def test_image_renderer_returns_svg_image_with_text_fallback() -> None:
     assert isinstance(observation.contents[1], TextContent)
     assert observation.contents[0].mime_type == "image/svg+xml"
     assert observation.contents[0].data.startswith(b"<svg")
+    ElementTree.fromstring(observation.contents[0].data.decode("utf-8"))
     assert "Initial state:" not in observation.contents[0].alt_text
     assert "Initial state:" in observation.text()
 
@@ -115,6 +118,7 @@ def test_image_renderer_reports_current_measurement_only() -> None:
     observation = second_result.observation.observation
     assert isinstance(observation.contents[0], ImageContent)
     image_text = observation.contents[0].data.decode("utf-8")
+    ElementTree.fromstring(image_text)
     assert "Current measurement" in image_text
     assert "t=6 s" in image_text
     assert "t=5 s" not in image_text

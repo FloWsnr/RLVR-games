@@ -1,8 +1,9 @@
 """Renderers for the cart inference task."""
 
 from dataclasses import dataclass
-from html import escape
+from typing import Literal
 
+import svg
 from rlvr_physics.core.rendering import (
     RenderedObservation,
     image_observation,
@@ -15,6 +16,8 @@ from rlvr_physics.tasks.physics.cart_inference.backbone import (
 
 CART_TEXT_RENDERER = "cart_inference.text"
 CART_IMAGE_RENDERER = "cart_inference.image"
+SVG_MIME_TYPE = "image/svg+xml"
+SVG_FONT_FAMILY = "Arial, sans-serif"
 
 
 @dataclass(frozen=True)
@@ -222,11 +225,11 @@ def render_cart_image(context: CartRenderContext) -> RenderedObservation:
     """
 
     text = render_cart_text(context)
-    svg = _render_cart_svg(context)
+    svg_payload = _render_cart_svg(context)
     return image_observation(
         renderer_name=CART_IMAGE_RENDERER,
-        data=svg.encode("utf-8"),
-        mime_type="image/svg+xml",
+        data=svg_payload.encode("utf-8"),
+        mime_type=SVG_MIME_TYPE,
         alt_text=(
             "SVG chart of the current public cart state and current measurement."
         ),
@@ -239,25 +242,17 @@ def _render_cart_svg(context: CartRenderContext) -> str:
 
     width = 960
     height = 640
-    elements = [
-        (
-            f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" '
-            f'height="{height}" viewBox="0 0 {width} {height}" role="img">'
-        ),
-        "<defs>",
-        (
-            '<marker id="arrow" markerWidth="8" markerHeight="8" refX="7" '
-            'refY="4" orient="auto">'
-        ),
-        '<path d="M 0 0 L 8 4 L 0 8 z" fill="#1f6feb"/>',
-        "</marker>",
-        "</defs>",
-        '<rect x="0" y="0" width="960" height="640" fill="#f8fafc"/>',
+    elements: list[svg.Element] = [
+        svg.Defs(elements=[_arrow_marker()]),
+        svg.Rect(x=0.0, y=0.0, width=width, height=height, fill="#f8fafc"),
         _text(32.0, 42.0, "Cart inference", 22, "#0f172a", "700"),
         _text(
             32.0,
             66.0,
-            "Current public observation only: infer the target position from the transcript.",
+            (
+                "Current public observation only: infer the target position "
+                "from the transcript."
+            ),
             13,
             "#475569",
             "400",
@@ -267,11 +262,43 @@ def _render_cart_svg(context: CartRenderContext) -> str:
     elements.extend(_timeline_panel(context))
     elements.extend(_chart_panel(context))
     elements.extend(_data_panel(context))
-    elements.append("</svg>")
-    return "".join(elements)
+    return str(
+        svg.SVG(
+            width=width,
+            height=height,
+            viewBox=svg.ViewBoxSpec(0, 0, width, height),
+            extra={"role": "img"},
+            elements=elements,
+        )
+    )
 
 
-def _track_panel(context: CartRenderContext) -> list[str]:
+def _arrow_marker() -> svg.Element:
+    """Return the velocity arrow marker."""
+
+    return svg.Marker(
+        id="arrow",
+        viewBox=svg.ViewBoxSpec(0.0, 0.0, 8.0, 8.0),
+        markerWidth=8.0,
+        markerHeight=8.0,
+        refX=7.0,
+        refY=4.0,
+        orient="auto",
+        elements=[
+            svg.Path(
+                d=[
+                    svg.M(x=0.0, y=0.0),
+                    svg.L(x=8.0, y=4.0),
+                    svg.L(x=0.0, y=8.0),
+                    svg.Z(),
+                ],
+                fill="#1f6feb",
+            )
+        ],
+    )
+
+
+def _track_panel(context: CartRenderContext) -> list[svg.Element]:
     """Render the initial cart state panel."""
 
     state = context
@@ -304,32 +331,50 @@ def _track_panel(context: CartRenderContext) -> list[str]:
         _text(
             panel_x + 18.0, panel_y + 28.0, "Initial cart state", 15, "#0f172a", "700"
         ),
-        (
-            f'<line x1="{track_left:.1f}" y1="{track_y:.1f}" '
-            f'x2="{track_right:.1f}" y2="{track_y:.1f}" stroke="#334155" '
-            'stroke-width="3"/>'
+        svg.Line(
+            x1=track_left,
+            y1=track_y,
+            x2=track_right,
+            y2=track_y,
+            stroke="#334155",
+            stroke_width=3,
         ),
-        (
-            f'<line x1="{track_left:.1f}" y1="{track_y + 14.0:.1f}" '
-            f'x2="{track_left:.1f}" y2="{track_y - 14.0:.1f}" '
-            'stroke="#64748b" stroke-width="2"/>'
+        svg.Line(
+            x1=track_left,
+            y1=track_y + 14.0,
+            x2=track_left,
+            y2=track_y - 14.0,
+            stroke="#64748b",
+            stroke_width=2,
         ),
-        (
-            f'<line x1="{track_right:.1f}" y1="{track_y + 14.0:.1f}" '
-            f'x2="{track_right:.1f}" y2="{track_y - 14.0:.1f}" '
-            'stroke="#64748b" stroke-width="2"/>'
+        svg.Line(
+            x1=track_right,
+            y1=track_y + 14.0,
+            x2=track_right,
+            y2=track_y - 14.0,
+            stroke="#64748b",
+            stroke_width=2,
         ),
-        (
-            f'<rect x="{cart_x:.1f}" y="{track_y - 42.0:.1f}" width="56" '
-            'height="32" rx="4" fill="#e0f2fe" stroke="#0369a1" '
-            'stroke-width="2"/>'
+        svg.Rect(
+            x=cart_x,
+            y=track_y - 42.0,
+            width=56.0,
+            height=32.0,
+            rx=4,
+            fill="#e0f2fe",
+            stroke="#0369a1",
+            stroke_width=2,
         ),
         _wheel(cart_x + 14.0, track_y - 8.0),
         _wheel(cart_x + 42.0, track_y - 8.0),
-        (
-            f'<line x1="{arrow_start:.1f}" y1="{track_y - 58.0:.1f}" '
-            f'x2="{arrow_end:.1f}" y2="{track_y - 58.0:.1f}" '
-            'stroke="#1f6feb" stroke-width="4" marker-end="url(#arrow)"/>'
+        svg.Line(
+            x1=arrow_start,
+            y1=track_y - 58.0,
+            x2=arrow_end,
+            y2=track_y - 58.0,
+            stroke="#1f6feb",
+            stroke_width=4,
+            marker_end="url(#arrow)",
         ),
         _text(
             cart_x,
@@ -367,7 +412,7 @@ def _track_panel(context: CartRenderContext) -> list[str]:
     ]
 
 
-def _timeline_panel(context: CartRenderContext) -> list[str]:
+def _timeline_panel(context: CartRenderContext) -> list[svg.Element]:
     """Render the public time window panel."""
 
     state = context
@@ -387,13 +432,17 @@ def _timeline_panel(context: CartRenderContext) -> list[str]:
     )
     target_x = axis_right
 
-    elements = [
+    elements: list[svg.Element] = [
         _panel(panel_x, panel_y, panel_w, panel_h),
         _text(panel_x + 18.0, panel_y + 28.0, "Timeline", 15, "#0f172a", "700"),
-        (
-            f'<rect x="{window_left:.1f}" y="{axis_y - 18.0:.1f}" '
-            f'width="{window_right - window_left:.1f}" height="36" '
-            'fill="#dcfce7" stroke="#16a34a" stroke-width="1"/>'
+        svg.Rect(
+            x=window_left,
+            y=axis_y - 18.0,
+            width=window_right - window_left,
+            height=36.0,
+            fill="#dcfce7",
+            stroke="#16a34a",
+            stroke_width=1,
         ),
         _text(
             (window_left + window_right) / 2.0,
@@ -404,15 +453,18 @@ def _timeline_panel(context: CartRenderContext) -> list[str]:
             "700",
             "middle",
         ),
-        (
-            f'<line x1="{axis_left:.1f}" y1="{axis_y:.1f}" '
-            f'x2="{axis_right:.1f}" y2="{axis_y:.1f}" stroke="#334155" '
-            'stroke-width="2"/>'
+        svg.Line(
+            x1=axis_left,
+            y1=axis_y,
+            x2=axis_right,
+            y2=axis_y,
+            stroke="#334155",
+            stroke_width=2,
         ),
-        _tick(axis_left, axis_y, "0 s", "middle"),
     ]
+    elements.extend(_tick(axis_left, axis_y, "0 s", "middle"))
     if state.min_measurement_time_s > 0.0:
-        elements.append(
+        elements.extend(
             _tick(
                 window_left,
                 axis_y,
@@ -421,17 +473,18 @@ def _timeline_panel(context: CartRenderContext) -> list[str]:
             )
         )
     elements.extend(
+        _tick(window_right, axis_y, f"{_fmt(state.max_measurement_time_s)} s", "middle")
+    )
+    elements.extend(
         [
-            _tick(
-                window_right,
-                axis_y,
-                f"{_fmt(state.max_measurement_time_s)} s",
-                "middle",
-            ),
-            (
-                f'<line x1="{target_x:.1f}" y1="{axis_y - 30.0:.1f}" '
-                f'x2="{target_x:.1f}" y2="{axis_y + 30.0:.1f}" '
-                'stroke="#dc2626" stroke-width="2" stroke-dasharray="5 4"/>'
+            svg.Line(
+                x1=target_x,
+                y1=axis_y - 30.0,
+                x2=target_x,
+                y2=axis_y + 30.0,
+                stroke="#dc2626",
+                stroke_width=2,
+                stroke_dasharray=[5, 4],
             ),
             _text(
                 target_x,
@@ -447,7 +500,7 @@ def _timeline_panel(context: CartRenderContext) -> list[str]:
     return elements
 
 
-def _chart_panel(context: CartRenderContext) -> list[str]:
+def _chart_panel(context: CartRenderContext) -> list[svg.Element]:
     """Render the public time-position measurement chart."""
 
     state = context
@@ -482,30 +535,42 @@ def _chart_panel(context: CartRenderContext) -> list[str]:
         chart_right,
     )
 
-    elements = [
+    elements: list[svg.Element] = [
         _panel(panel_x, panel_y, panel_w, panel_h),
         _text(
             panel_x + 18.0, panel_y + 28.0, "Current measurement", 15, "#0f172a", "700"
         ),
-        (
-            f'<rect x="{window_left:.1f}" y="{chart_top:.1f}" '
-            f'width="{window_right - window_left:.1f}" '
-            f'height="{chart_bottom - chart_top:.1f}" fill="#f0fdf4"/>'
+        svg.Rect(
+            x=window_left,
+            y=chart_top,
+            width=window_right - window_left,
+            height=chart_bottom - chart_top,
+            fill="#f0fdf4",
         ),
-        (
-            f'<line x1="{chart_left:.1f}" y1="{chart_bottom:.1f}" '
-            f'x2="{chart_right:.1f}" y2="{chart_bottom:.1f}" '
-            'stroke="#334155" stroke-width="2"/>'
+        svg.Line(
+            x1=chart_left,
+            y1=chart_bottom,
+            x2=chart_right,
+            y2=chart_bottom,
+            stroke="#334155",
+            stroke_width=2,
         ),
-        (
-            f'<line x1="{chart_left:.1f}" y1="{chart_bottom:.1f}" '
-            f'x2="{chart_left:.1f}" y2="{chart_top:.1f}" '
-            'stroke="#334155" stroke-width="2"/>'
+        svg.Line(
+            x1=chart_left,
+            y1=chart_bottom,
+            x2=chart_left,
+            y2=chart_top,
+            stroke="#334155",
+            stroke_width=2,
         ),
-        (
-            f'<line x1="{chart_right:.1f}" y1="{chart_bottom:.1f}" '
-            f'x2="{chart_right:.1f}" y2="{chart_top:.1f}" '
-            'stroke="#dc2626" stroke-width="2" stroke-dasharray="5 4"/>'
+        svg.Line(
+            x1=chart_right,
+            y1=chart_bottom,
+            x2=chart_right,
+            y2=chart_top,
+            stroke="#dc2626",
+            stroke_width=2,
+            stroke_dasharray=[5, 4],
         ),
         _text(chart_right, chart_top - 8.0, "target time", 11, "#dc2626", "700", "end"),
         _text(chart_left, chart_bottom + 24.0, "0 s", 11, "#64748b", "400", "middle"),
@@ -546,7 +611,7 @@ def _chart_panel(context: CartRenderContext) -> list[str]:
             "middle",
         ),
     ]
-    elements.append(
+    elements.extend(
         _point(
             chart_left,
             _scale_y(state.initial_position_m, y_min, y_max, chart_top, chart_bottom),
@@ -582,24 +647,33 @@ def _chart_panel(context: CartRenderContext) -> list[str]:
         )
         elements.extend(
             [
-                (
-                    f'<line x1="{point_x:.1f}" y1="{high_y:.1f}" '
-                    f'x2="{point_x:.1f}" y2="{low_y:.1f}" '
-                    'stroke="#f97316" stroke-width="2"/>'
+                svg.Line(
+                    x1=point_x,
+                    y1=high_y,
+                    x2=point_x,
+                    y2=low_y,
+                    stroke="#f97316",
+                    stroke_width=2,
                 ),
-                (
-                    f'<line x1="{point_x - 5.0:.1f}" y1="{high_y:.1f}" '
-                    f'x2="{point_x + 5.0:.1f}" y2="{high_y:.1f}" '
-                    'stroke="#f97316" stroke-width="2"/>'
+                svg.Line(
+                    x1=point_x - 5.0,
+                    y1=high_y,
+                    x2=point_x + 5.0,
+                    y2=high_y,
+                    stroke="#f97316",
+                    stroke_width=2,
                 ),
-                (
-                    f'<line x1="{point_x - 5.0:.1f}" y1="{low_y:.1f}" '
-                    f'x2="{point_x + 5.0:.1f}" y2="{low_y:.1f}" '
-                    'stroke="#f97316" stroke-width="2"/>'
+                svg.Line(
+                    x1=point_x - 5.0,
+                    y1=low_y,
+                    x2=point_x + 5.0,
+                    y2=low_y,
+                    stroke="#f97316",
+                    stroke_width=2,
                 ),
-                _point(point_x, point_y, "#f97316", "current"),
             ]
         )
+        elements.extend(_point(point_x, point_y, "#f97316", "current"))
     if context.current_measurement is None:
         elements.append(
             _text(
@@ -615,7 +689,7 @@ def _chart_panel(context: CartRenderContext) -> list[str]:
     return elements
 
 
-def _data_panel(context: CartRenderContext) -> list[str]:
+def _data_panel(context: CartRenderContext) -> list[svg.Element]:
     """Render exact public values and action hints."""
 
     state = context
@@ -657,50 +731,54 @@ def _data_panel(context: CartRenderContext) -> list[str]:
         if line == "":
             y += 10.0
             continue
-        weight = "700" if index in {0, 9, 13} else "400"
+        weight: Literal["400", "700"] = "700" if index in {0, 9, 13} else "400"
         color = "#0f172a" if weight == "700" else "#334155"
         elements.append(_text(panel_x + 18.0, y, line, 13, color, weight))
         y += 22.0
     return elements
 
 
-def _panel(x: float, y: float, width: float, height: float) -> str:
+def _panel(x: float, y: float, width: float, height: float) -> svg.Element:
     """Return a rounded panel rectangle."""
 
-    return (
-        f'<rect x="{x:.1f}" y="{y:.1f}" width="{width:.1f}" '
-        f'height="{height:.1f}" rx="8" fill="#ffffff" '
-        'stroke="#cbd5e1" stroke-width="1"/>'
+    return svg.Rect(
+        x=x,
+        y=y,
+        width=width,
+        height=height,
+        rx=8,
+        fill="#ffffff",
+        stroke="#cbd5e1",
+        stroke_width=1,
     )
 
 
-def _wheel(cx: float, cy: float) -> str:
+def _wheel(cx: float, cy: float) -> svg.Element:
     """Return one cart wheel SVG element."""
 
-    return (
-        f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="7" fill="#1e293b" '
-        'stroke="#020617" stroke-width="1"/>'
+    return svg.Circle(
+        cx=cx, cy=cy, r=7.0, fill="#1e293b", stroke="#020617", stroke_width=1
     )
 
 
-def _tick(x: float, y: float, label: str, anchor: str) -> str:
+def _tick(
+    x: float, y: float, label: str, anchor: Literal["start", "middle", "end"]
+) -> list[svg.Element]:
     """Return one labeled tick mark."""
 
-    return (
-        f'<line x1="{x:.1f}" y1="{y - 8.0:.1f}" x2="{x:.1f}" '
-        f'y2="{y + 8.0:.1f}" stroke="#64748b" stroke-width="2"/>'
-        + _text(x, y + 26.0, label, 11, "#64748b", "400", anchor)
-    )
+    return [
+        svg.Line(x1=x, y1=y - 8.0, x2=x, y2=y + 8.0, stroke="#64748b", stroke_width=2),
+        _text(x, y + 26.0, label, 11, "#64748b", "400", anchor),
+    ]
 
 
-def _point(x: float, y: float, color: str, label: str) -> str:
+def _point(x: float, y: float, color: str, label: str) -> list[svg.Element]:
     """Return one labeled chart point."""
 
-    return (
-        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="6" fill="{color}" '
-        'stroke="#ffffff" stroke-width="2"/>'
-        + _text(x + 9.0, y - 8.0, label, 10, color, "700")
-    )
+    return [
+        svg.Circle(cx=x, cy=y, r=6.0, fill=color, stroke="#ffffff", stroke_width=2),
+        _text(x + 9.0, y - 8.0, label, 10, color, "700"),
+    ]
 
 
 def _text(
@@ -709,15 +787,20 @@ def _text(
     value: str,
     size: int,
     color: str,
-    weight: str,
-    anchor: str = "start",
-) -> str:
+    weight: Literal["400", "700"],
+    anchor: Literal["start", "middle", "end"] = "start",
+) -> svg.Element:
     """Return escaped SVG text."""
 
-    return (
-        f'<text x="{x:.1f}" y="{y:.1f}" font-family="Arial, sans-serif" '
-        f'font-size="{size}" font-weight="{weight}" fill="{color}" '
-        f'text-anchor="{anchor}">{escape(value)}</text>'
+    return svg.Text(
+        text=svg.escape(value),
+        font_size=size,
+        x=x,
+        y=y,
+        fill=color,
+        font_family=SVG_FONT_FAMILY,
+        font_weight=weight,
+        text_anchor=anchor,
     )
 
 
