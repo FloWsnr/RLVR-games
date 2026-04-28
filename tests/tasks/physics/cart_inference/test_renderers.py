@@ -9,9 +9,7 @@ from rlvr_physics.tasks.physics.cart_inference.instances import (
 from rlvr_physics.tasks.physics.cart_inference.renderers import (
     CART_IMAGE_RENDERER,
     CART_TEXT_RENDERER,
-    MAX_IMAGE_HISTORY_ROWS,
     CartMeasurementView,
-    CartPublicStateView,
     CartRenderContext,
     render_cart_observation,
 )
@@ -19,19 +17,25 @@ from rlvr_physics.tasks.physics.cart_inference.sessions import CartInferenceSess
 from rlvr_physics.tasks.physics.cart_inference.specs import DEFAULT_CONFIG
 
 
-def test_text_renderer_includes_measurement_history() -> None:
+def test_text_renderer_reports_current_measurement_only() -> None:
     instance = build_cart_inference_instance(seed=123, config=DEFAULT_CONFIG)
     session = CartInferenceSession(instance, CART_TEXT_RENDERER)
     session.reset(seed=456)
 
-    result = session.submit(TaskSubmission.action("measure_position(5)"))
+    first_result = session.submit(TaskSubmission.action("measure_position(5)"))
+    second_result = session.submit(TaskSubmission.action("measure_position(6)"))
 
-    assert result.observation is not None
-    observation = result.observation.observation
+    assert first_result.observation is not None
+    assert "t=5 s" in first_result.observation.observation.text()
+    assert second_result.observation is not None
+    observation = second_result.observation.observation
     assert observation.renderer_name == CART_TEXT_RENDERER
-    assert "Measurement history:" in observation.text()
-    assert "t=5 s" in observation.text()
-    assert "measurements remaining: 2" in observation.text()
+    assert "Measurement history:" not in observation.text()
+    assert "Current measurement:" in observation.text()
+    assert "t=6 s" in observation.text()
+    assert "t=5 s" not in observation.text()
+    assert "measurements used: 2 / 3" in observation.text()
+    assert "measurements remaining: 1" in observation.text()
 
 
 def test_image_renderer_returns_svg_image_with_text_fallback() -> None:
@@ -47,6 +51,7 @@ def test_image_renderer_returns_svg_image_with_text_fallback() -> None:
     assert isinstance(observation.contents[1], TextContent)
     assert observation.contents[0].mime_type == "image/svg+xml"
     assert observation.contents[0].data.startswith(b"<svg")
+    assert "Initial state:" not in observation.contents[0].alt_text
     assert "Initial state:" in observation.text()
 
 
@@ -75,54 +80,66 @@ def test_image_renderer_omits_privileged_state() -> None:
             assert fragment not in payload
 
 
-def test_render_context_uses_public_state_view() -> None:
+def test_render_context_exposes_only_public_state_fields() -> None:
     context = CartRenderContext(
-        state=CartPublicStateView(
-            initial_position_m=1.25,
-            initial_velocity_mps=-0.75,
-            target_time_s=12.0,
-            min_measurement_time_s=0.0,
-            max_measurement_time_s=10.0,
-            measurement_noise_abs_m=0.02,
-        ),
+        initial_position_m=1.25,
+        initial_velocity_mps=-0.75,
+        target_time_s=12.0,
+        min_measurement_time_s=0.0,
+        max_measurement_time_s=10.0,
+        measurement_noise_abs_m=0.02,
         feedback="A cart moves on a horizontal track.",
-        measurements=(),
+        current_measurement=None,
+        measurements_used=0,
         action_budget=3,
         measurements_remaining=3,
     )
 
-    assert not hasattr(context.state, "acceleration_mps2")
-    assert not hasattr(context.state, "exact_target_position_m")
-    assert not hasattr(context.state, "measurement_noise_seed")
-    assert not hasattr(context.state, "answer_tolerance_abs_m")
+    assert not hasattr(context, "acceleration_mps2")
+    assert not hasattr(context, "exact_target_position_m")
+    assert not hasattr(context, "measurement_noise_seed")
+    assert not hasattr(context, "answer_tolerance_abs_m")
 
 
-def test_image_renderer_caps_history_panel_rows() -> None:
+def test_image_renderer_reports_current_measurement_only() -> None:
+    instance = build_cart_inference_instance(seed=123, config=DEFAULT_CONFIG)
+    session = CartInferenceSession(instance, CART_IMAGE_RENDERER)
+    session.reset(seed=456)
+
+    first_result = session.submit(TaskSubmission.action("measure_position(5)"))
+    second_result = session.submit(TaskSubmission.action("measure_position(6)"))
+
+    assert first_result.observation is not None
+    assert "t=5 s" in first_result.observation.observation.text()
+    assert second_result.observation is not None
+    observation = second_result.observation.observation
+    assert isinstance(observation.contents[0], ImageContent)
+    image_text = observation.contents[0].data.decode("utf-8")
+    assert "Current measurement" in image_text
+    assert "t=6 s" in image_text
+    assert "t=5 s" not in image_text
+
+
+def test_renderer_context_accepts_current_measurement() -> None:
     context = CartRenderContext(
-        state=CartPublicStateView(
-            initial_position_m=0.0,
-            initial_velocity_mps=1.0,
-            target_time_s=20.0,
-            min_measurement_time_s=0.0,
-            max_measurement_time_s=18.0,
-            measurement_noise_abs_m=0.02,
-        ),
-        feedback="A cart moves on a horizontal track.",
-        measurements=tuple(
-            CartMeasurementView(time_s=float(index), measured_position_m=float(index))
-            for index in range(MAX_IMAGE_HISTORY_ROWS + 4)
-        ),
-        action_budget=MAX_IMAGE_HISTORY_ROWS + 4,
-        measurements_remaining=0,
+        initial_position_m=0.0,
+        initial_velocity_mps=1.0,
+        target_time_s=20.0,
+        min_measurement_time_s=0.0,
+        max_measurement_time_s=18.0,
+        measurement_noise_abs_m=0.02,
+        feedback="Measurement at t=5s: x=5.1 m.",
+        current_measurement=CartMeasurementView(time_s=5.0, measured_position_m=5.1),
+        measurements_used=1,
+        action_budget=3,
+        measurements_remaining=2,
     )
 
     observation = render_cart_observation(CART_IMAGE_RENDERER, context)
 
     assert isinstance(observation.contents[0], ImageContent)
-    image_text = observation.contents[0].data.decode("utf-8")
-    assert "... 4 earlier omitted" in image_text
-    assert "1. t=0 s" not in image_text
-    assert "5. t=4 s" in image_text
+    assert "t=5 s" in observation.text()
+    assert "Measurements: 1 / 3" in observation.contents[0].data.decode("utf-8")
 
 
 def _hidden_sentinel_instance() -> TaskInstance:

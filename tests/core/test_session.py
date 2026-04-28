@@ -1,13 +1,15 @@
 """Tests for shared session result types."""
 
+import pytest
+
 from rlvr_physics.core.rewards import RewardResult
 from rlvr_physics.core.session import (
+    TaskResetResult,
     TaskStepResult,
     TaskSubmission,
     TaskTurn,
     new_session_id,
 )
-from rlvr_physics.core.trajectory import TaskTrajectory
 
 
 def test_submission_parsed_payload_is_frozen() -> None:
@@ -18,8 +20,6 @@ def test_submission_parsed_payload_is_frozen() -> None:
 
 
 def test_step_result_done_property_and_turn_payload(example_turn: TaskTurn) -> None:
-    trajectory = TaskTrajectory(task_id="task-1", session_id="session-1")
-    event = trajectory.append("reward", 0, {"reward": 1.0}, {"answer": 42})
     result = TaskStepResult(
         accepted=True,
         reward_result=RewardResult(reward=1.0, score=1.0),
@@ -28,14 +28,26 @@ def test_step_result_done_property_and_turn_payload(example_turn: TaskTurn) -> N
         observation=example_turn,
         public_info={"reason": "correct"},
         debug_info={"answer": 42},
-        events=(event,),
     )
 
     assert result.done
     assert result.reward == 1.0
     assert result.score == 1.0
     assert result.observation is example_turn
-    assert result.events == (event,)
+
+
+def test_reset_result_payloads_are_frozen(example_turn: TaskTurn) -> None:
+    result = TaskResetResult(
+        session_id="session-1",
+        turn=example_turn,
+        public_info={"task_id": "task-1"},
+        debug_info={"answer": 42},
+    )
+
+    assert result.public_info["task_id"] == "task-1"
+    assert result.debug_info["answer"] == 42
+    with pytest.raises(TypeError):
+        result.public_info["extra"] = "blocked"  # type: ignore[index]
 
 
 def test_session_ids_do_not_collide_for_same_task_and_seed() -> None:

@@ -5,7 +5,7 @@ Trainer-agnostic executable verifier tasks for RLVR.
 This repo is intentionally early-stage. The firm commitments are in
 [SPEC.md](SPEC.md): immutable task instances, one authoritative task backbone,
 scalar sessions, renderer peripherals, trainer-owned concurrency, executable
-verifier logic, and useful trajectories.
+verifier logic, and useful result metadata.
 
 ## Structure
 
@@ -19,7 +19,6 @@ rlvr_physics/
     rewards.py      # shared reward result payload
     session.py      # scalar session protocol and result dataclasses
     specs.py        # Python task spec dataclasses
-    trajectory.py   # append-only trajectory events
   tasks/
     physics/
       cart_inference/

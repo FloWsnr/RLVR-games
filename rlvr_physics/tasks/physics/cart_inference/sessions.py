@@ -9,7 +9,6 @@ from rlvr_physics.core.session import (
     new_session_id,
 )
 from rlvr_physics.core.rewards import RewardResult
-from rlvr_physics.core.trajectory import TaskTrajectory, TrajectoryEvent
 from rlvr_physics.tasks.physics.cart_inference.backbone import (
     FINAL_ANSWER_ACTION,
     MEASURE_POSITION_ACTION,
@@ -24,7 +23,6 @@ from rlvr_physics.tasks.physics.cart_inference.rewards import (
 )
 from rlvr_physics.tasks.physics.cart_inference.renderers import (
     CartMeasurementView,
-    CartPublicStateView,
     CartRenderContext,
     render_cart_observation,
     validate_cart_renderer_type,
@@ -61,9 +59,7 @@ class CartInferenceSession:
         self._renderer_type = renderer_type
         self._backbone = CartInferenceBackbone(instance)
         self._session_id: str | None = None
-        self._trajectory: TaskTrajectory | None = None
         self._turn: TaskTurn | None = None
-        self._measurement_history: list[CartMeasurementView] = []
         self._submissions_used: int = 0
 
     def reset(self, seed: int) -> TaskResetResult:
@@ -72,51 +68,43 @@ class CartInferenceSession:
         Parameters
         ----------
         seed:
-            Deterministic rollout seed recorded in the trajectory.
+            Deterministic rollout seed.
 
         Returns
         -------
         TaskResetResult
-            Session identifier, first turn, and trajectory.
+            Session identifier, first turn, and reset metadata.
         """
 
         self._session_id = new_session_id(self.instance.task_id, seed)
-        self._trajectory = TaskTrajectory(
-            task_id=self.instance.task_id, session_id=self._session_id
-        )
         self._submissions_used = 0
-        self._measurement_history = []
         self._backbone.reset_rollout()
         self._turn = self._build_turn(
             turn_index=0,
             feedback=(
                 "A cart moves on a horizontal track with constant unknown acceleration."
             ),
+            current_measurement=None,
         )
-        self._trajectory.append(
-            event_type="reset",
-            turn_index=0,
-            public={
+        return TaskResetResult(
+            session_id=self._session_id,
+            turn=self._turn,
+            public_info={
                 "task_id": self.instance.task_id,
                 "kind": self.instance.kind,
                 "domain": self.instance.domain,
                 "instance_hash": self.instance.content_hash(),
                 "rollout_seed": seed,
+                "renderer": self._renderer_type,
                 "limits": self.instance.public_limits(),
             },
-            debug={
+            debug_info={
                 "acceleration_mps2": self._backbone.state.acceleration_mps2,
                 "exact_target_position_m": (
                     self._backbone.state.exact_target_position_m
                 ),
                 "measurement_noise_seed": self._backbone.state.measurement_noise_seed,
             },
-        )
-        self._append_observation_event(self._turn)
-        return TaskResetResult(
-            session_id=self._session_id,
-            turn=self._turn,
-            trajectory=self._trajectory,
         )
 
     @property
@@ -142,53 +130,27 @@ class CartInferenceSession:
         Returns
         -------
         TaskStepResult
-            Step outcome, reward, next observation, and trajectory events.
+            Step outcome, reward, next observation, and metadata.
         """
 
-        trajectory = self._require_trajectory()
-        start_event_count = len(trajectory.events)
+        self._require_reset()
         if self._turn is None:
-            return self._already_done_result(start_event_count)
+            return self._already_done_result()
 
         turn_index = self._turn.turn_index
         self._submissions_used += 1
-        trajectory.append(
-            event_type="submission",
-            turn_index=turn_index,
-            public={"kind": submission.kind},
-            debug={"raw": submission.raw, "parsed": submission.parsed},
-        )
 
         if submission.kind == "action":
-            return self._handle_action(submission, turn_index, start_event_count)
+            return self._handle_action(submission, turn_index)
         return self._invalid_submission_result(
             turn_index=turn_index,
-            start_event_count=start_event_count,
             reason=f"unsupported submission kind: {submission.kind}",
         )
-
-    @property
-    def trajectory(self) -> TaskTrajectory:
-        """Return the verified session trajectory.
-
-        Returns
-        -------
-        TaskTrajectory
-            Append-only trajectory for this rollout.
-
-        Raises
-        ------
-        RuntimeError
-            Raised when the session has not been reset.
-        """
-
-        return self._require_trajectory()
 
     def _handle_action(
         self,
         submission: TaskSubmission,
         turn_index: int,
-        start_event_count: int,
     ) -> TaskStepResult:
         """Handle an action-mode submission."""
 
@@ -197,31 +159,21 @@ class CartInferenceSession:
         except SubmissionParseError as error:
             return self._invalid_submission_result(
                 turn_index=turn_index,
-                start_event_count=start_event_count,
                 reason=str(error),
             )
 
-        self._require_trajectory().append(
-            event_type="parsed_submission",
-            turn_index=turn_index,
-            public={"action": action.name},
-            debug={"arguments": action.arguments},
-        )
         if action.name == MEASURE_POSITION_ACTION:
             return self._handle_measurement_action(
                 action=action,
                 turn_index=turn_index,
-                start_event_count=start_event_count,
             )
         if action.name == FINAL_ANSWER_ACTION:
             return self._handle_final_action(
                 action=action,
                 turn_index=turn_index,
-                start_event_count=start_event_count,
             )
         return self._invalid_submission_result(
             turn_index=turn_index,
-            start_event_count=start_event_count,
             reason=f"unknown action: {action.name}",
         )
 
@@ -229,17 +181,13 @@ class CartInferenceSession:
         self,
         action: ParsedAction,
         turn_index: int,
-        start_event_count: int,
     ) -> TaskStepResult:
         """Handle a public position measurement action."""
 
-        trajectory = self._require_trajectory()
         try:
             measurement = self._backbone.measure(action)
         except ActionBudgetExceeded as error:
             return self._truncated_result(
-                turn_index=turn_index,
-                start_event_count=start_event_count,
                 reason=str(error),
                 public_info={"accepted_action": MEASURE_POSITION_ACTION},
                 debug_info={},
@@ -247,29 +195,12 @@ class CartInferenceSession:
         except (SubmissionParseError, ValueError) as error:
             return self._invalid_submission_result(
                 turn_index=turn_index,
-                start_event_count=start_event_count,
                 reason=str(error),
             )
 
-        trajectory.append(
-            event_type="measurement",
-            turn_index=turn_index,
-            public={
-                "time_s": measurement.time_s,
-                "measured_position_m": measurement.measured_position_m,
-                "measurements_used": self._backbone.measurements_used,
-                "measurements_remaining": self._measurements_remaining(),
-            },
-            debug={
-                "true_position_m": measurement.true_position_m,
-                "noise_m": measurement.noise_m,
-            },
-        )
-        self._measurement_history.append(
-            CartMeasurementView(
-                time_s=measurement.time_s,
-                measured_position_m=measurement.measured_position_m,
-            )
+        current_measurement = CartMeasurementView(
+            time_s=measurement.time_s,
+            measured_position_m=measurement.measured_position_m,
         )
         feedback = (
             f"Measurement at t={measurement.time_s:g}s: "
@@ -277,10 +208,14 @@ class CartInferenceSession:
         )
         return self._continue_or_truncate(
             turn_index=turn_index,
-            start_event_count=start_event_count,
             feedback=feedback,
+            current_measurement=current_measurement,
             public_info={
                 "accepted_action": MEASURE_POSITION_ACTION,
+                "measurement": {
+                    "time_s": measurement.time_s,
+                    "measured_position_m": measurement.measured_position_m,
+                },
                 "measurements_remaining": self._measurements_remaining(),
             },
             debug_info={
@@ -293,7 +228,6 @@ class CartInferenceSession:
         self,
         action: ParsedAction,
         turn_index: int,
-        start_event_count: int,
     ) -> TaskStepResult:
         """Handle a structured final-answer action."""
 
@@ -302,51 +236,20 @@ class CartInferenceSession:
         except SubmissionParseError as error:
             return self._invalid_submission_result(
                 turn_index=turn_index,
-                start_event_count=start_event_count,
                 reason=str(error),
             )
         return self._final_result(
-            turn_index=turn_index,
-            start_event_count=start_event_count,
             submitted_position_m=submitted_position_m,
         )
 
     def _final_result(
         self,
-        turn_index: int,
-        start_event_count: int,
         submitted_position_m: float,
     ) -> TaskStepResult:
         """Evaluate and terminate on a final answer."""
 
-        trajectory = self._require_trajectory()
         evaluation = self._backbone.evaluate_final_answer(submitted_position_m)
         reward = reward_final_answer(evaluation)
-        trajectory.append(
-            event_type="verifier",
-            turn_index=turn_index,
-            public={
-                "correct": evaluation.correct,
-                "absolute_error_m": evaluation.absolute_error_m,
-                "tolerance_abs_m": evaluation.tolerance_abs_m,
-            },
-            debug={
-                "submitted_position_m": evaluation.submitted_position_m,
-                "exact_position_m": evaluation.exact_position_m,
-            },
-        )
-        trajectory.append(
-            event_type="reward",
-            turn_index=turn_index,
-            public={
-                "reward": reward.reward,
-                "score": reward.score,
-                "terminal": True,
-                "truncated": False,
-                "reward_info": reward.public_info,
-            },
-            debug=reward.debug_info,
-        )
         self._turn = None
         return TaskStepResult(
             accepted=True,
@@ -356,28 +259,19 @@ class CartInferenceSession:
             observation=None,
             public_info=self._final_public_info(evaluation, reward),
             debug_info=self._final_debug_info(evaluation),
-            events=self._events_since(start_event_count),
         )
 
     def _invalid_submission_result(
         self,
         turn_index: int,
-        start_event_count: int,
         reason: str,
     ) -> TaskStepResult:
         """Return a rejected-submission result."""
 
-        trajectory = self._require_trajectory()
-        trajectory.append(
-            event_type="invalid_submission",
-            turn_index=turn_index,
-            public={"reason": reason},
-            debug={},
-        )
         return self._continue_or_truncate(
             turn_index=turn_index,
-            start_event_count=start_event_count,
             feedback=f"Submission was not accepted: {reason}.",
+            current_measurement=None,
             public_info={"reason": reason},
             debug_info={},
         )
@@ -385,8 +279,8 @@ class CartInferenceSession:
     def _continue_or_truncate(
         self,
         turn_index: int,
-        start_event_count: int,
         feedback: str,
+        current_measurement: CartMeasurementView | None,
         public_info: dict[str, object],
         debug_info: dict[str, object],
     ) -> TaskStepResult:
@@ -394,16 +288,17 @@ class CartInferenceSession:
 
         if self._submissions_used >= self.instance.max_turns:
             return self._truncated_result(
-                turn_index=turn_index,
-                start_event_count=start_event_count,
                 reason="max_turns_exhausted",
                 public_info=public_info,
                 debug_info=debug_info,
             )
 
         next_turn_index = turn_index + 1
-        self._turn = self._build_turn(turn_index=next_turn_index, feedback=feedback)
-        self._append_observation_event(self._turn)
+        self._turn = self._build_turn(
+            turn_index=next_turn_index,
+            feedback=feedback,
+            current_measurement=current_measurement,
+        )
         public_result: dict[str, object] = {
             "measurements_used": self._backbone.measurements_used,
             "measurements_remaining": self._measurements_remaining(),
@@ -418,37 +313,16 @@ class CartInferenceSession:
             observation=self._turn,
             public_info=public_result,
             debug_info=debug_info,
-            events=self._events_since(start_event_count),
         )
 
     def _truncated_result(
         self,
-        turn_index: int,
-        start_event_count: int,
         reason: str,
         public_info: dict[str, object],
         debug_info: dict[str, object],
     ) -> TaskStepResult:
         """Terminate the rollout due to a public limit."""
 
-        trajectory = self._require_trajectory()
-        trajectory.append(
-            event_type="truncation",
-            turn_index=turn_index,
-            public={"reason": reason},
-            debug={},
-        )
-        trajectory.append(
-            event_type="reward",
-            turn_index=turn_index,
-            public={
-                "reward": 0.0,
-                "score": None,
-                "terminal": False,
-                "truncated": True,
-            },
-            debug={},
-        )
         self._turn = None
         result_info: dict[str, object] = {
             "reason": reason,
@@ -465,10 +339,9 @@ class CartInferenceSession:
             observation=None,
             public_info=result_info,
             debug_info=debug_info,
-            events=self._events_since(start_event_count),
         )
 
-    def _already_done_result(self, start_event_count: int) -> TaskStepResult:
+    def _already_done_result(self) -> TaskStepResult:
         """Return a rejected result for submissions after completion."""
 
         return TaskStepResult(
@@ -479,24 +352,27 @@ class CartInferenceSession:
             observation=None,
             public_info={"reason": "session_already_done"},
             debug_info={},
-            events=self._events_since(start_event_count),
         )
 
-    def _build_turn(self, turn_index: int, feedback: str) -> TaskTurn:
+    def _build_turn(
+        self,
+        turn_index: int,
+        feedback: str,
+        current_measurement: CartMeasurementView | None,
+    ) -> TaskTurn:
         """Build the next model-facing turn."""
 
         state = self._backbone.state
         render_context = CartRenderContext(
-            state=CartPublicStateView(
-                initial_position_m=state.initial_position_m,
-                initial_velocity_mps=state.initial_velocity_mps,
-                target_time_s=state.target_time_s,
-                min_measurement_time_s=state.min_measurement_time_s,
-                max_measurement_time_s=state.max_measurement_time_s,
-                measurement_noise_abs_m=state.measurement_noise_abs_m,
-            ),
+            initial_position_m=state.initial_position_m,
+            initial_velocity_mps=state.initial_velocity_mps,
+            target_time_s=state.target_time_s,
+            min_measurement_time_s=state.min_measurement_time_s,
+            max_measurement_time_s=state.max_measurement_time_s,
+            measurement_noise_abs_m=state.measurement_noise_abs_m,
             feedback=feedback,
-            measurements=tuple(self._measurement_history),
+            current_measurement=current_measurement,
+            measurements_used=self._backbone.measurements_used,
             action_budget=self._backbone.action_budget,
             measurements_remaining=self._measurements_remaining(),
         )
@@ -533,37 +409,16 @@ class CartInferenceSession:
             },
         )
 
-    def _append_observation_event(self, turn: TaskTurn) -> None:
-        """Record an observation event for a turn."""
-
-        self._require_trajectory().append(
-            event_type="observation",
-            turn_index=turn.turn_index,
-            public={
-                "renderer": turn.observation.renderer_name,
-                "content_digests": turn.observation.content_digests(),
-                "submission_modes": turn.submission_modes,
-                "public_limits": turn.public_limits,
-            },
-            debug={"text": turn.observation.text()},
-        )
-
     def _measurements_remaining(self) -> int:
         """Return the remaining measurement action budget."""
 
         return self._backbone.measurements_remaining
 
-    def _events_since(self, start_event_count: int) -> tuple[TrajectoryEvent, ...]:
-        """Return trajectory events emitted since one event count."""
+    def _require_reset(self) -> None:
+        """Raise a usage error when the session has not been reset."""
 
-        return self._require_trajectory().events[start_event_count:]
-
-    def _require_trajectory(self) -> TaskTrajectory:
-        """Return the active trajectory or raise a usage error."""
-
-        if self._trajectory is None:
+        if self._session_id is None:
             raise RuntimeError("session has not been reset")
-        return self._trajectory
 
     def _final_public_info(
         self, evaluation: FinalAnswerEvaluation, reward: RewardResult
@@ -573,7 +428,6 @@ class CartInferenceSession:
         return {
             "correct": evaluation.correct,
             "absolute_error_m": evaluation.absolute_error_m,
-            "tolerance_abs_m": evaluation.tolerance_abs_m,
             "score": reward.score,
             "measurements_used": self._backbone.measurements_used,
             "submissions_used": self._submissions_used,
@@ -585,5 +439,6 @@ class CartInferenceSession:
         return {
             "submitted_position_m": evaluation.submitted_position_m,
             "exact_position_m": evaluation.exact_position_m,
+            "tolerance_abs_m": evaluation.tolerance_abs_m,
             "acceleration_mps2": self._backbone.state.acceleration_mps2,
         }

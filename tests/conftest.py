@@ -21,7 +21,6 @@ from rlvr_physics.core.specs import (
     TaskSpec,
     VerifierSpec,
 )
-from rlvr_physics.core.trajectory import TaskTrajectory
 
 EXAMPLE_TASK_KIND = "tests.configured_task.v1"
 EXAMPLE_TASK_DOMAIN = "tests"
@@ -42,10 +41,7 @@ class ExampleScalarSession:
 
     def __init__(self, instance: TaskInstance) -> None:
         self._instance = instance
-        self._trajectory = TaskTrajectory(
-            task_id=instance.task_id,
-            session_id="configured-task-test-session",
-        )
+        self._session_id = "configured-task-test-session"
         self._turn: TaskTurn | None = None
 
     def reset(self, seed: int) -> TaskResetResult:
@@ -59,9 +55,10 @@ class ExampleScalarSession:
             public_info={"task_id": self._instance.task_id},
         )
         return TaskResetResult(
-            session_id=self._trajectory.session_id,
+            session_id=self._session_id,
             turn=self._turn,
-            trajectory=self._trajectory,
+            public_info={"task_id": self._instance.task_id},
+            debug_info={},
         )
 
     @property
@@ -71,10 +68,6 @@ class ExampleScalarSession:
     def submit(self, submission: TaskSubmission) -> TaskStepResult:
         _ = submission
         raise NotImplementedError("example scalar session does not score")
-
-    @property
-    def trajectory(self) -> TaskTrajectory:
-        return self._trajectory
 
 
 @pytest.fixture

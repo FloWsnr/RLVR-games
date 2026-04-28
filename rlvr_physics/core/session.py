@@ -7,7 +7,6 @@ from typing import Mapping, Protocol
 from rlvr_physics.core.payloads import freeze_mapping, stable_hash
 from rlvr_physics.core.rendering import RenderedObservation
 from rlvr_physics.core.rewards import RewardResult
-from rlvr_physics.core.trajectory import TaskTrajectory, TrajectoryEvent
 
 _SESSION_COUNTER = count()
 
@@ -143,13 +142,22 @@ class TaskResetResult:
         Identifier for the newly started session.
     turn:
         First model-facing turn of the rollout.
-    trajectory:
-        Trajectory object associated with the session.
+    public_info:
+        Trainer-safe reset metadata.
+    debug_info:
+        Privileged local reset metadata.
     """
 
     session_id: str
     turn: TaskTurn
-    trajectory: TaskTrajectory
+    public_info: Mapping[str, object]
+    debug_info: Mapping[str, object]
+
+    def __post_init__(self) -> None:
+        """Freeze mapping payloads after construction."""
+
+        object.__setattr__(self, "public_info", freeze_mapping(self.public_info))
+        object.__setattr__(self, "debug_info", freeze_mapping(self.debug_info))
 
 
 @dataclass(frozen=True)
@@ -172,8 +180,6 @@ class TaskStepResult:
         Trainer-safe result metadata.
     debug_info:
         Privileged local result metadata.
-    events:
-        Trajectory events emitted by the step.
     """
 
     accepted: bool
@@ -183,7 +189,6 @@ class TaskStepResult:
     observation: TaskTurn | None
     public_info: Mapping[str, object]
     debug_info: Mapping[str, object]
-    events: tuple[TrajectoryEvent, ...]
 
     def __post_init__(self) -> None:
         """Freeze mapping payloads after construction."""
@@ -231,8 +236,8 @@ class TaskStepResult:
 class TaskSession(Protocol):
     """Minimal scalar task session protocol.
 
-    Implementations manage one scalar rollout at a time and expose a verified
-    trajectory for trainer integration.
+    Implementations manage one scalar rollout at a time. Trainer integrations
+    own batching and any rollout recording they need.
     """
 
     def reset(self, seed: int) -> TaskResetResult:
@@ -246,7 +251,7 @@ class TaskSession(Protocol):
         Returns
         -------
         TaskResetResult
-            New session identifier, first turn, and trajectory state.
+            New session identifier, first turn, and reset metadata.
         """
         ...
 
@@ -273,17 +278,6 @@ class TaskSession(Protocol):
         -------
         TaskStepResult
             Step outcome, structured reward result, optional next turn,
-            metadata, and events.
-        """
-        ...
-
-    @property
-    def trajectory(self) -> TaskTrajectory:
-        """Return the verified session trajectory.
-
-        Returns
-        -------
-        TaskTrajectory
-            Append-only trajectory for the active or completed session.
+            and metadata.
         """
         ...

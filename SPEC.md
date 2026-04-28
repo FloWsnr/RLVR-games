@@ -5,12 +5,12 @@
 Build a trainer-agnostic RLVR task library for executable, verifiable tasks.
 The library should make it easy to create scalar task instances that produce
 model-facing observations, accept model outputs or tool actions, verify behavior
-with executable logic, assign rewards, and record useful trajectories.
+with executable logic, assign rewards, and return useful metadata.
 
 The long-term focus is physics and scientific reasoning. The core must also
 work for math, coding, and logic puzzles, because those domains are cheap
 proving grounds for the same abstractions: deterministic task generation, clear
-observations, executable verification, and repeatable rewards.
+observations, executable verification, repeatable rewards, and useful metadata.
 
 The library is not a trainer. It should integrate cleanly with large-scale LLM
 RL systems by exposing simple dataset, reward-function, environment, and HTTP
@@ -67,8 +67,8 @@ These are the parts worth locking early:
   metadata.
 - Multiple model completions must be possible against the same immutable task
   instance without resampling hidden facts.
-- Sessions must record enough verified interaction history for training,
-  evaluation, debugging, and offline conversion.
+- Sessions must return enough public and debug metadata for training,
+  evaluation, debugging, and future recorder wrappers.
 - The core should prefer protocols and plain data over a deep base-class
   hierarchy.
 - Backwards compatibility is not a priority while the architecture is still
@@ -147,20 +147,17 @@ class TaskSession(Protocol):
     def turn(self) -> TaskTurn | None: ...
 
     def submit(self, submission: TaskSubmission) -> TaskStepResult: ...
-
-    @property
-    def trajectory(self) -> TaskTrajectory: ...
 ```
 
 The exact names can change after prototypes, but the semantics should remain:
 
-- `reset` starts a fresh rollout and returns the first model-facing turn.
+- `reset` starts a fresh rollout and returns the first model-facing turn plus
+  trainer-safe and privileged reset metadata.
 - `turn` exposes the current observation, expected submission mode, available
   tools or action schema, and public limits.
 - `submit` accepts either a final text completion, a parsed action, or a tool
   call payload and returns validity, reward, termination status, public info,
   debug info, and optionally the next turn.
-- `trajectory` records the verified interaction history.
 
 Single-step verifier tasks are sessions with one turn and one final submission.
 Stateful simulations and tool-use tasks use the same session contract over
@@ -180,6 +177,10 @@ Renderers turn canonical task state and public metadata into observations:
 Renderers should be deterministic for a given state, renderer config, and seed.
 They must not own verifier state. If a renderer hides information, that hidden
 information must still live in the canonical instance or state.
+Turn renderers should not accumulate prior observations or actions. For
+multi-turn tasks, they should render the current public state, current tool
+result, or current feedback, while trainer integrations keep the conversation
+transcript or rollout trace when a model needs previous turns.
 Configured task builders may capture a selected renderer in the session builder;
 task specs should still advertise the supported renderer set.
 
@@ -194,9 +195,17 @@ should support at least:
 - invalid or unparsable submission record
 
 Parsing may happen in an integration layer or in the backbone, but the verified
-trajectory must record both the raw model output and the interpreted submission.
+session result should preserve trainer-safe and debug metadata needed to
+interpret what happened.
 
-### Step Results
+### Reset And Step Results
+
+Each reset should produce a result with these concepts:
+
+- `session_id`: stable identifier for the scalar rollout
+- `turn`: first model-facing turn
+- `public_info`: trainer-safe identity and rollout metadata
+- `debug_info`: privileged local reset metadata for evaluation and debugging
 
 Each submission should produce a result with these concepts:
 
@@ -209,7 +218,6 @@ Each submission should produce a result with these concepts:
 - `observation`: next model-facing turn when the task continues
 - `public_info`: trainer-safe metadata
 - `debug_info`: privileged metadata for local evaluation and debugging
-- `events`: trajectory records emitted by this step
 
 Reward is the trainer-facing scalar. A task may also expose interpretable reward
 features, but trainer integrations decide how much of that to surface.
@@ -219,23 +227,13 @@ reward, optional domain score, trainer-safe reward metadata, and privileged
 debug metadata. Task-specific reward code may live beside a task backbone, but
 the returned payload should stay consistent across task families.
 
-### Trajectories
+### Rollout Recording
 
-Trajectories are append-only records of one rollout. They should support both
-training export and debugging:
-
-- reset event with task identity, seed, renderer, and limits
-- observation events with public content hashes or payloads
-- raw model output events
-- parsed submission or tool call events
-- validity and error events
-- state transition summaries
-- verifier events
-- reward, score, terminal, and truncation events
-
-Token ids, log-probs, KL terms, and advantage values are not core trajectory
-fields. Trainer integrations may attach trainer-side trace identifiers so task
-records can be joined with token-level rollout data later.
+The core session API does not own trajectory storage for now. Trainer
+frameworks already own rollout traces, batching, token ids, log-probs, KL terms,
+and advantage values. Future local evaluation or offline export code may add a
+`TrajectoryRecorder` wrapper around `TaskSession`, but recorder concerns should
+remain peripheral to the task truth and step contract.
 
 ## Task Shapes
 
@@ -257,7 +255,7 @@ Expected lifecycle:
 2. render a prompt or chat observation
 3. accept one model completion
 4. parse and verify the completion
-5. return reward, metadata, and a trajectory
+5. return reward and metadata
 
 This path should eventually export cleanly to generic prompt rows and trainer
 reward functions. Trainer-specific reward surfaces should remain outside the
@@ -315,7 +313,8 @@ Compatibility targets:
 - generic prompt rows plus scalar scoring helpers
 - trainer reward functions over prompts, completions, and row metadata
 - future examples for reward services after the core API stabilizes
-- offline SFT/DPO conversion from verified trajectories
+- offline SFT/DPO conversion from future recorder outputs or trainer-owned
+  rollout records
 
 ### Environment Surfaces
 
@@ -417,7 +416,6 @@ rlvr_physics/core/
   payloads.py     # payload freezing, plain-data conversion, and stable hashes
   rewards.py      # shared reward result types
   session.py      # TaskSession protocol and result dataclasses
-  trajectory.py   # event log types and helpers
   rendering.py    # observation/content abstractions
   specs.py        # YAML/task spec loading
 
@@ -458,8 +456,8 @@ Each prototype should prove a small number of core behaviors:
 - final-answer or tool-action submissions interpreted into structured payloads
 - rollout limits represented directly on immutable instances and public turns
 - reward features that explain exactness, invalid submissions, and truncation
-- verified trajectory events for reset, observation, submission parsing, state
-  transitions, verifier results, rewards, and truncations
+- step results with public metadata and privileged debug details for local
+  inspection
 
 Coding verifier tasks should wait until the core needs sandbox or subprocess
 boundaries. Do not add broad abstractions before concrete tasks expose repeated
@@ -474,7 +472,7 @@ The initial core is good enough when:
 - canonical state is inspectable in debug mode but not leaked through public
   metadata
 - a renderer can be swapped without changing verification
-- trajectories explain why a reward was assigned
+- step result metadata explains why a reward was assigned
 - deterministic tests can replay a task from seed and instance payload
 - dataset export can feed prompt/completion reward workflows
 - environment export can feed reset/tool/step workflows
@@ -497,8 +495,8 @@ The initial core is good enough when:
 
 - What is the smallest stable `TaskSession` protocol after one single-step task
   and one stateful task are implemented?
-- Should trajectories be plain dataclasses, typed event logs, JSONL records, or
-  a combination?
+- When should a peripheral `TrajectoryRecorder` be added, and should it emit
+  plain dataclasses, typed event logs, JSONL records, or a combination?
 - Which trainer integration should be implemented first after generic dataset
   export?
 - How should task payloads be serialized for very large hidden state, images, or

@@ -29,7 +29,6 @@ from rlvr_physics.core.specs import (
     TaskSpec,
     VerifierSpec,
 )
-from rlvr_physics.core.trajectory import TaskTrajectory, TrajectoryEvent
 
 __all__ = [
     "ImageContent",
@@ -46,10 +45,8 @@ __all__ = [
     "TaskSpec",
     "TaskStepResult",
     "TaskSubmission",
-    "TaskTrajectory",
     "TaskTurn",
     "TextContent",
-    "TrajectoryEvent",
     "VerifierSpec",
     "image_observation",
     "text_observation",

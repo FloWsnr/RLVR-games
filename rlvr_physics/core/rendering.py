@@ -43,15 +43,22 @@ class ImageContent:
     kind: Literal["image"] = "image"
 
     def digest(self) -> str:
-        """Return a stable digest for trajectory logging.
+        """Return a stable digest for compact logging.
 
         Returns
         -------
         str
-            SHA-256 hex digest of the encoded image bytes.
+            SHA-256 hex digest of the encoded image bytes and model-visible
+            image metadata.
         """
 
-        return sha256(self.data).hexdigest()
+        digest = sha256()
+        digest.update(self.mime_type.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(self.alt_text.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(self.data)
+        return digest.hexdigest()
 
 
 ObservationContent = TextContent | ImageContent
@@ -89,7 +96,7 @@ class RenderedObservation:
         )
 
     def content_digests(self) -> tuple[str, ...]:
-        """Return compact content hashes suitable for public trajectory logs.
+        """Return compact content hashes for observation content.
 
         Returns
         -------
@@ -129,31 +136,34 @@ def text_observation(renderer_name: str, text: str) -> RenderedObservation:
 
 
 def image_observation(
-    renderer_name: str, data: bytes, alt_text: str
+    renderer_name: str, data: bytes, mime_type: str, alt_text: str, text: str
 ) -> RenderedObservation:
-    """Build an image observation with a text fallback.
+    """Build an image observation with a separate text block.
 
     Parameters
     ----------
     renderer_name:
         Name to store on the rendered observation.
     data:
-        Image bytes stored in a content block labeled with MIME type
-        ``image/png``.
+        Encoded image bytes.
+    mime_type:
+        Media type for the encoded image bytes.
     alt_text:
-        Text fallback appended as a separate ``TextContent`` block.
+        Concise text alternative for the image content block.
+    text:
+        Model-facing text content appended as a separate ``TextContent`` block.
 
     Returns
     -------
     RenderedObservation
-        Observation containing an ``ImageContent`` block with MIME type
-        ``image/png`` followed by a text fallback block.
+        Observation containing an ``ImageContent`` block followed by a text
+        block.
     """
 
     return RenderedObservation(
         renderer_name=renderer_name,
         contents=(
-            ImageContent(data=data, mime_type="image/png", alt_text=alt_text),
-            TextContent(text=alt_text),
+            ImageContent(data=data, mime_type=mime_type, alt_text=alt_text),
+            TextContent(text=text),
         ),
     )

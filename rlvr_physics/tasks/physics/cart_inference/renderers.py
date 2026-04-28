@@ -4,9 +4,8 @@ from dataclasses import dataclass
 from html import escape
 
 from rlvr_physics.core.rendering import (
-    ImageContent,
     RenderedObservation,
-    TextContent,
+    image_observation,
     text_observation,
 )
 from rlvr_physics.tasks.physics.cart_inference.backbone import (
@@ -16,55 +15,11 @@ from rlvr_physics.tasks.physics.cart_inference.backbone import (
 
 CART_TEXT_RENDERER = "cart_inference.text"
 CART_IMAGE_RENDERER = "cart_inference.image"
-MAX_IMAGE_HISTORY_ROWS = 8
-
-
-@dataclass(frozen=True)
-class CartPublicStateView:
-    """Public cart state available to renderers.
-
-    Parameters
-    ----------
-    initial_position_m:
-        Public initial cart position in meters.
-    initial_velocity_mps:
-        Public initial cart velocity in meters per second.
-    target_time_s:
-        Public target prediction time in seconds.
-    min_measurement_time_s:
-        Public minimum valid measurement time in seconds.
-    max_measurement_time_s:
-        Public maximum valid measurement time in seconds.
-    measurement_noise_abs_m:
-        Public absolute bound on deterministic measurement noise.
-
-    Attributes
-    ----------
-    initial_position_m:
-        Public initial cart position in meters.
-    initial_velocity_mps:
-        Public initial cart velocity in meters per second.
-    target_time_s:
-        Public target prediction time in seconds.
-    min_measurement_time_s:
-        Public minimum valid measurement time in seconds.
-    max_measurement_time_s:
-        Public maximum valid measurement time in seconds.
-    measurement_noise_abs_m:
-        Public absolute bound on deterministic measurement noise.
-    """
-
-    initial_position_m: float
-    initial_velocity_mps: float
-    target_time_s: float
-    min_measurement_time_s: float
-    max_measurement_time_s: float
-    measurement_noise_abs_m: float
 
 
 @dataclass(frozen=True)
 class CartMeasurementView:
-    """Public measurement record available to renderers.
+    """Public current-turn measurement available to renderers.
 
     Parameters
     ----------
@@ -87,16 +42,28 @@ class CartMeasurementView:
 
 @dataclass(frozen=True)
 class CartRenderContext:
-    """Public cart rollout state used by renderers.
+    """Public current-turn cart state used by renderers.
 
     Parameters
     ----------
-    state:
-        Public cart state view.
+    initial_position_m:
+        Public initial cart position in meters.
+    initial_velocity_mps:
+        Public initial cart velocity in meters per second.
+    target_time_s:
+        Public target prediction time in seconds.
+    min_measurement_time_s:
+        Public minimum valid measurement time in seconds.
+    max_measurement_time_s:
+        Public maximum valid measurement time in seconds.
+    measurement_noise_abs_m:
+        Public absolute bound on deterministic measurement noise.
     feedback:
         Latest public feedback shown to the model.
-    measurements:
-        Public measurement history for this rollout.
+    current_measurement:
+        Public measurement produced for this turn, when one was just accepted.
+    measurements_used:
+        Number of public measurements already used in this rollout.
     action_budget:
         Total public measurement action budget.
     measurements_remaining:
@@ -104,21 +71,39 @@ class CartRenderContext:
 
     Attributes
     ----------
-    state:
-        Public cart state view.
+    initial_position_m:
+        Public initial cart position in meters.
+    initial_velocity_mps:
+        Public initial cart velocity in meters per second.
+    target_time_s:
+        Public target prediction time in seconds.
+    min_measurement_time_s:
+        Public minimum valid measurement time in seconds.
+    max_measurement_time_s:
+        Public maximum valid measurement time in seconds.
+    measurement_noise_abs_m:
+        Public absolute bound on deterministic measurement noise.
     feedback:
         Latest public feedback shown to the model.
-    measurements:
-        Public measurement history for this rollout.
+    current_measurement:
+        Public measurement produced for this turn, when one was just accepted.
+    measurements_used:
+        Number of public measurements already used in this rollout.
     action_budget:
         Total public measurement action budget.
     measurements_remaining:
         Number of public measurements still available.
     """
 
-    state: CartPublicStateView
+    initial_position_m: float
+    initial_velocity_mps: float
+    target_time_s: float
+    min_measurement_time_s: float
+    max_measurement_time_s: float
+    measurement_noise_abs_m: float
     feedback: str
-    measurements: tuple[CartMeasurementView, ...]
+    current_measurement: CartMeasurementView | None
+    measurements_used: int
     action_budget: int
     measurements_remaining: int
 
@@ -162,7 +147,9 @@ def render_cart_observation(
     validate_cart_renderer_type(renderer_type)
     if renderer_type == CART_TEXT_RENDERER:
         return text_observation(CART_TEXT_RENDERER, render_cart_text(context))
-    return render_cart_image(context)
+    if renderer_type == CART_IMAGE_RENDERER:
+        return render_cart_image(context)
+    raise AssertionError(f"validated renderer was not handled: {renderer_type}")
 
 
 def render_cart_text(context: CartRenderContext) -> str:
@@ -179,7 +166,7 @@ def render_cart_text(context: CartRenderContext) -> str:
         Model-facing text prompt.
     """
 
-    state = context.state
+    state = context
     lines = [
         context.feedback,
         "",
@@ -194,19 +181,19 @@ def render_cart_text(context: CartRenderContext) -> str:
             f"{_fmt(state.max_measurement_time_s)} seconds"
         ),
         f"- measurement noise is bounded by +/- {_fmt(state.measurement_noise_abs_m)} m",
-        (f"- measurements used: {len(context.measurements)} / {context.action_budget}"),
+        f"- measurements used: {context.measurements_used} / {context.action_budget}",
         f"- measurements remaining: {context.measurements_remaining}",
         "",
-        "Measurement history:",
+        "Current measurement:",
     ]
-    if context.measurements:
-        for index, measurement in enumerate(context.measurements, start=1):
-            lines.append(
-                f"- {index}. t={_fmt(measurement.time_s)} s, "
-                f"x={_fmt(measurement.measured_position_m)} m"
-            )
+    if context.current_measurement is not None:
+        measurement = context.current_measurement
+        lines.append(
+            f"- t={_fmt(measurement.time_s)} s, "
+            f"x={_fmt(measurement.measured_position_m)} m"
+        )
     else:
-        lines.append("- none yet")
+        lines.append("- none on this turn")
 
     lines.extend(
         [
@@ -234,18 +221,16 @@ def render_cart_image(context: CartRenderContext) -> RenderedObservation:
         Observation with an SVG image block followed by text fallback.
     """
 
-    alt_text = render_cart_text(context)
+    text = render_cart_text(context)
     svg = _render_cart_svg(context)
-    return RenderedObservation(
+    return image_observation(
         renderer_name=CART_IMAGE_RENDERER,
-        contents=(
-            ImageContent(
-                data=svg.encode("utf-8"),
-                mime_type="image/svg+xml",
-                alt_text=alt_text,
-            ),
-            TextContent(text=alt_text),
+        data=svg.encode("utf-8"),
+        mime_type="image/svg+xml",
+        alt_text=(
+            "SVG chart of the current public cart state and current measurement."
         ),
+        text=text,
     )
 
 
@@ -272,7 +257,7 @@ def _render_cart_svg(context: CartRenderContext) -> str:
         _text(
             32.0,
             66.0,
-            "Public state only: infer the target position from measurements.",
+            "Current public observation only: infer the target position from the transcript.",
             13,
             "#475569",
             "400",
@@ -289,7 +274,7 @@ def _render_cart_svg(context: CartRenderContext) -> str:
 def _track_panel(context: CartRenderContext) -> list[str]:
     """Render the initial cart state panel."""
 
-    state = context.state
+    state = context
     panel_x = 32.0
     panel_y = 88.0
     panel_w = 590.0
@@ -385,7 +370,7 @@ def _track_panel(context: CartRenderContext) -> list[str]:
 def _timeline_panel(context: CartRenderContext) -> list[str]:
     """Render the public time window panel."""
 
-    state = context.state
+    state = context
     panel_x = 32.0
     panel_y = 236.0
     panel_w = 590.0
@@ -465,7 +450,7 @@ def _timeline_panel(context: CartRenderContext) -> list[str]:
 def _chart_panel(context: CartRenderContext) -> list[str]:
     """Render the public time-position measurement chart."""
 
-    state = context.state
+    state = context
     panel_x = 32.0
     panel_y = 356.0
     panel_w = 590.0
@@ -474,7 +459,9 @@ def _chart_panel(context: CartRenderContext) -> list[str]:
     chart_right = panel_x + panel_w - 34.0
     chart_top = panel_y + 46.0
     chart_bottom = panel_y + panel_h - 42.0
-    measurement_values = [item.measured_position_m for item in context.measurements]
+    measurement_values: list[float] = []
+    if context.current_measurement is not None:
+        measurement_values.append(context.current_measurement.measured_position_m)
     y_min, y_max = _chart_range(
         state.initial_position_m,
         tuple(measurement_values),
@@ -498,7 +485,7 @@ def _chart_panel(context: CartRenderContext) -> list[str]:
     elements = [
         _panel(panel_x, panel_y, panel_w, panel_h),
         _text(
-            panel_x + 18.0, panel_y + 28.0, "Public measurements", 15, "#0f172a", "700"
+            panel_x + 18.0, panel_y + 28.0, "Current measurement", 15, "#0f172a", "700"
         ),
         (
             f'<rect x="{window_left:.1f}" y="{chart_top:.1f}" '
@@ -567,7 +554,8 @@ def _chart_panel(context: CartRenderContext) -> list[str]:
             "initial",
         )
     )
-    for index, measurement in enumerate(context.measurements, start=1):
+    if context.current_measurement is not None:
+        measurement = context.current_measurement
         point_x = _scale(
             measurement.time_s,
             0.0,
@@ -609,15 +597,15 @@ def _chart_panel(context: CartRenderContext) -> list[str]:
                     f'x2="{point_x + 5.0:.1f}" y2="{low_y:.1f}" '
                     'stroke="#f97316" stroke-width="2"/>'
                 ),
-                _point(point_x, point_y, "#f97316", str(index)),
+                _point(point_x, point_y, "#f97316", "current"),
             ]
         )
-    if not context.measurements:
+    if context.current_measurement is None:
         elements.append(
             _text(
                 (chart_left + chart_right) / 2.0,
                 (chart_top + chart_bottom) / 2.0,
-                "No measurements yet",
+                "No measurement on this turn",
                 14,
                 "#64748b",
                 "700",
@@ -630,8 +618,7 @@ def _chart_panel(context: CartRenderContext) -> list[str]:
 def _data_panel(context: CartRenderContext) -> list[str]:
     """Render exact public values and action hints."""
 
-    state = context.state
-    history_rows, omitted_count = _image_history_rows(context.measurements)
+    state = context
     panel_x = 650.0
     panel_y = 88.0
     panel_w = 278.0
@@ -646,25 +633,23 @@ def _data_panel(context: CartRenderContext) -> list[str]:
             f"{_fmt(state.max_measurement_time_s)} s"
         ),
         f"Noise bound: +/- {_fmt(state.measurement_noise_abs_m)} m",
-        f"Measurements: {len(context.measurements)} / {context.action_budget}",
+        f"Measurements: {context.measurements_used} / {context.action_budget}",
         f"Remaining: {context.measurements_remaining}",
         "",
         "Actions",
         f"{MEASURE_POSITION_ACTION}(time)",
         f"{FINAL_ANSWER_ACTION}(x)",
         "",
-        "History",
+        "Current measurement",
     ]
-    if history_rows:
-        if omitted_count > 0:
-            lines.append(f"... {omitted_count} earlier omitted")
-        for index, measurement in history_rows:
-            lines.append(
-                f"{index}. t={_fmt(measurement.time_s)} s, "
-                f"x={_fmt(measurement.measured_position_m)} m"
-            )
+    if context.current_measurement is not None:
+        measurement = context.current_measurement
+        lines.append(
+            f"t={_fmt(measurement.time_s)} s, "
+            f"x={_fmt(measurement.measured_position_m)} m"
+        )
     else:
-        lines.append("none yet")
+        lines.append("none on this turn")
 
     elements = [_panel(panel_x, panel_y, panel_w, panel_h)]
     y = panel_y + 30.0
@@ -677,18 +662,6 @@ def _data_panel(context: CartRenderContext) -> list[str]:
         elements.append(_text(panel_x + 18.0, y, line, 13, color, weight))
         y += 22.0
     return elements
-
-
-def _image_history_rows(
-    measurements: tuple[CartMeasurementView, ...],
-) -> tuple[tuple[tuple[int, CartMeasurementView], ...], int]:
-    """Return bounded measurement rows for the fixed-size image panel."""
-
-    indexed_rows = tuple(enumerate(measurements, start=1))
-    if len(indexed_rows) <= MAX_IMAGE_HISTORY_ROWS:
-        return indexed_rows, 0
-    omitted_count = len(indexed_rows) - MAX_IMAGE_HISTORY_ROWS
-    return indexed_rows[-MAX_IMAGE_HISTORY_ROWS:], omitted_count
 
 
 def _panel(x: float, y: float, width: float, height: float) -> str:
