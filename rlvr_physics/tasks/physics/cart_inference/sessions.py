@@ -28,7 +28,7 @@ from rlvr_physics.tasks.physics.cart_inference.budgets import (
     ACTION_BUDGET,
     FINAL_ANSWER_BUDGET,
     TURN_BUDGET,
-    required_cart_budget,
+    CartRolloutBudgetState,
 )
 from rlvr_physics.tasks.physics.cart_inference.rewards import (
     CartRewardConfig,
@@ -115,12 +115,10 @@ class CartInferenceSession:
         self.instance = instance
         self._renderer_type = renderer_type
         self._backbone = CartInferenceBackbone(instance)
+        self._budget_state = CartRolloutBudgetState(instance.budget_limits)
         self._reward_config = reward_config
         self._session_id: str | None = None
         self._turn: TaskTurn | None = None
-        self._submissions_used: int = 0
-        self._invalid_submissions: int = 0
-        self._final_answers_used: int = 0
 
     def reset(self, seed: int) -> TaskResetResult:
         """Start a fresh rollout and return the first model-facing turn.
@@ -137,9 +135,7 @@ class CartInferenceSession:
         """
 
         self._session_id = new_session_id(self.instance.task_id, seed)
-        self._submissions_used = 0
-        self._invalid_submissions = 0
-        self._final_answers_used = 0
+        self._budget_state.reset()
         self._backbone.reset_rollout()
         self._turn = self._build_turn(
             turn_index=0,
@@ -154,11 +150,11 @@ class CartInferenceSession:
                 "kind": self.instance.kind,
                 "domain": self.instance.domain,
                 "instance_hash": self.instance.content_hash(),
-                "rollout_seed": seed,
                 "renderer": self._renderer_type,
                 "limits": self._public_limits(),
             },
             debug_info={
+                "rollout_seed": seed,
                 "acceleration_mps2": self._backbone.state.acceleration_mps2,
                 "exact_target_position_m": (
                     self._backbone.state.exact_target_position_m
@@ -249,15 +245,15 @@ class CartInferenceSession:
     ) -> TaskStepResult:
         """Handle a public position measurement action."""
 
-        self._submissions_used += 1
+        self._budget_state.record_action_submission()
         try:
             measurement = self._backbone.measure(action)
         except ActionBudgetExceeded as error:
-            self._invalid_submissions += 1
+            self._budget_state.record_invalid_after_counted_submission()
             return self._truncated_result(
                 reason=str(error),
                 public_info={
-                    "accepted_action": MEASURE_POSITION_ACTION,
+                    "attempted_action": MEASURE_POSITION_ACTION,
                     "invalid_submission_category": BUDGET_EXCEEDED_POLICY.category,
                     "invalid_submission_policy": BUDGET_EXCEEDED_POLICY.category,
                 },
@@ -315,8 +311,7 @@ class CartInferenceSession:
     ) -> TaskStepResult:
         """Handle a structured final-answer action."""
 
-        self._submissions_used += 1
-        self._final_answers_used += 1
+        self._budget_state.record_final_answer_submission()
         try:
             submitted_position_m = self._backbone.final_answer_from_action(action)
         except SubmissionParseError as error:
@@ -361,9 +356,9 @@ class CartInferenceSession:
 
         category = reason_category if reason_category is not None else policy.category
         if not counts_applied:
-            self._apply_invalid_submission_policy(policy)
+            self._budget_state.record_invalid_submission(policy)
         else:
-            self._invalid_submissions += 1
+            self._budget_state.record_invalid_after_counted_submission()
         if policy.terminal or policy.truncated:
             self._turn = None
             return TaskStepResult(
@@ -395,13 +390,6 @@ class CartInferenceSession:
             reward_result=self._reward_invalid_submission(policy, category),
         )
 
-    def _apply_invalid_submission_policy(self, policy: InvalidSubmissionPolicy) -> None:
-        """Apply counters for an invalid submission according to policy."""
-
-        self._invalid_submissions += 1
-        self._submissions_used += policy.consumes_budget.get(TURN_BUDGET, 0)
-        self._final_answers_used += policy.consumes_budget.get(FINAL_ANSWER_BUDGET, 0)
-
     def _reward_invalid_submission(
         self, policy: InvalidSubmissionPolicy, reason_category: str
     ) -> RewardResult:
@@ -430,7 +418,7 @@ class CartInferenceSession:
     ) -> TaskStepResult:
         """Continue to the next turn unless the turn limit is exhausted."""
 
-        if self._submissions_used >= self._turn_budget():
+        if self._budget_state.turn_budget_exhausted():
             return self._truncated_result(
                 reason="turn_budget_exhausted",
                 public_info=public_info,
@@ -514,9 +502,9 @@ class CartInferenceSession:
             actions_used=self._backbone.measurements_used,
             action_budget=self._backbone.action_budget,
             actions_remaining=self._actions_remaining(),
-            final_answers_used=self._final_answers_used,
-            final_answer_budget=self._final_answer_budget(),
-            final_answers_remaining=self._final_answers_remaining(),
+            final_answers_used=self._budget_state.final_answers_used,
+            final_answer_budget=self._budget_state.final_answer_budget,
+            final_answers_remaining=self._budget_state.final_answers_remaining,
         )
         return TaskTurn(
             turn_index=turn_index,
@@ -587,26 +575,6 @@ class CartInferenceSession:
 
         return self._backbone.measurements_remaining
 
-    def _final_answers_remaining(self) -> int:
-        """Return the remaining final-answer attempt budget."""
-
-        return max(0, self._final_answer_budget() - self._final_answers_used)
-
-    def _turns_remaining(self) -> int:
-        """Return the remaining total turn budget."""
-
-        return max(0, self._turn_budget() - self._submissions_used)
-
-    def _turn_budget(self) -> int:
-        """Return the total turn budget from the immutable instance."""
-
-        return required_cart_budget(self.instance.budget_limits, TURN_BUDGET)
-
-    def _final_answer_budget(self) -> int:
-        """Return the final-answer budget from the immutable instance."""
-
-        return required_cart_budget(self.instance.budget_limits, FINAL_ANSWER_BUDGET)
-
     def _unparseable_action_category(self, submission: TaskSubmission) -> str:
         """Return the public reason category for an unparseable action."""
 
@@ -618,26 +586,11 @@ class CartInferenceSession:
     def _public_status(self, extra_info: dict[str, object]) -> dict[str, object]:
         """Return public rollout counters with additional event metadata."""
 
-        status: dict[str, object] = {
-            "budget_usage": {
-                TURN_BUDGET: self._submissions_used,
-                ACTION_BUDGET: self._backbone.measurements_used,
-                FINAL_ANSWER_BUDGET: self._final_answers_used,
-            },
-            "budget_remaining": {
-                TURN_BUDGET: self._turns_remaining(),
-                ACTION_BUDGET: self._actions_remaining(),
-                FINAL_ANSWER_BUDGET: self._final_answers_remaining(),
-            },
-            "actions_used": self._backbone.measurements_used,
-            "actions_remaining": self._actions_remaining(),
-            "final_answers_used": self._final_answers_used,
-            "final_answers_remaining": self._final_answers_remaining(),
-            "submissions_used": self._submissions_used,
-            "invalid_submissions": self._invalid_submissions,
-        }
-        status.update(extra_info)
-        return status
+        return self._budget_state.public_status(
+            actions_used=self._backbone.measurements_used,
+            actions_remaining=self._actions_remaining(),
+            extra_info=extra_info,
+        )
 
     def _require_reset(self) -> None:
         """Raise a usage error when the session has not been reset."""

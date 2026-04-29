@@ -46,7 +46,7 @@ def test_session_reset_returns_identity_and_debug_metadata(
     assert fixture.reset.public_info["task_id"] == fixture.instance.task_id
     assert fixture.reset.public_info["kind"] == fixture.instance.kind
     assert fixture.reset.public_info["domain"] == fixture.instance.domain
-    assert fixture.reset.public_info["rollout_seed"] == CART_SESSION_SEED
+    assert "rollout_seed" not in fixture.reset.public_info
     assert fixture.reset.public_info["renderer"] == fixture.renderer_name
     assert fixture.reset.public_info["limits"] == {
         "budget_limits": {
@@ -60,6 +60,7 @@ def test_session_reset_returns_identity_and_debug_metadata(
         fixture.reset.debug_info["acceleration_mps2"]
         == fixture.instance.privileged_payload["acceleration_mps2"]
     )
+    assert fixture.reset.debug_info["rollout_seed"] == CART_SESSION_SEED
 
 
 def test_measurement_step_returns_public_measurement_metadata(
@@ -115,6 +116,46 @@ def test_measurement_metadata_survives_immediate_truncation(
     assert isinstance(measurement_info, Mapping)
     assert measurement_info["time_s"] == 5.0
     assert isinstance(measurement_info["measured_position_m"], float)
+
+
+def test_over_budget_measurement_reports_attempted_action(
+    cart_task_fixture: CartInferenceFixture,
+) -> None:
+    instance = replace(
+        cart_task_fixture.instance,
+        budget_limits={"turns": 3, "actions": 1, "final_answers": 1},
+    )
+    session = CartInferenceSession(
+        instance, CART_TEXT_RENDERER, cart_task_fixture.config.reward
+    )
+    session.reset(seed=CART_SESSION_SEED)
+    first_result = session.submit(
+        TaskSubmission.action(
+            '{"action": "measure_position", "arguments": {"time": 5}}'
+        )
+    )
+
+    result = session.submit(
+        TaskSubmission.action(
+            '{"action": "measure_position", "arguments": {"time": 6}}'
+        )
+    )
+
+    assert first_result.accepted
+    assert not result.accepted
+    assert result.truncated
+    assert result.public_info["attempted_action"] == "measure_position"
+    assert "accepted_action" not in result.public_info
+    assert result.public_info["budget_usage"] == {
+        "turns": 2,
+        "actions": 1,
+        "final_answers": 0,
+    }
+    assert result.public_info["budget_remaining"] == {
+        "turns": 1,
+        "actions": 0,
+        "final_answers": 1,
+    }
 
 
 def test_session_rejects_raw_final_text_for_cart_task(
