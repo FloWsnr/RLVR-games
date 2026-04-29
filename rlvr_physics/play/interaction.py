@@ -205,6 +205,9 @@ def step_interaction_event(
         "terminal": result.terminal,
         "truncated": result.truncated,
         "done": result.done,
+        "reward_info": filtered_public_info(
+            result.reward_result.public_info, public_info_excluded_keys
+        ),
         "public_info": filtered_public_info(
             result.public_info, public_info_excluded_keys
         ),

@@ -86,9 +86,18 @@ def test_cart_interaction_runs_multiple_turns_without_debug_leaks() -> None:
         "actions": 2,
         "final_answers": 1,
     }
+    assert events[1]["reward_info"] == {
+        "accepted_action": "measure_position",
+        "measurement_index": 0,
+        "reward_event": "accepted_action",
+    }
     assert not events[1]["done"]
     assert events[2]["done"]
     assert events[2]["terminal"]
+    assert events[2]["reward_info"] == {
+        "correct": False,
+        "reward_event": "final_answer",
+    }
     assert "turn" in events[1]
     assert "turn" not in events[2]
 

@@ -107,7 +107,12 @@ class CompletingSession:
         self._turn = None
         return TaskStepResult(
             accepted=True,
-            reward_result=RewardResult(reward=1.0, score=1.0),
+            reward_result=RewardResult(
+                reward=1.0,
+                score=1.0,
+                public_info={"reward_event": "test_completion"},
+                debug_info={"secret_reward": "hidden"},
+            ),
             terminal=True,
             truncated=False,
             observation=None,
@@ -150,6 +155,7 @@ def test_task_interaction_filters_public_info_and_omits_debug() -> None:
         "received_kind": "final_text",
         "received_raw": "answer",
     }
+    assert events[1]["reward_info"] == {"reward_event": "test_completion"}
     assert "debug_info" not in output_stream.getvalue()
     assert "secret" not in output_stream.getvalue()
     assert "rollout_seed" not in output_stream.getvalue()

@@ -28,6 +28,8 @@ renderer peripherals, and deferred trainer integration surfaces.
 - Keep scalar reward assignment in task-local rewards modules. Invalid
   submission policies should describe control effects such as budget
   consumption, terminal state, and truncation.
+- Public play and adapter surfaces should preserve `RewardResult.public_info`
+  and omit `RewardResult.debug_info`.
 - Do not expose procedural replay seeds through public task metadata. Use
   stable task IDs or explicit trainer-safe source IDs instead.
 - Do not use `from __future__ import annotations`.

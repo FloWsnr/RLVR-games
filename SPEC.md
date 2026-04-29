@@ -282,6 +282,8 @@ without reimplementing process IO. The shared play interaction layer owns:
 - the JSONL reset and step event protocol
 - conversion of `TaskTurn`, `TaskResetResult`, and `TaskStepResult` into public
   JSON-compatible payloads
+- public reward metadata from `RewardResult.public_info` on step events, while
+  omitting privileged reward debug metadata
 - one-submission-per-line stdin/stdout loops
 - public-info metadata filtering for blind local play
 - text and image observation serialization
