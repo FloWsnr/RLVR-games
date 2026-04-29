@@ -75,10 +75,11 @@ def cart_inference_config_from_parameters(
         answer_tolerance_abs_m=_required_float_parameter(
             parameters, "answer_tolerance_abs_m"
         ),
-        max_turns=_required_int_parameter(parameters, "max_turns"),
+        turn_budget=_required_int_parameter(parameters, "turn_budget"),
         timeout_seconds=_optional_float_parameter(parameters, "timeout_seconds"),
         token_budget=_optional_int_parameter(parameters, "token_budget"),
         action_budget=_required_int_parameter(parameters, "action_budget"),
+        final_answer_budget=_required_int_parameter(parameters, "final_answer_budget"),
     )
 
 

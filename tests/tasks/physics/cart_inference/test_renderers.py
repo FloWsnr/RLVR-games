@@ -6,7 +6,7 @@ from struct import unpack
 import pytest
 from rlvr_physics.core.instances import TaskInstance
 from rlvr_physics.core.rendering import ImageContent, PNG_MIME_TYPE, TextContent
-from rlvr_physics.core.session import TaskSubmission
+from rlvr_physics.core.submissions import TaskSubmission
 from rlvr_physics.tasks.physics.cart_inference.instances import (
     build_cart_inference_instance,
 )
@@ -34,8 +34,16 @@ def test_text_renderer_reports_current_measurement_only() -> None:
     session = CartInferenceSession(instance, CART_TEXT_RENDERER)
     session.reset(seed=456)
 
-    first_result = session.submit(TaskSubmission.action("measure_position(5)"))
-    second_result = session.submit(TaskSubmission.action("measure_position(6)"))
+    first_result = session.submit(
+        TaskSubmission.action(
+            '{"action": "measure_position", "arguments": {"time": 5}}'
+        )
+    )
+    second_result = session.submit(
+        TaskSubmission.action(
+            '{"action": "measure_position", "arguments": {"time": 6}}'
+        )
+    )
 
     assert first_result.observation is not None
     assert "t=5 s" in first_result.observation.observation.text()
@@ -46,8 +54,11 @@ def test_text_renderer_reports_current_measurement_only() -> None:
     assert "Current measurement:" in observation.text()
     assert "t=6 s" in observation.text()
     assert "t=5 s" not in observation.text()
-    assert "measurements used: 2 / 3" in observation.text()
-    assert "measurements remaining: 1" in observation.text()
+    assert "actions used: 2 / 3" in observation.text()
+    assert "actions remaining: 1" in observation.text()
+    assert "final answer attempts used: 0 / 1" in observation.text()
+    assert "final answer attempts remaining: 1" in observation.text()
+    assert '{"action":"measure_position","arguments":{"time":10}}' in observation.text()
 
 
 def test_cart_prompt_templates_are_task_local_files() -> None:
@@ -104,9 +115,12 @@ def test_image_renderer_omits_privileged_state() -> None:
             measurement_noise_abs_m=0.02,
             feedback="A cart moves on a horizontal track.",
             current_measurement=None,
-            measurements_used=0,
+            actions_used=0,
             action_budget=3,
-            measurements_remaining=3,
+            actions_remaining=3,
+            final_answers_used=0,
+            final_answer_budget=1,
+            final_answers_remaining=1,
         )
     )
     hidden_fragments = (
@@ -132,9 +146,12 @@ def test_render_context_exposes_only_public_state_fields() -> None:
         measurement_noise_abs_m=0.02,
         feedback="A cart moves on a horizontal track.",
         current_measurement=None,
-        measurements_used=0,
+        actions_used=0,
         action_budget=3,
-        measurements_remaining=3,
+        actions_remaining=3,
+        final_answers_used=0,
+        final_answer_budget=1,
+        final_answers_remaining=1,
     )
 
     assert not hasattr(context, "acceleration_mps2")
@@ -148,8 +165,16 @@ def test_image_renderer_reports_current_measurement_only() -> None:
     session = CartInferenceSession(instance, CART_IMAGE_RENDERER)
     session.reset(seed=456)
 
-    first_result = session.submit(TaskSubmission.action("measure_position(5)"))
-    second_result = session.submit(TaskSubmission.action("measure_position(6)"))
+    first_result = session.submit(
+        TaskSubmission.action(
+            '{"action": "measure_position", "arguments": {"time": 5}}'
+        )
+    )
+    second_result = session.submit(
+        TaskSubmission.action(
+            '{"action": "measure_position", "arguments": {"time": 6}}'
+        )
+    )
 
     assert first_result.observation is not None
     first_observation = first_result.observation.observation
@@ -175,9 +200,12 @@ def test_renderer_context_accepts_current_measurement() -> None:
         measurement_noise_abs_m=0.02,
         feedback="Measurement at t=5s: x=5.1 m.",
         current_measurement=CartMeasurementView(time_s=5.0, measured_position_m=5.1),
-        measurements_used=1,
+        actions_used=1,
         action_budget=3,
-        measurements_remaining=2,
+        actions_remaining=2,
+        final_answers_used=0,
+        final_answer_budget=1,
+        final_answers_remaining=1,
     )
 
     observation = render_cart_observation(CART_IMAGE_RENDERER, context)
@@ -210,8 +238,7 @@ def _hidden_sentinel_instance() -> TaskInstance:
             "exact_target_position_m": 444.444,
             "measurement_noise_seed": 987654321,
         },
-        max_turns=5,
-        action_budget=3,
+        budget_limits={"turns": 4, "actions": 3, "final_answers": 1},
     )
 
 

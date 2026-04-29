@@ -11,6 +11,10 @@ from rlvr_physics.core.specs import (
     TaskSpec,
     VerifierSpec,
 )
+from rlvr_physics.tasks.physics.cart_inference.budgets import (
+    cart_budget_limits,
+    validate_cart_budget_limits,
+)
 from rlvr_physics.tasks.physics.cart_inference.renderers import (
     CART_IMAGE_RENDERER,
     CART_TEXT_RENDERER,
@@ -36,14 +40,16 @@ class CartInferenceConfig:
         Public absolute bound on deterministic synthetic measurement noise.
     answer_tolerance_abs_m:
         Absolute verifier tolerance for the final target position.
-    max_turns:
-        Maximum number of submissions accepted before truncation.
+    turn_budget:
+        Maximum number of model submissions accepted before truncation.
     timeout_seconds:
         Optional wall-clock budget hint for trainers that enforce timeouts.
     token_budget:
         Optional token budget hint for prompt/completion trainers.
     action_budget:
         Maximum number of measurement tool calls allowed.
+    final_answer_budget:
+        Maximum number of final-answer attempts allowed.
 
     Attributes
     ----------
@@ -57,14 +63,16 @@ class CartInferenceConfig:
         Public absolute bound on deterministic synthetic measurement noise.
     answer_tolerance_abs_m:
         Absolute verifier tolerance for the final target position.
-    max_turns:
-        Maximum number of submissions accepted before truncation.
+    turn_budget:
+        Maximum number of model submissions accepted before truncation.
     timeout_seconds:
         Optional wall-clock budget hint for trainers that enforce timeouts.
     token_budget:
         Optional token budget hint for prompt/completion trainers.
     action_budget:
         Maximum number of measurement tool calls allowed.
+    final_answer_budget:
+        Maximum number of final-answer attempts allowed.
     """
 
     min_measurement_time_s: float
@@ -72,10 +80,11 @@ class CartInferenceConfig:
     target_time_s: float
     measurement_noise_abs_m: float
     answer_tolerance_abs_m: float
-    max_turns: int
+    turn_budget: int
     timeout_seconds: float | None
     token_budget: int | None
     action_budget: int
+    final_answer_budget: int
 
 
 DEFAULT_CONFIG = CartInferenceConfig(
@@ -84,10 +93,11 @@ DEFAULT_CONFIG = CartInferenceConfig(
     target_time_s=12.0,
     measurement_noise_abs_m=0.02,
     answer_tolerance_abs_m=0.05,
-    max_turns=5,
+    turn_budget=4,
     timeout_seconds=None,
     token_budget=512,
     action_budget=3,
+    final_answer_budget=1,
 )
 
 
@@ -122,12 +132,25 @@ def validate_cart_inference_config(config: CartInferenceConfig) -> None:
         raise ValueError("measurement_noise_abs_m must be non-negative")
     if config.answer_tolerance_abs_m <= 0.0:
         raise ValueError("answer_tolerance_abs_m must be positive")
-    if config.max_turns <= 0:
-        raise ValueError("max_turns must be positive")
+    if config.turn_budget <= 0:
+        raise ValueError("turn_budget must be positive")
     if config.action_budget <= 0:
         raise ValueError("action_budget must be positive")
-    if config.action_budget >= config.max_turns:
-        raise ValueError("action_budget must leave at least one turn for final answer")
+    if config.final_answer_budget <= 0:
+        raise ValueError("final_answer_budget must be positive")
+    if config.final_answer_budget != 1:
+        raise ValueError("final_answer_budget must be 1 for cart inference")
+    if config.action_budget + config.final_answer_budget > config.turn_budget:
+        raise ValueError(
+            "action_budget and final_answer_budget must fit within turn_budget"
+        )
+    validate_cart_budget_limits(
+        cart_budget_limits(
+            turn_budget=config.turn_budget,
+            action_budget=config.action_budget,
+            final_answer_budget=config.final_answer_budget,
+        )
+    )
     if config.timeout_seconds is not None and config.timeout_seconds <= 0.0:
         raise ValueError("timeout_seconds must be positive when provided")
     if config.token_budget is not None and config.token_budget <= 0:
@@ -161,10 +184,11 @@ def config_parameters(config: CartInferenceConfig) -> dict[str, object]:
         "target_time_s": config.target_time_s,
         "measurement_noise_abs_m": config.measurement_noise_abs_m,
         "answer_tolerance_abs_m": config.answer_tolerance_abs_m,
-        "max_turns": config.max_turns,
+        "turn_budget": config.turn_budget,
         "timeout_seconds": config.timeout_seconds,
         "token_budget": config.token_budget,
         "action_budget": config.action_budget,
+        "final_answer_budget": config.final_answer_budget,
     }
 
 
@@ -215,10 +239,13 @@ def cart_inference_spec(config: CartInferenceConfig) -> TaskSpec:
                 "partial_credit_window_tolerances": 10.0,
             },
         ),
-        max_turns=config.max_turns,
         timeout_seconds=config.timeout_seconds,
         token_budget=config.token_budget,
-        action_budget=config.action_budget,
+        budget_limits=cart_budget_limits(
+            turn_budget=config.turn_budget,
+            action_budget=config.action_budget,
+            final_answer_budget=config.final_answer_budget,
+        ),
         metadata={
             "task_family": "cart_inference",
             "interaction_shape": "tool_use_numeric_final",

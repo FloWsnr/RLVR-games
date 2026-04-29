@@ -69,12 +69,18 @@ class CartRenderContext:
         Latest public feedback shown to the model.
     current_measurement:
         Public measurement produced for this turn, when one was just accepted.
-    measurements_used:
-        Number of public measurements already used in this rollout.
+    actions_used:
+        Number of public non-final task actions already used in this rollout.
     action_budget:
-        Total public measurement action budget.
-    measurements_remaining:
-        Number of public measurements still available.
+        Total public non-final task action budget.
+    actions_remaining:
+        Number of public non-final task actions still available.
+    final_answers_used:
+        Number of final-answer attempts already used in this rollout.
+    final_answer_budget:
+        Total public final-answer attempt budget.
+    final_answers_remaining:
+        Number of public final-answer attempts still available.
 
     Attributes
     ----------
@@ -94,12 +100,18 @@ class CartRenderContext:
         Latest public feedback shown to the model.
     current_measurement:
         Public measurement produced for this turn, when one was just accepted.
-    measurements_used:
-        Number of public measurements already used in this rollout.
+    actions_used:
+        Number of public non-final task actions already used in this rollout.
     action_budget:
-        Total public measurement action budget.
-    measurements_remaining:
-        Number of public measurements still available.
+        Total public non-final task action budget.
+    actions_remaining:
+        Number of public non-final task actions still available.
+    final_answers_used:
+        Number of final-answer attempts already used in this rollout.
+    final_answer_budget:
+        Total public final-answer attempt budget.
+    final_answers_remaining:
+        Number of public final-answer attempts still available.
     """
 
     initial_position_m: float
@@ -110,9 +122,12 @@ class CartRenderContext:
     measurement_noise_abs_m: float
     feedback: str
     current_measurement: CartMeasurementView | None
-    measurements_used: int
+    actions_used: int
     action_budget: int
-    measurements_remaining: int
+    actions_remaining: int
+    final_answers_used: int
+    final_answer_budget: int
+    final_answers_remaining: int
 
 
 def validate_cart_renderer_type(renderer_type: str) -> None:
@@ -183,9 +198,12 @@ def render_cart_text(context: CartRenderContext) -> str:
             "min_measurement_time_s": _fmt(context.min_measurement_time_s),
             "max_measurement_time_s": _fmt(context.max_measurement_time_s),
             "measurement_noise_abs_m": _fmt(context.measurement_noise_abs_m),
-            "measurements_used": context.measurements_used,
+            "actions_used": context.actions_used,
             "action_budget": context.action_budget,
-            "measurements_remaining": context.measurements_remaining,
+            "actions_remaining": context.actions_remaining,
+            "final_answers_used": context.final_answers_used,
+            "final_answer_budget": context.final_answer_budget,
+            "final_answers_remaining": context.final_answers_remaining,
             "current_measurement_line": _render_current_measurement_line(context),
             "target_time_s": _fmt(context.target_time_s),
             "final_answer_action": FINAL_ANSWER_ACTION,
@@ -712,12 +730,17 @@ def _data_panel(context: CartRenderContext) -> list[svg.Element]:
             f"{_fmt(state.max_measurement_time_s)} s"
         ),
         f"Noise bound: +/- {_fmt(state.measurement_noise_abs_m)} m",
-        f"Measurements: {context.measurements_used} / {context.action_budget}",
-        f"Remaining: {context.measurements_remaining}",
+        f"Actions: {context.actions_used} / {context.action_budget}",
+        (
+            "Final answers: "
+            f"{context.final_answers_used} / {context.final_answer_budget}"
+        ),
+        f"Remaining actions: {context.actions_remaining}",
+        f"Remaining final answers: {context.final_answers_remaining}",
         "",
-        "Actions",
-        f"{MEASURE_POSITION_ACTION}(time)",
-        f"{FINAL_ANSWER_ACTION}(x)",
+        "JSON actions",
+        f"{MEASURE_POSITION_ACTION}: time",
+        f"{FINAL_ANSWER_ACTION}: x",
         "",
         "Current measurement",
     ]

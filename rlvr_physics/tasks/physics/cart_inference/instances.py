@@ -5,6 +5,7 @@ from random import Random
 from rlvr_physics.core.instances import TaskInstance
 from rlvr_physics.core.payloads import stable_hash
 from rlvr_physics.tasks.physics.cart_inference.backbone import position_from_values
+from rlvr_physics.tasks.physics.cart_inference.budgets import cart_budget_limits
 from rlvr_physics.tasks.physics.cart_inference.specs import (
     CART_INFERENCE_DOMAIN,
     CART_INFERENCE_KIND,
@@ -79,10 +80,13 @@ def build_cart_inference_instance(
         seed=seed,
         public_payload=public_payload,
         privileged_payload=privileged_payload,
-        max_turns=config.max_turns,
+        budget_limits=cart_budget_limits(
+            turn_budget=config.turn_budget,
+            action_budget=config.action_budget,
+            final_answer_budget=config.final_answer_budget,
+        ),
         timeout_seconds=config.timeout_seconds,
         token_budget=config.token_budget,
-        action_budget=config.action_budget,
         metadata={
             "task_family": "cart_inference",
             "difficulty": "example",

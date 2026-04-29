@@ -24,14 +24,12 @@ class TaskInstance:
         Data that may be rendered to the model.
     privileged_payload:
         Verifier-only data that must not leak through public metadata.
-    max_turns:
-        Maximum number of model submissions accepted before truncation.
+    budget_limits:
+        Named public budget limits for task-specific interactions.
     timeout_seconds:
         Wall-clock budget hint for trainers that enforce timeouts.
     token_budget:
         Token budget hint for prompt/completion trainers.
-    action_budget:
-        Action or tool-call budget hint for stateful tasks.
     metadata:
         Public export and curriculum metadata.
 
@@ -49,14 +47,12 @@ class TaskInstance:
         Frozen data that may be rendered to the model.
     privileged_payload:
         Frozen verifier-only data that must not leak through public metadata.
-    max_turns:
-        Maximum number of model submissions accepted before truncation.
+    budget_limits:
+        Frozen named public budget limits for task-specific interactions.
     timeout_seconds:
         Optional wall-clock budget hint for trainers that enforce timeouts.
     token_budget:
         Optional token budget hint for prompt/completion trainers.
-    action_budget:
-        Optional action or tool-call budget hint for stateful tasks.
     metadata:
         Frozen public export and curriculum metadata.
     """
@@ -67,10 +63,9 @@ class TaskInstance:
     seed: int
     public_payload: Mapping[str, object]
     privileged_payload: Mapping[str, object]
-    max_turns: int
+    budget_limits: Mapping[str, int]
     timeout_seconds: float | None = None
     token_budget: int | None = None
-    action_budget: int | None = None
     metadata: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -80,6 +75,8 @@ class TaskInstance:
         object.__setattr__(
             self, "privileged_payload", freeze_mapping(self.privileged_payload)
         )
+        _validate_budget_limits(self.budget_limits)
+        object.__setattr__(self, "budget_limits", freeze_mapping(self.budget_limits))
         object.__setattr__(self, "metadata", freeze_mapping(self.metadata))
 
     def public_limits(self) -> Mapping[str, object]:
@@ -88,17 +85,15 @@ class TaskInstance:
         Returns
         -------
         Mapping[str, object]
-            Frozen mapping containing ``max_turns`` and any optional limit
-            fields that are not ``None``.
+            Frozen mapping containing named task budgets and any optional
+            limit hints that are not ``None``.
         """
 
-        values: dict[str, object] = {"max_turns": self.max_turns}
+        values: dict[str, object] = {"budget_limits": self.budget_limits}
         if self.timeout_seconds is not None:
             values["timeout_seconds"] = self.timeout_seconds
         if self.token_budget is not None:
             values["token_budget"] = self.token_budget
-        if self.action_budget is not None:
-            values["action_budget"] = self.action_budget
         return freeze_mapping(values)
 
     def public_view(self) -> Mapping[str, object]:
@@ -151,3 +146,15 @@ class TaskInstance:
                 "metadata": self.metadata,
             }
         )
+
+
+def _validate_budget_limits(budget_limits: Mapping[str, int]) -> None:
+    """Validate named public task budget limits."""
+
+    for name, amount in budget_limits.items():
+        if not isinstance(name, str) or name == "":
+            raise ValueError("budget limit name must be a non-empty string")
+        if isinstance(amount, bool) or not isinstance(amount, int):
+            raise ValueError(f"budget limit must be an integer: {name}")
+        if amount < 0:
+            raise ValueError(f"budget limit must be non-negative: {name}")

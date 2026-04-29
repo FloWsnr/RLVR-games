@@ -19,7 +19,6 @@ from rlvr_physics.core.session import (
     TaskResetResult,
     TaskSession,
     TaskStepResult,
-    TaskSubmission,
     TaskTurn,
 )
 from rlvr_physics.core.specs import (
@@ -29,6 +28,7 @@ from rlvr_physics.core.specs import (
     TaskSpec,
     VerifierSpec,
 )
+from rlvr_physics.core.submissions import TaskSubmission
 
 __all__ = [
     "ImageContent",

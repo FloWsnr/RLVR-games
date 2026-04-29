@@ -4,7 +4,7 @@ from base64 import b64encode
 from collections.abc import Mapping
 from dataclasses import dataclass
 import json
-from typing import Any, TextIO, cast
+from typing import TextIO
 
 from rlvr_physics.core.factory import ConfiguredTask
 from rlvr_physics.core.payloads import mapping_to_dict, to_plain_data
@@ -12,8 +12,12 @@ from rlvr_physics.core.rendering import ImageContent, TextContent
 from rlvr_physics.core.session import (
     TaskResetResult,
     TaskStepResult,
-    TaskSubmission,
     TaskTurn,
+)
+from rlvr_physics.core.submissions import (
+    TaskSubmission,
+    invalid_submission_policies_payload,
+    parse_json_object,
 )
 
 INTERACTION_PROTOCOL_VERSION = "rlvr.physics.interaction.v1"
@@ -132,14 +136,16 @@ def decode_jsonl_submission(raw_line: str) -> TaskSubmission:
         Submission decoded from either a JSON object or a raw action string.
     """
 
-    decoded = _json_object(raw_line)
+    decoded = parse_json_object(raw_line)
     if decoded is None:
         return TaskSubmission.action(raw_line)
 
     kind = _submission_kind(decoded)
-    raw = _submission_raw(decoded, raw_line, kind)
-    parsed = _submission_parsed(decoded)
-    return TaskSubmission(kind=kind, raw=raw, parsed=parsed)
+    return TaskSubmission(
+        kind=kind,
+        raw=_submission_raw(decoded, raw_line, kind),
+        parsed=decoded,
+    )
 
 
 def reset_interaction_event(
@@ -230,7 +236,11 @@ def turn_payload(
         "turn_index": turn.turn_index,
         "observation": observation_payload(turn),
         "submission_modes": list(turn.submission_modes),
+        "submission_format": to_plain_data(turn.submission_format),
         "action_schema": to_plain_data(turn.action_schema),
+        "invalid_submission_policies": invalid_submission_policies_payload(
+            turn.invalid_submission_policies
+        ),
         "public_limits": to_plain_data(turn.public_limits),
         "public_info": filtered_public_info(
             turn.public_info, public_info_excluded_keys
@@ -330,37 +340,7 @@ def _submission_raw(
 ) -> str:
     """Return the raw submission text for an input mapping."""
 
-    raw_value = values.get("raw")
-    if isinstance(raw_value, str):
-        return raw_value
     text_value = values.get("text")
     if submission_kind == "final_text" and isinstance(text_value, str):
         return text_value
     return raw_line
-
-
-def _submission_parsed(values: Mapping[str, object]) -> Mapping[str, object]:
-    """Return the parsed submission payload for an input mapping."""
-
-    parsed_value = values.get("parsed")
-    if isinstance(parsed_value, Mapping):
-        return cast(Mapping[str, object], parsed_value)
-    return values
-
-
-def _json_object(raw: str) -> Mapping[str, object] | None:
-    """Parse raw JSON into a mapping when possible."""
-
-    try:
-        decoded = json.loads(raw, parse_constant=_reject_json_constant)
-    except (json.JSONDecodeError, ValueError):
-        return None
-    if isinstance(decoded, Mapping):
-        return cast(Mapping[str, Any], decoded)
-    return None
-
-
-def _reject_json_constant(raw: str) -> object:
-    """Reject non-standard JSON numeric constants."""
-
-    raise ValueError(f"invalid JSON numeric constant: {raw}")

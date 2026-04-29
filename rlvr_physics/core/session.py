@@ -1,100 +1,43 @@
 """Scalar task session protocols and result types."""
 
-from dataclasses import dataclass, field
-from itertools import count
+from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Mapping, Protocol
+from uuid import uuid4
 
-from rlvr_physics.core.payloads import freeze_mapping, stable_hash
+from rlvr_physics.core.payloads import freeze_mapping
 from rlvr_physics.core.rendering import RenderedObservation
 from rlvr_physics.core.rewards import RewardResult
-
-_SESSION_COUNTER = count()
+from rlvr_physics.core.submissions import (
+    InvalidSubmissionPolicy,
+    TaskSubmission,
+    validate_action_schema_budget_references,
+    validate_invalid_submission_policies,
+)
 
 
 def new_session_id(task_id: str, seed: int) -> str:
-    """Return a process-local session identifier for one rollout.
+    """Return an opaque process-local session identifier for one rollout.
 
     Parameters
     ----------
     task_id:
-        Stable identifier for the task instance being rolled out.
+        Stable identifier for the task instance being rolled out. This value is
+        accepted for call-site convenience but is not encoded into the returned
+        public identifier.
     seed:
-        Session seed used for the rollout.
+        Session seed used for the rollout. This value is accepted for call-site
+        convenience but is not encoded into the returned public identifier.
 
     Returns
     -------
     str
-        Session identifier derived from the task id, seed, and a process-local
-        ordinal. Repeated calls with the same arguments include different
-        ordinals within the current process.
+        Opaque process-local session identifier. Repeated calls with the same
+        arguments return different identifiers.
     """
 
-    ordinal = next(_SESSION_COUNTER)
-    return (
-        "session-"
-        + stable_hash({"task_id": task_id, "seed": seed, "rollout_ordinal": ordinal})[
-            :16
-        ]
-    )
-
-
-@dataclass(frozen=True)
-class TaskSubmission:
-    """A raw model submission plus optional interpreted payload.
-
-    Attributes
-    ----------
-    kind:
-        Submission category, such as ``final_text`` or ``action``.
-    raw:
-        Raw model text or action string.
-    parsed:
-        Task- or integration-interpreted payload.
-    """
-
-    kind: str
-    raw: str
-    parsed: Mapping[str, object] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        """Freeze parsed payload after construction."""
-
-        object.__setattr__(self, "parsed", freeze_mapping(self.parsed))
-
-    @classmethod
-    def final_text(cls, text: str) -> "TaskSubmission":
-        """Create a raw final-text submission.
-
-        Parameters
-        ----------
-        text:
-            Final answer text emitted by the model.
-
-        Returns
-        -------
-        TaskSubmission
-            Submission with kind ``final_text`` and an empty parsed payload.
-        """
-
-        return cls(kind="final_text", raw=text, parsed={})
-
-    @classmethod
-    def action(cls, action: str) -> "TaskSubmission":
-        """Create an action submission.
-
-        Parameters
-        ----------
-        action:
-            Action text emitted by the model.
-
-        Returns
-        -------
-        TaskSubmission
-            Submission with kind ``action`` and the action mirrored into the
-            parsed payload.
-        """
-
-        return cls(kind="action", raw=action, parsed={"action": action})
+    _ = task_id, seed
+    return f"session-{uuid4().hex[:16]}"
 
 
 @dataclass(frozen=True)
@@ -109,8 +52,12 @@ class TaskTurn:
         Renderer output for this turn.
     submission_modes:
         Accepted submission modes for this turn.
+    submission_format:
+        Public description of how submissions should be encoded.
     action_schema:
         Public structured action schema, when relevant.
+    invalid_submission_policies:
+        Public policies for rejected model submissions.
     public_limits:
         Public rollout limits.
     public_info:
@@ -120,15 +67,29 @@ class TaskTurn:
     turn_index: int
     observation: RenderedObservation
     submission_modes: tuple[str, ...]
+    submission_format: Mapping[str, object]
     action_schema: Mapping[str, object]
+    invalid_submission_policies: Mapping[str, InvalidSubmissionPolicy]
     public_limits: Mapping[str, object]
     public_info: Mapping[str, object]
 
     def __post_init__(self) -> None:
         """Freeze mapping payloads after construction."""
 
+        validate_action_schema_budget_references(self.action_schema, self.public_limits)
+        validate_invalid_submission_policies(
+            self.invalid_submission_policies, self.public_limits
+        )
+        object.__setattr__(
+            self, "submission_format", freeze_mapping(self.submission_format)
+        )
         object.__setattr__(self, "action_schema", freeze_mapping(self.action_schema))
         object.__setattr__(self, "public_limits", freeze_mapping(self.public_limits))
+        object.__setattr__(
+            self,
+            "invalid_submission_policies",
+            MappingProxyType(dict(self.invalid_submission_policies)),
+        )
         object.__setattr__(self, "public_info", freeze_mapping(self.public_info))
 
 

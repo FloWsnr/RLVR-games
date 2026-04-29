@@ -115,15 +115,12 @@ class TaskSpec:
         Verifier behavior summary.
     reward:
         Reward behavior summary.
-    max_turns:
-        Default maximum number of model submissions accepted before
-        truncation.
+    budget_limits:
+        Named public budget limits for task-specific interactions.
     timeout_seconds:
         Optional wall-clock budget hint for trainers that enforce timeouts.
     token_budget:
         Optional token budget hint for prompt/completion trainers.
-    action_budget:
-        Optional action or tool-call budget hint for stateful tasks.
     metadata:
         Public export and curriculum hints.
     """
@@ -134,13 +131,26 @@ class TaskSpec:
     renderers: tuple[RendererSpec, ...]
     verifier: VerifierSpec
     reward: RewardSpec
-    max_turns: int
+    budget_limits: Mapping[str, int]
     timeout_seconds: float | None = None
     token_budget: int | None = None
-    action_budget: int | None = None
     metadata: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Freeze metadata after construction."""
+        """Freeze metadata and budget limits after construction."""
 
+        _validate_budget_limits(self.budget_limits)
+        object.__setattr__(self, "budget_limits", freeze_mapping(self.budget_limits))
         object.__setattr__(self, "metadata", freeze_mapping(self.metadata))
+
+
+def _validate_budget_limits(budget_limits: Mapping[str, int]) -> None:
+    """Validate named public task budget limits."""
+
+    for name, amount in budget_limits.items():
+        if not isinstance(name, str) or name == "":
+            raise ValueError("budget limit name must be a non-empty string")
+        if isinstance(amount, bool) or not isinstance(amount, int):
+            raise ValueError(f"budget limit must be an integer: {name}")
+        if amount < 0:
+            raise ValueError(f"budget limit must be non-negative: {name}")

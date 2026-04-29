@@ -26,8 +26,8 @@ def test_cart_interaction_runs_multiple_turns_without_debug_leaks() -> None:
     input_stream = StringIO(
         "\n".join(
             [
-                '{"action": "measure_position", "time": 5}',
-                '{"action": "final_answer", "x": 0}',
+                '{"action": "measure_position", "arguments": {"time": 5}}',
+                '{"action": "final_answer", "arguments": {"x": 0}}',
             ]
         )
     )
@@ -48,7 +48,43 @@ def test_cart_interaction_runs_multiple_turns_without_debug_leaks() -> None:
     assert error_stream.getvalue() == ""
     assert [event["event"] for event in events] == ["reset", "step", "step"]
     assert events[0]["protocol"] == INTERACTION_PROTOCOL_VERSION
+    assert events[0]["turn"]["submission_format"]["required_fields"] == [
+        "action",
+        "arguments",
+    ]
+    assert events[0]["turn"]["submission_format"]["examples"][0] == {
+        "action": "measure_position",
+        "arguments": {"time": 10.0},
+    }
+    assert "invalid_submission_policy" not in events[0]["turn"]["submission_format"]
+    assert sorted(events[0]["turn"]["invalid_submission_policies"]) == [
+        "budget_exceeded",
+        "invalid_final_answer",
+        "retryable_invalid_submission",
+    ]
+    assert events[0]["turn"]["invalid_submission_policies"][
+        "retryable_invalid_submission"
+    ]["consumes_budget"] == {"turns": 1}
+    assert events[0]["turn"]["action_schema"]["actions"]["measure_position"][
+        "consumes_budget"
+    ] == {"turns": 1, "actions": 1}
+    assert events[0]["turn"]["action_schema"]["actions"]["final_answer"][
+        "consumes_budget"
+    ] == {"turns": 1, "final_answers": 1}
+    assert events[0]["turn"]["public_limits"]["budget_limits"]["actions"] == 3
+    assert events[0]["turn"]["public_limits"]["budget_limits"]["final_answers"] == 1
+    assert "measurement_budget" not in events[0]["turn"]["public_limits"]
     assert events[1]["accepted"]
+    assert events[1]["public_info"]["budget_usage"] == {
+        "turns": 1,
+        "actions": 1,
+        "final_answers": 0,
+    }
+    assert events[1]["public_info"]["budget_remaining"] == {
+        "turns": 3,
+        "actions": 2,
+        "final_answers": 1,
+    }
     assert not events[1]["done"]
     assert events[2]["done"]
     assert events[2]["terminal"]
@@ -87,14 +123,14 @@ def test_cart_interaction_reports_incomplete_input() -> None:
     assert [event["event"] for event in events] == ["reset"]
 
 
-def test_cart_interaction_rejects_non_finite_measurement_time() -> None:
-    """Non-finite numeric arguments do not consume measurement budget."""
+def test_cart_interaction_rejects_string_measurement_time() -> None:
+    """String numeric arguments do not consume measurement budget."""
 
     input_stream = StringIO(
         "\n".join(
             [
-                '{"action": "measure_position", "time": "NaN"}',
-                '{"action": "final_answer", "x": 0}',
+                '{"action": "measure_position", "arguments": {"time": "NaN"}}',
+                '{"action": "final_answer", "arguments": {"x": 0}}',
             ]
         )
     )
@@ -113,9 +149,157 @@ def test_cart_interaction_rejects_non_finite_measurement_time() -> None:
 
     assert status_code == 0
     assert not events[1]["accepted"]
-    assert events[1]["public_info"]["measurements_used"] == 0
-    assert events[1]["public_info"]["measurements_remaining"] == 3
-    assert "time must be finite" in events[1]["turn"]["observation"]["text"]
+    assert events[1]["public_info"]["actions_used"] == 0
+    assert events[1]["public_info"]["actions_remaining"] == 3
+    assert events[1]["public_info"]["submissions_used"] == 1
+    assert "time must be numeric" in events[1]["turn"]["observation"]["text"]
+
+
+def test_cart_interaction_parse_errors_consume_turn_but_not_action_budget() -> None:
+    """Malformed action envelopes are task-visible invalid submissions."""
+
+    input_stream = StringIO(
+        "\n".join(
+            [
+                '{"measure_position": {"time": 10}}',
+                '{"action": "measure_position", "arguments": {"time": 10}}',
+                '{"action": "final_answer", "arguments": {"x": 0}}',
+            ]
+        )
+    )
+    output_stream = StringIO()
+    error_stream = StringIO()
+
+    status_code = run_cart_interaction(
+        instance_seed=123,
+        session_seed=456,
+        input_stream=input_stream,
+        output_stream=output_stream,
+        error_stream=error_stream,
+    )
+
+    events = _jsonl_events(output_stream)
+
+    assert status_code == 0
+    assert not events[1]["accepted"]
+    assert "expected one JSON line" in events[1]["public_info"]["reason"]
+    assert events[1]["public_info"]["invalid_submission_category"] == (
+        "malformed_transport"
+    )
+    assert (
+        events[1]["public_info"]["invalid_submission_policy"]
+        == "retryable_invalid_submission"
+    )
+    assert events[1]["public_info"]["submissions_used"] == 1
+    assert events[1]["public_info"]["invalid_submissions"] == 1
+    assert events[1]["public_info"]["actions_remaining"] == 3
+    assert events[3]["done"]
+    assert events[3]["terminal"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"parsed": {"action": "measure_position", "arguments": {"time": 5}}},
+        {"raw": ('{"action": "measure_position", "arguments": {"time": 5}}')},
+    ],
+)
+def test_cart_interaction_rejects_public_wrapper_action_bypass(
+    payload: dict[str, object],
+) -> None:
+    """JSONL wrapper fields cannot bypass the canonical action envelope."""
+
+    input_stream = StringIO(
+        "\n".join(
+            [
+                json.dumps(payload, sort_keys=True),
+                '{"action": "final_answer", "arguments": {"x": 0}}',
+            ]
+        )
+    )
+    output_stream = StringIO()
+    error_stream = StringIO()
+
+    status_code = run_cart_interaction(
+        instance_seed=123,
+        session_seed=456,
+        input_stream=input_stream,
+        output_stream=output_stream,
+        error_stream=error_stream,
+    )
+
+    events = _jsonl_events(output_stream)
+
+    assert status_code == 0
+    assert not events[1]["accepted"]
+    assert events[1]["public_info"]["invalid_submission_category"] == (
+        "malformed_transport"
+    )
+    assert events[1]["public_info"]["actions_used"] == 0
+    assert events[1]["public_info"]["actions_remaining"] == 3
+    assert events[1]["public_info"]["budget_usage"]["actions"] == 0
+    assert events[2]["done"]
+    assert events[2]["terminal"]
+
+
+def test_cart_interaction_rejects_legacy_function_call_actions() -> None:
+    """Cart accepts the canonical JSON action envelope only."""
+
+    output_stream = StringIO()
+    error_stream = StringIO()
+
+    status_code = run_cart_interaction(
+        instance_seed=123,
+        session_seed=456,
+        input_stream=StringIO("measure_position(10)\n"),
+        output_stream=output_stream,
+        error_stream=error_stream,
+    )
+
+    events = _jsonl_events(output_stream)
+
+    assert status_code == 1
+    assert not events[1]["accepted"]
+    assert events[1]["public_info"]["invalid_submission_category"] == (
+        "unparseable_action"
+    )
+    assert (
+        events[1]["public_info"]["invalid_submission_policy"]
+        == "retryable_invalid_submission"
+    )
+    assert events[1]["public_info"]["submissions_used"] == 1
+
+
+def test_cart_interaction_final_answer_format_error_uses_final_attempt() -> None:
+    """Invalid final-answer arguments follow task policy, not CLI policy."""
+
+    input_stream = StringIO('{"action": "final_answer", "arguments": {"x": "NaN"}}')
+    output_stream = StringIO()
+    error_stream = StringIO()
+
+    status_code = run_cart_interaction(
+        instance_seed=123,
+        session_seed=456,
+        input_stream=input_stream,
+        output_stream=output_stream,
+        error_stream=error_stream,
+    )
+
+    events = _jsonl_events(output_stream)
+
+    assert status_code == 0
+    assert not events[1]["accepted"]
+    assert events[1]["done"]
+    assert events[1]["terminal"]
+    assert events[1]["reward"] == 0.0
+    assert events[1]["public_info"]["invalid_submission_category"] == (
+        "invalid_final_answer"
+    )
+    assert events[1]["public_info"]["invalid_submission_policy"] == (
+        "invalid_final_answer"
+    )
+    assert events[1]["public_info"]["final_answers_used"] == 1
+    assert events[1]["public_info"]["final_answers_remaining"] == 0
 
 
 def test_cart_image_interaction_serializes_image_content() -> None:

@@ -1,9 +1,11 @@
 """Tests for the cart inference backbone."""
 
+from dataclasses import replace
+
 import pytest
 
 from rlvr_physics.core.instances import TaskInstance
-from rlvr_physics.core.session import TaskSubmission
+from rlvr_physics.core.submissions import TaskSubmission
 from rlvr_physics.tasks.physics.cart_inference.backbone import (
     ActionBudgetExceeded,
     CartInferenceBackbone,
@@ -19,7 +21,11 @@ def test_backbone_measurement_updates_budget_and_resets(
     cart_config: CartInferenceConfig,
 ) -> None:
     backbone = cart_backbone
-    action = backbone.parse_action(TaskSubmission.action("measure_position(2.0)"))
+    action = backbone.parse_action(
+        TaskSubmission.action(
+            '{"action": "measure_position", "arguments": {"time": 2.0}}'
+        )
+    )
 
     measurement = backbone.measure(action)
 
@@ -39,13 +45,46 @@ def test_backbone_enforces_measurement_action_budget(
     cart_config: CartInferenceConfig,
 ) -> None:
     backbone = cart_backbone
-    action = backbone.parse_action(TaskSubmission.action("measure_position(2.0)"))
+    action = backbone.parse_action(
+        TaskSubmission.action(
+            '{"action": "measure_position", "arguments": {"time": 2.0}}'
+        )
+    )
 
     for _ in range(cart_config.action_budget):
         backbone.measure(action)
 
-    with pytest.raises(ActionBudgetExceeded, match="action_budget_exceeded"):
+    with pytest.raises(ActionBudgetExceeded, match="actions_budget_exhausted"):
         backbone.measure(action)
+
+
+def test_backbone_rejects_cart_instance_missing_required_budget(
+    cart_instance: TaskInstance,
+) -> None:
+    invalid_instance = replace(
+        cart_instance,
+        budget_limits={"turns": 4, "final_answers": 1},
+    )
+
+    with pytest.raises(ValueError, match="missing: actions"):
+        CartInferenceBackbone(invalid_instance)
+
+
+def test_backbone_rejects_cart_instance_unknown_budget(
+    cart_instance: TaskInstance,
+) -> None:
+    invalid_instance = replace(
+        cart_instance,
+        budget_limits={
+            "turns": 4,
+            "actions": 3,
+            "final_answers": 1,
+            "tool_calls": 3,
+        },
+    )
+
+    with pytest.raises(ValueError, match="unknown: tool_calls"):
+        CartInferenceBackbone(invalid_instance)
 
 
 def test_backbone_evaluates_final_answer_action(
@@ -56,7 +95,7 @@ def test_backbone_evaluates_final_answer_action(
     instance = cart_instance
     exact_position_m = instance.privileged_payload["exact_target_position_m"]
     submission = TaskSubmission.action(
-        f'{{"action": "final_answer", "x": {exact_position_m}}}'
+        '{"action": "final_answer", "arguments": {"x": %s}}' % exact_position_m
     )
 
     action = backbone.parse_action(submission)

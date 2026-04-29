@@ -2,18 +2,32 @@
 
 from dataclasses import dataclass
 from hashlib import sha256
-import json
 from math import isfinite
-import re
 from typing import Mapping
 
 from rlvr_physics.core.instances import TaskInstance
-from rlvr_physics.core.session import TaskSubmission
+from rlvr_physics.core.submissions import (
+    ACTION_ARGUMENTS_FIELD,
+    ACTION_NAME_FIELD,
+    ParsedAction,
+    TaskSubmission,
+    parse_action_submission as parse_core_action_submission,
+)
+from rlvr_physics.tasks.physics.cart_inference.budgets import (
+    ACTION_BUDGET,
+    required_cart_budget,
+    validate_cart_budget_limits,
+)
 
 MEASURE_POSITION_ACTION = "measure_position"
 FINAL_ANSWER_ACTION = "final_answer"
-
-_NUMBER_PATTERN = re.compile(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?")
+ACTION_SUBMISSION_PARSE_ERROR = (
+    "could not parse action submission; expected one JSON line like "
+    f'{{"{ACTION_NAME_FIELD}":"{MEASURE_POSITION_ACTION}",'
+    f'"{ACTION_ARGUMENTS_FIELD}":{{"time":10.0}}}} or '
+    f'{{"{ACTION_NAME_FIELD}":"{FINAL_ANSWER_ACTION}",'
+    f'"{ACTION_ARGUMENTS_FIELD}":{{"x":0.0}}}}'
+)
 
 
 class SubmissionParseError(ValueError):
@@ -162,29 +176,6 @@ class FinalAnswerEvaluation:
     correct: bool
 
 
-@dataclass(frozen=True)
-class ParsedAction:
-    """Structured action parsed from a model submission.
-
-    Parameters
-    ----------
-    name:
-        Action name, such as ``measure_position``.
-    arguments:
-        Action argument payload.
-
-    Attributes
-    ----------
-    name:
-        Action name, such as ``measure_position``.
-    arguments:
-        Action argument payload.
-    """
-
-    name: str
-    arguments: Mapping[str, object]
-
-
 class CartInferenceBackbone:
     """Authoritative executable backbone for one cart inference rollout.
 
@@ -210,8 +201,11 @@ class CartInferenceBackbone:
         """
 
         self.instance = instance
+        validate_cart_budget_limits(instance.budget_limits)
         self._state = state_from_instance(instance)
-        self._action_budget = _required_action_budget(instance)
+        self._action_budget = required_cart_budget(
+            instance.budget_limits, ACTION_BUDGET
+        )
         self._measurements_used = 0
 
     @property
@@ -309,7 +303,7 @@ class CartInferenceBackbone:
         if action.name != MEASURE_POSITION_ACTION:
             raise SubmissionParseError(f"expected action: {MEASURE_POSITION_ACTION}")
         if self._measurements_used >= self._action_budget:
-            raise ActionBudgetExceeded("action_budget_exceeded")
+            raise ActionBudgetExceeded("actions_budget_exhausted")
         time_s = _required_numeric_argument(action, "time")
         measurement = measure_position(
             state=self._state,
@@ -577,31 +571,10 @@ def parse_action_submission(submission: TaskSubmission) -> ParsedAction:
         Raised when no supported action shape can be decoded.
     """
 
-    parsed_from_payload = _parse_action_mapping(submission.parsed)
-    if parsed_from_payload is not None:
-        return parsed_from_payload
-
-    parsed_json = _json_object(submission.raw)
-    if parsed_json is not None:
-        parsed_from_json = _parse_action_mapping(parsed_json)
-        if parsed_from_json is not None:
-            return parsed_from_json
-
-    raw = submission.raw.strip()
-    command_match = re.fullmatch(
-        r"(?P<name>[A-Za-z_][A-Za-z0-9_]*)\((?P<argument>.*)\)", raw
-    )
-    if command_match is not None:
-        name = command_match.group("name")
-        argument_name = "x" if name == FINAL_ANSWER_ACTION else "time"
-        return ParsedAction(
-            name=name,
-            arguments={
-                argument_name: _parse_single_number(command_match.group("argument"))
-            },
-        )
-
-    raise SubmissionParseError("could not parse action submission")
+    parsed_action = parse_core_action_submission(submission)
+    if parsed_action is not None:
+        return parsed_action
+    raise SubmissionParseError(ACTION_SUBMISSION_PARSE_ERROR)
 
 
 def _measurement_noise_m(
@@ -619,14 +592,6 @@ def _measurement_noise_m(
     return (2.0 * unit - 1.0) * state.measurement_noise_abs_m
 
 
-def _required_action_budget(instance: TaskInstance) -> int:
-    """Return the required measurement action budget from an instance."""
-
-    if instance.action_budget is None:
-        raise RuntimeError("cart inference instances require action_budget")
-    return instance.action_budget
-
-
 def _required_numeric_argument(action: ParsedAction, name: str) -> float:
     """Read one required numeric action argument."""
 
@@ -637,73 +602,11 @@ def _required_numeric_argument(action: ParsedAction, name: str) -> float:
         raise SubmissionParseError(f"{name} must be numeric")
     if isinstance(value, int | float):
         numeric_value = float(value)
-    elif isinstance(value, str):
-        try:
-            numeric_value = float(value)
-        except ValueError as error:
-            raise SubmissionParseError(f"{name} must be numeric") from error
     else:
         raise SubmissionParseError(f"{name} must be numeric")
     if not isfinite(numeric_value):
         raise SubmissionParseError(f"{name} must be finite")
     return numeric_value
-
-
-def _parse_action_mapping(values: Mapping[str, object]) -> ParsedAction | None:
-    """Parse action data from a mapping-like payload."""
-
-    name_value = values.get("name")
-    if not isinstance(name_value, str):
-        name_value = values.get("tool_name")
-    if not isinstance(name_value, str):
-        action_value = values.get("action")
-        if isinstance(action_value, str) and action_value in {
-            MEASURE_POSITION_ACTION,
-            FINAL_ANSWER_ACTION,
-        }:
-            name_value = action_value
-    if not isinstance(name_value, str):
-        return None
-
-    arguments_value = values.get("arguments")
-    if isinstance(arguments_value, Mapping):
-        return ParsedAction(name=name_value, arguments=arguments_value)
-
-    arguments: dict[str, object] = {}
-    time_value = values.get("time")
-    if time_value is not None:
-        arguments["time"] = time_value
-    x_value = values.get("x")
-    if x_value is not None:
-        arguments["x"] = x_value
-    return ParsedAction(name=name_value, arguments=arguments)
-
-
-def _json_object(raw: str) -> Mapping[str, object] | None:
-    """Parse raw JSON into a mapping when possible."""
-
-    try:
-        decoded = json.loads(raw, parse_constant=_reject_json_constant)
-    except (json.JSONDecodeError, ValueError):
-        return None
-    if isinstance(decoded, Mapping):
-        return decoded
-    return None
-
-
-def _reject_json_constant(raw: str) -> object:
-    """Reject non-standard JSON numeric constants."""
-
-    raise ValueError(f"invalid JSON numeric constant: {raw}")
-
-
-def _parse_single_number(raw: str) -> float:
-    """Parse one number from raw text."""
-
-    match = _NUMBER_PATTERN.search(raw)
-    if match is None:
-        raise SubmissionParseError("expected a numeric value")
-    return float(match.group(0))
 
 
 def _float_field(values: Mapping[str, object], name: str) -> float:

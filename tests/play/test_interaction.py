@@ -21,7 +21,6 @@ from rlvr_physics.core.rewards import RewardResult
 from rlvr_physics.core.session import (
     TaskResetResult,
     TaskStepResult,
-    TaskSubmission,
     TaskTurn,
 )
 from rlvr_physics.core.specs import (
@@ -31,6 +30,7 @@ from rlvr_physics.core.specs import (
     TaskSpec,
     VerifierSpec,
 )
+from rlvr_physics.core.submissions import TaskSubmission
 
 
 class CompletingSession:
@@ -66,7 +66,9 @@ class CompletingSession:
             turn_index=0,
             observation=text_observation("test.text", "test prompt"),
             submission_modes=("final_text",),
+            submission_format={},
             action_schema={},
+            invalid_submission_policies={},
             public_limits=self._instance.public_limits(),
             public_info={"task_id": self._instance.task_id},
         )
@@ -167,6 +169,34 @@ def test_decode_jsonl_submission_supports_action_mapping_and_raw_action() -> Non
     assert raw.raw == "measure_position(5)"
 
 
+def test_decode_jsonl_submission_does_not_unwrap_public_wrapper_fields() -> None:
+    """Public JSONL input cannot override the preserved raw or parsed payload."""
+
+    wrapped_payload = {
+        "parsed": {
+            "action": "measure_position",
+            "arguments": {"time": 5},
+        }
+    }
+    wrapped_line = json.dumps(wrapped_payload, sort_keys=True)
+    wrapped = decode_jsonl_submission(wrapped_line)
+    embedded_raw = json.dumps(
+        {"action": "measure_position", "arguments": {"time": 5}},
+        sort_keys=True,
+    )
+    raw_payload = {"raw": embedded_raw}
+    raw_line = json.dumps(raw_payload, sort_keys=True)
+    raw_wrapped = decode_jsonl_submission(raw_line)
+
+    assert wrapped.kind == "action"
+    assert wrapped.raw == wrapped_line
+    assert wrapped.parsed["parsed"] == wrapped_payload["parsed"]
+    assert "action" not in wrapped.parsed
+    assert raw_wrapped.kind == "action"
+    assert raw_wrapped.raw == raw_line
+    assert raw_wrapped.parsed["raw"] == embedded_raw
+
+
 def test_decode_jsonl_submission_treats_non_standard_json_constants_as_raw() -> None:
     """JSON constants such as NaN are not parsed into structured payloads."""
 
@@ -197,7 +227,7 @@ def _configured_task() -> ConfiguredTask:
             renderers=(RendererSpec(renderer_type="test.text"),),
             verifier=VerifierSpec(verifier_type="tests.interaction"),
             reward=RewardSpec(reward_type="tests.interaction", parameters={}),
-            max_turns=1,
+            budget_limits={"turns": 1},
         ),
         instance_builder=_build_instance,
         session_builder=CompletingSession,
@@ -225,7 +255,7 @@ def _build_instance(seed: int) -> TaskInstance:
         seed=seed,
         public_payload={},
         privileged_payload={},
-        max_turns=1,
+        budget_limits={"turns": 1},
     )
 
 

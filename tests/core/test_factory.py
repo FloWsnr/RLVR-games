@@ -38,7 +38,7 @@ def test_configured_task_rejects_external_domain_mismatch(
         seed=17,
         public_payload={},
         privileged_payload={},
-        max_turns=1,
+        budget_limits={"turns": 1},
     )
 
     with pytest.raises(ValueError, match="instance domain"):

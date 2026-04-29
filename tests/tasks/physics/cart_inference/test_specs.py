@@ -26,7 +26,9 @@ def test_cart_inference_spec_advertises_public_contract(
         fixture.config.answer_tolerance_abs_m
     )
     assert spec.reward.reward_type == "threshold_with_linear_partial_credit"
-    assert spec.action_budget == fixture.config.action_budget
+    assert spec.budget_limits["turns"] == fixture.config.turn_budget
+    assert spec.budget_limits["actions"] == fixture.config.action_budget
+    assert spec.budget_limits["final_answers"] == (fixture.config.final_answer_budget)
 
 
 def test_cart_inference_config_requires_final_answer_turn(
@@ -38,13 +40,34 @@ def test_cart_inference_config_requires_final_answer_turn(
         target_time_s=cart_config.target_time_s,
         measurement_noise_abs_m=cart_config.measurement_noise_abs_m,
         answer_tolerance_abs_m=cart_config.answer_tolerance_abs_m,
-        max_turns=cart_config.max_turns,
+        turn_budget=cart_config.turn_budget,
         timeout_seconds=cart_config.timeout_seconds,
         token_budget=cart_config.token_budget,
-        action_budget=cart_config.max_turns,
+        action_budget=cart_config.turn_budget,
+        final_answer_budget=cart_config.final_answer_budget,
     )
 
     with pytest.raises(ValueError, match="action_budget"):
+        cart_inference_spec(invalid_config)
+
+
+def test_cart_inference_config_has_one_terminal_final_answer_attempt(
+    cart_config: CartInferenceConfig,
+) -> None:
+    invalid_config = CartInferenceConfig(
+        min_measurement_time_s=cart_config.min_measurement_time_s,
+        max_measurement_time_s=cart_config.max_measurement_time_s,
+        target_time_s=cart_config.target_time_s,
+        measurement_noise_abs_m=cart_config.measurement_noise_abs_m,
+        answer_tolerance_abs_m=cart_config.answer_tolerance_abs_m,
+        turn_budget=cart_config.turn_budget,
+        timeout_seconds=cart_config.timeout_seconds,
+        token_budget=cart_config.token_budget,
+        action_budget=cart_config.action_budget,
+        final_answer_budget=2,
+    )
+
+    with pytest.raises(ValueError, match="final_answer_budget must be 1"):
         cart_inference_spec(invalid_config)
 
 
@@ -59,10 +82,11 @@ def test_cart_inference_config_rejects_non_finite_numeric_values(
         target_time_s=cart_config.target_time_s,
         measurement_noise_abs_m=cart_config.measurement_noise_abs_m,
         answer_tolerance_abs_m=cart_config.answer_tolerance_abs_m,
-        max_turns=cart_config.max_turns,
+        turn_budget=cart_config.turn_budget,
         timeout_seconds=cart_config.timeout_seconds,
         token_budget=cart_config.token_budget,
         action_budget=cart_config.action_budget,
+        final_answer_budget=cart_config.final_answer_budget,
     )
 
     with pytest.raises(ValueError, match="max_measurement_time_s must be finite"):

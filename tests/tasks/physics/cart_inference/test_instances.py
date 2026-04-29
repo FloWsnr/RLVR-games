@@ -39,7 +39,10 @@ def test_cart_inference_instance_public_view_hides_privileged_state(
     public_text = str(to_plain_data(public_view))
 
     assert payload["target_time_s"] == cart_config.target_time_s
-    assert limits["action_budget"] == cart_config.action_budget
+    budget_limits = cast(Mapping[str, object], limits["budget_limits"])
+    assert budget_limits["turns"] == cart_config.turn_budget
+    assert budget_limits["actions"] == cart_config.action_budget
+    assert budget_limits["final_answers"] == cart_config.final_answer_budget
     assert "acceleration_mps2" not in public_text
     assert "exact_target_position_m" not in public_text
 

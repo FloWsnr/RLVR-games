@@ -3,7 +3,7 @@
 from dataclasses import replace
 from typing import Mapping
 
-from rlvr_physics.core.session import TaskSubmission
+from rlvr_physics.core.submissions import TaskSubmission
 from rlvr_physics.tasks.physics.cart_inference.renderers import CART_TEXT_RENDERER
 from rlvr_physics.tasks.physics.cart_inference.sessions import CartInferenceSession
 from tests.tasks.physics.cart_inference.conftest import (
@@ -19,7 +19,8 @@ def test_session_accepts_structured_final_answer_action(
 
     result = fixture.session.submit(
         TaskSubmission.action(
-            f'{{"action": "final_answer", "x": {fixture.exact_target_position_m}}}'
+            '{"action": "final_answer", "arguments": {"x": %s}}'
+            % fixture.exact_target_position_m
         )
     )
 
@@ -42,7 +43,14 @@ def test_session_reset_returns_identity_and_debug_metadata(
     assert fixture.reset.public_info["domain"] == fixture.instance.domain
     assert fixture.reset.public_info["rollout_seed"] == CART_SESSION_SEED
     assert fixture.reset.public_info["renderer"] == fixture.renderer_name
-    assert fixture.reset.public_info["limits"] == fixture.instance.public_limits()
+    assert fixture.reset.public_info["limits"] == {
+        "budget_limits": {
+            "turns": fixture.config.turn_budget,
+            "actions": fixture.config.action_budget,
+            "final_answers": fixture.config.final_answer_budget,
+        },
+        "token_budget": fixture.config.token_budget,
+    }
     assert (
         fixture.reset.debug_info["acceleration_mps2"]
         == fixture.instance.privileged_payload["acceleration_mps2"]
@@ -53,7 +61,9 @@ def test_measurement_step_returns_public_measurement_metadata(
     cart_task_fixture: CartInferenceFixture,
 ) -> None:
     result = cart_task_fixture.session.submit(
-        TaskSubmission.action("measure_position(5)")
+        TaskSubmission.action(
+            '{"action": "measure_position", "arguments": {"time": 5}}'
+        )
     )
 
     measurement_info = result.public_info["measurement"]
@@ -67,14 +77,33 @@ def test_measurement_step_returns_public_measurement_metadata(
 def test_measurement_metadata_survives_immediate_truncation(
     cart_task_fixture: CartInferenceFixture,
 ) -> None:
-    instance = replace(cart_task_fixture.instance, max_turns=1, action_budget=1)
+    instance = replace(
+        cart_task_fixture.instance,
+        budget_limits={"turns": 2, "actions": 1, "final_answers": 1},
+    )
     session = CartInferenceSession(instance, CART_TEXT_RENDERER)
     session.reset(seed=CART_SESSION_SEED)
+    session.submit(TaskSubmission.action("unparseable"))
 
-    result = session.submit(TaskSubmission.action("measure_position(5)"))
+    result = session.submit(
+        TaskSubmission.action(
+            '{"action": "measure_position", "arguments": {"time": 5}}'
+        )
+    )
 
     assert result.truncated
+    assert result.accepted
     assert result.observation is None
+    assert result.public_info["budget_usage"] == {
+        "turns": 2,
+        "actions": 1,
+        "final_answers": 0,
+    }
+    assert result.public_info["budget_remaining"] == {
+        "turns": 0,
+        "actions": 0,
+        "final_answers": 1,
+    }
     measurement_info = result.public_info["measurement"]
     assert isinstance(measurement_info, Mapping)
     assert measurement_info["time_s"] == 5.0

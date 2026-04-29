@@ -11,7 +11,6 @@ from rlvr_physics.core.session import (
     TaskResetResult,
     TaskSession,
     TaskStepResult,
-    TaskSubmission,
     TaskTurn,
 )
 from rlvr_physics.core.specs import (
@@ -21,6 +20,7 @@ from rlvr_physics.core.specs import (
     TaskSpec,
     VerifierSpec,
 )
+from rlvr_physics.core.submissions import TaskSubmission
 
 EXAMPLE_TASK_KIND = "tests.configured_task.v1"
 EXAMPLE_TASK_DOMAIN = "tests"
@@ -50,7 +50,9 @@ class ExampleScalarSession:
             turn_index=0,
             observation=text_observation("text", "configured task prompt"),
             submission_modes=("final_text",),
+            submission_format={},
             action_schema={},
+            invalid_submission_policies={},
             public_limits=self._instance.public_limits(),
             public_info={"task_id": self._instance.task_id},
         )
@@ -81,7 +83,7 @@ def example_task_spec() -> TaskSpec:
         renderers=(RendererSpec(renderer_type="text"),),
         verifier=VerifierSpec(verifier_type="fixture"),
         reward=RewardSpec(reward_type="fixture", parameters={}),
-        max_turns=1,
+        budget_limits={"turns": 1},
         metadata={"exports": {"dataset": {"ability": "example"}}},
     )
 
@@ -101,7 +103,9 @@ def example_turn(example_task_instance: TaskInstance) -> TaskTurn:
         turn_index=0,
         observation=text_observation("text", "prompt"),
         submission_modes=("final_text",),
+        submission_format={},
         action_schema={},
+        invalid_submission_policies={},
         public_limits=example_task_instance.public_limits(),
         public_info={"task_id": example_task_instance.task_id},
     )
@@ -156,7 +160,7 @@ def build_example_task_instance(seed: int) -> TaskInstance:
         seed=seed,
         public_payload={"prompt": "configured task prompt"},
         privileged_payload={"answer": 42},
-        max_turns=1,
+        budget_limits={"turns": 1},
     )
 
 
@@ -170,5 +174,5 @@ def build_other_kind_task_instance(seed: int) -> TaskInstance:
         seed=seed,
         public_payload={},
         privileged_payload={},
-        max_turns=1,
+        budget_limits={"turns": 1},
     )

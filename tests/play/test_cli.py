@@ -56,7 +56,7 @@ def test_play_cli_runs_cart_alias() -> None:
             "--session-seed",
             "456",
         ),
-        input_stream=StringIO('{"action": "final_answer", "x": 0}\n'),
+        input_stream=StringIO('{"action": "final_answer", "arguments": {"x": 0}}\n'),
         output_stream=output_stream,
         error_stream=error_stream,
     )

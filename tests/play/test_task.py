@@ -125,7 +125,7 @@ def _build_task(parameters: Mapping[str, object], renderer_type: str) -> Configu
             seed=seed,
             public_payload={},
             privileged_payload={},
-            max_turns=1,
+            budget_limits={"turns": 1},
         )
 
     return ConfiguredTask(
@@ -136,7 +136,7 @@ def _build_task(parameters: Mapping[str, object], renderer_type: str) -> Configu
             renderers=(RendererSpec(renderer_type=renderer_type),),
             verifier=VerifierSpec(verifier_type="tests.playable"),
             reward=RewardSpec(reward_type="tests.playable", parameters={}),
-            max_turns=1,
+            budget_limits={"turns": 1},
         ),
         instance_builder=build_instance,
         session_builder=ExampleScalarSession,

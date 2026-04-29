@@ -104,8 +104,8 @@ records. It contains everything required to replay a task deterministically:
 - public inputs that may be rendered to the model
 - privileged verifier payload, such as exact answers, physical constants, or
   unit tests
-- direct rollout limit fields, such as maximum turns, timeout, token budget
-  hint, or action budget
+- named rollout budget limits, such as turns, actions, or final answers, plus
+  non-consumed hints such as timeout or token budget
 - metadata used for curriculum, filtering, and trainer export
 
 The instance is not a session. Trainers may request many completions for the
@@ -154,7 +154,7 @@ The exact names can change after prototypes, but the semantics should remain:
 - `reset` starts a fresh rollout and returns the first model-facing turn plus
   trainer-safe and privileged reset metadata.
 - `turn` exposes the current observation, expected submission mode, available
-  tools or action schema, and public limits.
+  tools or action schema, submission encoding format, and public limits.
 - `submit` accepts either a final text completion, a parsed action, or a tool
   call payload and returns validity, reward, termination status, public info,
   debug info, and optionally the next turn.
@@ -207,6 +207,21 @@ should support at least:
 Parsing may happen in an integration layer or in the backbone, but the verified
 session result should preserve trainer-safe and debug metadata needed to
 interpret what happened.
+
+Interactive protocols should expose a canonical submission format separately
+from the task action schema. The action schema describes what can be done; the
+submission format describes how a model or player must encode it.
+
+Invalid submission handling is task behavior, not only adapter behavior. A
+session should make rejected-submission categories and their policy visible in
+turn metadata when they affect rewards, retries, terminal state, truncation, or
+rollout budgets. Budget effects should use the same named public budget
+namespace as valid actions, published under ``public_limits["budget_limits"]``
+with names such as ``turns``, ``actions``, and task-specific final-answer or
+tool budgets. Step metadata should report consumed and remaining budgets using
+those same names. Local play surfaces may add transport conveniences around
+stdin/stdout, but model-facing invalid submissions should be represented
+explicitly by the session when they reach the task core.
 
 ### Reset And Step Results
 
@@ -428,7 +443,8 @@ verifier:
 reward:
   correct: 1.0
   invalid: 0.0
-max_turns: 1
+budget_limits:
+  turns: 1
 exports:
   dataset:
     ability: math
@@ -450,6 +466,7 @@ rlvr_physics/core/
   session.py      # TaskSession protocol and result dataclasses
   rendering.py    # observation/content abstractions
   specs.py        # YAML/task spec loading
+  submissions.py  # submission envelopes, parsing, and invalid policies
 
 rlvr_physics/play/
   cli.py          # generic play command entrypoint
@@ -493,7 +510,8 @@ Each prototype should prove a small number of core behaviors:
 - computed privileged ground truth separated from public observations
 - renderer output derived from canonical state rather than duplicated task logic
 - final-answer or tool-action submissions interpreted into structured payloads
-- rollout limits represented directly on immutable instances and public turns
+- rollout budget limits represented directly on immutable instances and public
+  turns as named budget maps
 - reward features that explain exactness, invalid submissions, and truncation
 - step results with public metadata and privileged debug details for local
   inspection

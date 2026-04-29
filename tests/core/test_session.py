@@ -1,14 +1,22 @@
 """Tests for shared session result types."""
 
+from typing import Mapping, cast
+
 import pytest
 
+from rlvr_physics.core.rendering import text_observation
 from rlvr_physics.core.rewards import RewardResult
 from rlvr_physics.core.session import (
     TaskResetResult,
     TaskStepResult,
-    TaskSubmission,
     TaskTurn,
     new_session_id,
+)
+from rlvr_physics.core.submissions import (
+    InvalidSubmissionPolicy,
+    TaskSubmission,
+    invalid_submission_policies_payload,
+    validate_invalid_submission_policies,
 )
 
 
@@ -56,3 +64,110 @@ def test_session_ids_do_not_collide_for_same_task_and_seed() -> None:
 
     assert first != second
     assert first.startswith("session-")
+
+
+def test_invalid_submission_policy_payload_and_budget_validation() -> None:
+    policy = InvalidSubmissionPolicy(
+        category="invalid_action",
+        consumes_budget={"turns": 1},
+        reward=0.0,
+        terminal=False,
+        truncated=False,
+    )
+    policies = {"invalid_action": policy}
+
+    validate_invalid_submission_policies(policies, {"budget_limits": {"turns": 3}})
+    payload = invalid_submission_policies_payload(policies)
+
+    assert payload["invalid_action"] == {
+        "category": "invalid_action",
+        "consumes_budget": {"turns": 1},
+        "reward": 0.0,
+        "terminal": False,
+        "truncated": False,
+    }
+
+
+def test_invalid_submission_policy_rejects_unknown_budget() -> None:
+    policy = InvalidSubmissionPolicy(
+        category="invalid_action",
+        consumes_budget={"unknown_budget": 1},
+        reward=0.0,
+        terminal=False,
+        truncated=False,
+    )
+
+    with pytest.raises(ValueError, match="unknown budget"):
+        validate_invalid_submission_policies(
+            {"invalid_action": policy}, {"budget_limits": {"turns": 3}}
+        )
+
+
+def test_invalid_submission_policy_rejects_invalid_budget_names() -> None:
+    with pytest.raises(ValueError, match="non-empty string"):
+        InvalidSubmissionPolicy(
+            category="invalid_action",
+            consumes_budget=cast(Mapping[str, int], {1: 1}),
+            reward=0.0,
+            terminal=False,
+            truncated=False,
+        )
+
+
+def test_policy_validation_rejects_invalid_public_budget_names() -> None:
+    policy = InvalidSubmissionPolicy(
+        category="invalid_action",
+        consumes_budget={"turns": 1},
+        reward=0.0,
+        terminal=False,
+        truncated=False,
+    )
+
+    with pytest.raises(ValueError, match="public budget name"):
+        validate_invalid_submission_policies(
+            {"invalid_action": policy},
+            {"budget_limits": cast(Mapping[str, int], {1: 3})},
+        )
+
+
+def test_task_turn_rejects_action_schema_unknown_budget() -> None:
+    with pytest.raises(ValueError, match="unknown budget"):
+        TaskTurn(
+            turn_index=0,
+            observation=text_observation("text", "prompt"),
+            submission_modes=("action",),
+            submission_format={},
+            action_schema={
+                "actions": {
+                    "measure": {
+                        "consumes_budget": {"unknown_budget": 1},
+                        "arguments": {},
+                    }
+                }
+            },
+            invalid_submission_policies={},
+            public_limits={"budget_limits": {"turns": 1}},
+            public_info={},
+        )
+
+
+def test_task_turn_rejects_invalid_policy_budget_reference() -> None:
+    policy = InvalidSubmissionPolicy(
+        category="invalid_action",
+        consumes_budget={"unknown_budget": 1},
+        reward=0.0,
+        terminal=False,
+        truncated=False,
+    )
+
+    with pytest.raises(ValueError, match="unknown budget"):
+        TaskTurn(
+            turn_index=0,
+            observation=text_observation("text", "prompt"),
+            submission_modes=("action",),
+            submission_format={},
+            action_schema={},
+            invalid_submission_policies={"invalid_action": policy},
+            public_limits={"budget_limits": {"turns": 1}},
+            public_info={},
+        )

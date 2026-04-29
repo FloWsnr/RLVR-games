@@ -19,6 +19,7 @@ rlvr_physics/
     rewards.py      # shared reward result payload
     session.py      # scalar session protocol and result dataclasses
     specs.py        # Python task spec dataclasses
+    submissions.py  # submission envelopes, parsing, and invalid policies
   play/
     cli.py          # generic play command entrypoint
     interaction.py  # public JSONL interaction protocol
@@ -78,12 +79,19 @@ uv run play cart_inference --instance-seed 123 --session-seed 456
 ```
 
 The process prints a public reset event, then reads one action per line from
-stdin until the rollout is terminal or truncated. Supported action examples:
+stdin until the rollout is terminal or truncated. Cart actions use the canonical
+JSON envelope shown in each turn's `submission_format`. Supported examples:
 
 ```json
-{"action": "measure_position", "time": 5}
-{"action": "final_answer", "x": 3.2}
+{"action": "measure_position", "arguments": {"time": 5}}
+{"action": "final_answer", "arguments": {"x": 3.2}}
 ```
+
+Each turn publishes consumed rollout budgets under
+`public_limits.budget_limits`, with cart using `turns`, `actions`, and
+`final_answers`. Rejected-submission policies are exposed as
+`invalid_submission_policies`, and step metadata reports `budget_usage` and
+`budget_remaining` with the same budget names.
 
 The runner omits privileged debug fields and the private instance seed from its
 stdout protocol.
