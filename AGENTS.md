@@ -28,6 +28,8 @@ renderer peripherals, and deferred trainer integration surfaces.
 - Keep scalar reward assignment in task-local rewards modules. Invalid
   submission policies should describe control effects such as budget
   consumption, terminal state, and truncation.
+- Do not expose procedural replay seeds through public task metadata. Use
+  stable task IDs or explicit trainer-safe source IDs instead.
 - Do not use `from __future__ import annotations`.
 - Write numpy-style docstrings for functions and classes.
 - If asked to use worktrees, create new worktrees in the `./worktrees/`

@@ -7,6 +7,9 @@ This repo is intentionally early-stage. The firm commitments are in
 scalar sessions, renderer peripherals, trainer-owned concurrency, executable
 verifier logic, and useful result metadata.
 
+Public task views omit replay seeds by default. Use stable task IDs or
+explicitly safe source metadata for trainer-facing joins.
+
 ## Structure
 
 ```text

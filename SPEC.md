@@ -65,6 +65,8 @@ These are the parts worth locking early:
   authoritative state, not authoritative state themselves.
 - Public metadata must stay separate from privileged verification and debug
   metadata.
+- Replay seeds are not public metadata by default. If a task exposes a source
+  identity to trainers, that identity must be explicit and safe to reveal.
 - Multiple model completions must be possible against the same immutable task
   instance without resampling hidden facts.
 - Sessions must return enough public and debug metadata for training,
@@ -100,7 +102,7 @@ records. It contains everything required to replay a task deterministically:
 
 - stable task identity
 - task kind and domain
-- seed or source record identity
+- replay seed or source record identity
 - public inputs that may be rendered to the model
 - privileged verifier payload, such as exact answers, physical constants, or
   unit tests
@@ -111,6 +113,12 @@ records. It contains everything required to replay a task deterministically:
 The instance is not a session. Trainers may request many completions for the
 same instance. Each completion gets a fresh session initialized from the same
 immutable payload.
+
+Replay identities such as procedural generation seeds are for deterministic
+reconstruction and debugging. They should not appear in the default public
+instance view, because a seed may be enough to reconstruct privileged verifier
+payloads. Tasks that need public row identities should publish an explicit
+trainer-safe source id in metadata.
 
 ### Task Backbone
 

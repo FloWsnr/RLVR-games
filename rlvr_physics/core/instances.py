@@ -19,7 +19,9 @@ class TaskInstance:
     domain:
         Broad domain or ability label.
     seed:
-        Seed or source-specific deterministic identity.
+        Replay seed or source-specific deterministic identity. This value is
+        not trainer-safe by default because procedural tasks may derive
+        privileged verifier payloads from it.
     public_payload:
         Data that may be rendered to the model.
     privileged_payload:
@@ -42,7 +44,8 @@ class TaskInstance:
     domain:
         Broad domain or ability label.
     seed:
-        Seed or source-specific deterministic identity.
+        Replay seed or source-specific deterministic identity. This value is
+        intentionally excluded from the default public view.
     public_payload:
         Frozen data that may be rendered to the model.
     privileged_payload:
@@ -103,7 +106,8 @@ class TaskInstance:
         -------
         Mapping[str, object]
             Frozen mapping containing public identity, limits, metadata, and
-            public payload fields. Privileged payload data is excluded.
+            public payload fields. Privileged payload data and replay seeds are
+            excluded.
         """
 
         return freeze_mapping(
@@ -111,7 +115,6 @@ class TaskInstance:
                 "task_id": self.task_id,
                 "kind": self.kind,
                 "domain": self.domain,
-                "seed": self.seed,
                 "limits": self.public_limits(),
                 "metadata": self.metadata,
                 "payload": self.public_payload,

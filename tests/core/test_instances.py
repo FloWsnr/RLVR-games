@@ -25,6 +25,7 @@ def test_task_instance_freezes_payloads_and_separates_public_view(
     public_view = instance.public_view()
     assert public_view["payload"] == {"prompt": "configured task prompt"}
     assert public_view["limits"] == {"budget_limits": {"turns": 1}}
+    assert "seed" not in public_view
     assert "privileged_payload" not in public_view
     assert "answer" not in str(to_plain_data(public_view))
     assert "42" not in str(to_plain_data(public_view))
