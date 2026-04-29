@@ -4,9 +4,14 @@ from dataclasses import replace
 from typing import Mapping
 
 from rlvr_physics.core.submissions import TaskSubmission
+from rlvr_physics.tasks.physics.cart_inference.instances import (
+    build_cart_inference_instance,
+)
 from rlvr_physics.tasks.physics.cart_inference.renderers import CART_TEXT_RENDERER
+from rlvr_physics.tasks.physics.cart_inference.rewards import CartRewardConfig
 from rlvr_physics.tasks.physics.cart_inference.sessions import CartInferenceSession
 from tests.tasks.physics.cart_inference.conftest import (
+    CART_INSTANCE_SEED,
     CART_SESSION_SEED,
     CartInferenceFixture,
 )
@@ -81,7 +86,9 @@ def test_measurement_metadata_survives_immediate_truncation(
         cart_task_fixture.instance,
         budget_limits={"turns": 2, "actions": 1, "final_answers": 1},
     )
-    session = CartInferenceSession(instance, CART_TEXT_RENDERER)
+    session = CartInferenceSession(
+        instance, CART_TEXT_RENDERER, cart_task_fixture.config.reward
+    )
     session.reset(seed=CART_SESSION_SEED)
     session.submit(TaskSubmission.action("unparseable"))
 
@@ -119,3 +126,55 @@ def test_session_rejects_raw_final_text_for_cart_task(
     assert not result.terminal
     assert result.observation is not None
     assert result.public_info["reason"] == "unsupported submission kind: final_text"
+
+
+def test_session_uses_reward_config_for_accepted_measurement(
+    cart_task_fixture: CartInferenceFixture,
+) -> None:
+    reward_config = CartRewardConfig(
+        correct_final_answer_reward=1.0,
+        incorrect_final_answer_reward=0.0,
+        partial_credit_window_tolerances=10.0,
+        accepted_measurement_reward=0.125,
+        invalid_submission_reward=-0.25,
+        budget_exceeded_reward=-0.5,
+        session_already_done_reward=0.0,
+    )
+    config = replace(cart_task_fixture.config, reward=reward_config)
+    instance = build_cart_inference_instance(seed=CART_INSTANCE_SEED, config=config)
+    session = CartInferenceSession(instance, CART_TEXT_RENDERER, reward_config)
+    session.reset(seed=CART_SESSION_SEED)
+
+    result = session.submit(
+        TaskSubmission.action(
+            '{"action": "measure_position", "arguments": {"time": 5}}'
+        )
+    )
+
+    assert result.accepted
+    assert result.reward == 0.125
+    assert result.reward_result.public_info["reward_event"] == "accepted_action"
+
+
+def test_session_uses_reward_config_for_invalid_submission(
+    cart_task_fixture: CartInferenceFixture,
+) -> None:
+    reward_config = CartRewardConfig(
+        correct_final_answer_reward=1.0,
+        incorrect_final_answer_reward=0.0,
+        partial_credit_window_tolerances=10.0,
+        accepted_measurement_reward=0.125,
+        invalid_submission_reward=-0.25,
+        budget_exceeded_reward=-0.5,
+        session_already_done_reward=0.0,
+    )
+    config = replace(cart_task_fixture.config, reward=reward_config)
+    instance = build_cart_inference_instance(seed=CART_INSTANCE_SEED, config=config)
+    session = CartInferenceSession(instance, CART_TEXT_RENDERER, reward_config)
+    session.reset(seed=CART_SESSION_SEED)
+
+    result = session.submit(TaskSubmission.action("unparseable"))
+
+    assert not result.accepted
+    assert result.reward == -0.25
+    assert result.reward_result.public_info["reward_event"] == "invalid_submission"

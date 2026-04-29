@@ -70,7 +70,6 @@ def test_invalid_submission_policy_payload_and_budget_validation() -> None:
     policy = InvalidSubmissionPolicy(
         category="invalid_action",
         consumes_budget={"turns": 1},
-        reward=0.0,
         terminal=False,
         truncated=False,
     )
@@ -82,7 +81,6 @@ def test_invalid_submission_policy_payload_and_budget_validation() -> None:
     assert payload["invalid_action"] == {
         "category": "invalid_action",
         "consumes_budget": {"turns": 1},
-        "reward": 0.0,
         "terminal": False,
         "truncated": False,
     }
@@ -92,7 +90,6 @@ def test_invalid_submission_policy_rejects_unknown_budget() -> None:
     policy = InvalidSubmissionPolicy(
         category="invalid_action",
         consumes_budget={"unknown_budget": 1},
-        reward=0.0,
         terminal=False,
         truncated=False,
     )
@@ -108,7 +105,6 @@ def test_invalid_submission_policy_rejects_invalid_budget_names() -> None:
         InvalidSubmissionPolicy(
             category="invalid_action",
             consumes_budget=cast(Mapping[str, int], {1: 1}),
-            reward=0.0,
             terminal=False,
             truncated=False,
         )
@@ -118,7 +114,6 @@ def test_policy_validation_rejects_invalid_public_budget_names() -> None:
     policy = InvalidSubmissionPolicy(
         category="invalid_action",
         consumes_budget={"turns": 1},
-        reward=0.0,
         terminal=False,
         truncated=False,
     )
@@ -155,7 +150,6 @@ def test_task_turn_rejects_invalid_policy_budget_reference() -> None:
     policy = InvalidSubmissionPolicy(
         category="invalid_action",
         consumes_budget={"unknown_budget": 1},
-        reward=0.0,
         terminal=False,
         truncated=False,
     )

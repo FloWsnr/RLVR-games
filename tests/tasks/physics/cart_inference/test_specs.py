@@ -21,11 +21,16 @@ def test_cart_inference_spec_advertises_public_contract(
     assert spec.domain == CART_INFERENCE_DOMAIN
     assert spec.source.source_type == "cart_inference_generator"
     assert spec.source.parameters["target_time_s"] == fixture.config.target_time_s
+    assert "answer_tolerance_abs_m" not in spec.source.parameters
     assert spec.renderers[0].renderer_type == fixture.renderer_name
-    assert spec.verifier.parameters["absolute_tolerance_m"] == (
-        fixture.config.answer_tolerance_abs_m
+    assert spec.verifier.parameters["absolute_tolerance_source"] == (
+        "privileged_instance_payload"
     )
-    assert spec.reward.reward_type == "threshold_with_linear_partial_credit"
+    assert "absolute_tolerance_m" not in spec.verifier.parameters
+    assert spec.reward.reward_type == "cart_inference_event_rewards"
+    assert spec.reward.parameters["accepted_measurement_reward"] == (
+        fixture.config.reward.accepted_measurement_reward
+    )
     assert spec.budget_limits["turns"] == fixture.config.turn_budget
     assert spec.budget_limits["actions"] == fixture.config.action_budget
     assert spec.budget_limits["final_answers"] == (fixture.config.final_answer_budget)
@@ -45,6 +50,7 @@ def test_cart_inference_config_requires_final_answer_turn(
         token_budget=cart_config.token_budget,
         action_budget=cart_config.turn_budget,
         final_answer_budget=cart_config.final_answer_budget,
+        reward=cart_config.reward,
     )
 
     with pytest.raises(ValueError, match="action_budget"):
@@ -65,6 +71,7 @@ def test_cart_inference_config_has_one_terminal_final_answer_attempt(
         token_budget=cart_config.token_budget,
         action_budget=cart_config.action_budget,
         final_answer_budget=2,
+        reward=cart_config.reward,
     )
 
     with pytest.raises(ValueError, match="final_answer_budget must be 1"):
@@ -87,6 +94,7 @@ def test_cart_inference_config_rejects_non_finite_numeric_values(
         token_budget=cart_config.token_budget,
         action_budget=cart_config.action_budget,
         final_answer_budget=cart_config.final_answer_budget,
+        reward=cart_config.reward,
     )
 
     with pytest.raises(ValueError, match="max_measurement_time_s must be finite"):

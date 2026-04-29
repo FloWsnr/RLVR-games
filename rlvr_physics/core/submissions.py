@@ -108,8 +108,6 @@ class InvalidSubmissionPolicy:
         Stable public category for the rejected submission.
     consumes_budget:
         Named public budgets consumed by this rejected submission.
-    reward:
-        Scalar reward emitted for the rejected submission.
     terminal:
         Whether the rejection ends the task as a terminal result.
     truncated:
@@ -121,8 +119,6 @@ class InvalidSubmissionPolicy:
         Stable public category for the rejected submission.
     consumes_budget:
         Frozen mapping of public budget names to consumed amounts.
-    reward:
-        Scalar reward emitted for the rejected submission.
     terminal:
         Whether the rejection ends the task as a terminal result.
     truncated:
@@ -131,7 +127,6 @@ class InvalidSubmissionPolicy:
 
     category: str
     consumes_budget: Mapping[str, int]
-    reward: float
     terminal: bool
     truncated: bool
 
@@ -171,7 +166,6 @@ def invalid_submission_policy_payload(
     return {
         "category": policy.category,
         "consumes_budget": dict(policy.consumes_budget),
-        "reward": policy.reward,
         "terminal": policy.terminal,
         "truncated": policy.truncated,
     }

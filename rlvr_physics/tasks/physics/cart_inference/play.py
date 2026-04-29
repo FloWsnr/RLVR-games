@@ -10,6 +10,10 @@ from rlvr_physics.tasks.physics.cart_inference.renderers import (
     CART_IMAGE_RENDERER,
     CART_TEXT_RENDERER,
 )
+from rlvr_physics.tasks.physics.cart_inference.rewards import (
+    CartRewardConfig,
+    reward_config_from_mapping,
+)
 from rlvr_physics.tasks.physics.cart_inference.specs import (
     DEFAULT_CONFIG,
     CartInferenceConfig,
@@ -80,6 +84,7 @@ def cart_inference_config_from_parameters(
         token_budget=_optional_int_parameter(parameters, "token_budget"),
         action_budget=_required_int_parameter(parameters, "action_budget"),
         final_answer_budget=_required_int_parameter(parameters, "final_answer_budget"),
+        reward=_required_reward_config(parameters, "reward"),
     )
 
 
@@ -147,6 +152,17 @@ def _optional_int_parameter(parameters: Mapping[str, object], name: str) -> int 
     if isinstance(value, int):
         return value
     raise ValueError(f"{name} must be an integer when provided")
+
+
+def _required_reward_config(
+    parameters: Mapping[str, object], name: str
+) -> CartRewardConfig:
+    """Read a required cart reward configuration parameter."""
+
+    value = _required_parameter(parameters, name)
+    if isinstance(value, Mapping):
+        return reward_config_from_mapping(value)
+    raise ValueError(f"{name} must be an object")
 
 
 def _required_parameter(parameters: Mapping[str, object], name: str) -> object:

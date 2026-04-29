@@ -90,7 +90,6 @@ def build_cart_inference_instance(
         metadata={
             "task_family": "cart_inference",
             "difficulty": "example",
-            "config": config_parameters(config),
         },
     )
 

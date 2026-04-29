@@ -25,6 +25,9 @@ renderer peripherals, and deferred trainer integration surfaces.
 - Prefer deterministic tests with explicit seeds.
 - Keep types explicit. Avoid optional/default parameters when they hide
   behavior.
+- Keep scalar reward assignment in task-local rewards modules. Invalid
+  submission policies should describe control effects such as budget
+  consumption, terminal state, and truncation.
 - Do not use `from __future__ import annotations`.
 - Write numpy-style docstrings for functions and classes.
 - If asked to use worktrees, create new worktrees in the `./worktrees/`

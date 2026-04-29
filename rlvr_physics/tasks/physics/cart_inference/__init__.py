@@ -8,6 +8,10 @@ from rlvr_physics.tasks.physics.cart_inference.renderers import (
     CART_IMAGE_RENDERER,
     CART_TEXT_RENDERER,
 )
+from rlvr_physics.tasks.physics.cart_inference.rewards import (
+    DEFAULT_REWARD_CONFIG,
+    CartRewardConfig,
+)
 from rlvr_physics.tasks.physics.cart_inference.sessions import CartInferenceSession
 from rlvr_physics.tasks.physics.cart_inference.specs import (
     CART_INFERENCE_DOMAIN,
@@ -26,7 +30,9 @@ __all__ = [
     "CART_PLAYABLE",
     "CART_TEXT_RENDERER",
     "DEFAULT_CONFIG",
+    "DEFAULT_REWARD_CONFIG",
     "CartInferenceConfig",
+    "CartRewardConfig",
     "CartInferenceSession",
     "build_cart_inference_instance",
     "cart_inference_spec",

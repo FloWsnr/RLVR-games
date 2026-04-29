@@ -7,6 +7,7 @@ from rlvr_physics.core.session import (
     TaskTurn,
     new_session_id,
 )
+from rlvr_physics.core.rewards import RewardResult
 from rlvr_physics.core.submissions import (
     ACTION_ARGUMENTS_FIELD,
     ACTION_NAME_FIELD,
@@ -15,7 +16,6 @@ from rlvr_physics.core.submissions import (
     ParsedAction,
     TaskSubmission,
 )
-from rlvr_physics.core.rewards import RewardResult
 from rlvr_physics.tasks.physics.cart_inference.backbone import (
     FINAL_ANSWER_ACTION,
     MEASURE_POSITION_ACTION,
@@ -31,7 +31,12 @@ from rlvr_physics.tasks.physics.cart_inference.budgets import (
     required_cart_budget,
 )
 from rlvr_physics.tasks.physics.cart_inference.rewards import (
+    CartRewardConfig,
+    reward_accepted_measurement,
+    reward_budget_exceeded,
     reward_final_answer,
+    reward_invalid_submission,
+    reward_session_already_done,
 )
 from rlvr_physics.tasks.physics.cart_inference.renderers import (
     CartMeasurementView,
@@ -45,21 +50,18 @@ from rlvr_physics.tasks.physics.cart_inference.prompting import cart_initial_fee
 RETRYABLE_INVALID_SUBMISSION_POLICY = InvalidSubmissionPolicy(
     category="retryable_invalid_submission",
     consumes_budget={TURN_BUDGET: 1},
-    reward=0.0,
     terminal=False,
     truncated=False,
 )
 INVALID_FINAL_ANSWER_POLICY = InvalidSubmissionPolicy(
     category="invalid_final_answer",
     consumes_budget={TURN_BUDGET: 1, FINAL_ANSWER_BUDGET: 1},
-    reward=0.0,
     terminal=True,
     truncated=False,
 )
 BUDGET_EXCEEDED_POLICY = InvalidSubmissionPolicy(
     category="budget_exceeded",
     consumes_budget={TURN_BUDGET: 1},
-    reward=0.0,
     terminal=False,
     truncated=True,
 )
@@ -90,7 +92,12 @@ class CartInferenceSession:
         Immutable cart inference task instance.
     """
 
-    def __init__(self, instance: TaskInstance, renderer_type: str) -> None:
+    def __init__(
+        self,
+        instance: TaskInstance,
+        renderer_type: str,
+        reward_config: CartRewardConfig,
+    ) -> None:
         """Initialize a mutable scalar runtime session.
 
         Parameters
@@ -99,12 +106,16 @@ class CartInferenceSession:
             Immutable cart inference task instance.
         renderer_type:
             Renderer identifier used for every observation in this session.
+        reward_config:
+            Reward policy configuration used for every step result in this
+            session.
         """
 
         validate_cart_renderer_type(renderer_type)
         self.instance = instance
         self._renderer_type = renderer_type
         self._backbone = CartInferenceBackbone(instance)
+        self._reward_config = reward_config
         self._session_id: str | None = None
         self._turn: TaskTurn | None = None
         self._submissions_used: int = 0
@@ -251,7 +262,11 @@ class CartInferenceSession:
                     "invalid_submission_policy": BUDGET_EXCEEDED_POLICY.category,
                 },
                 debug_info={},
-                reward=BUDGET_EXCEEDED_POLICY.reward,
+                reward_result=reward_budget_exceeded(
+                    policy_category=BUDGET_EXCEEDED_POLICY.category,
+                    reason_category=BUDGET_EXCEEDED_POLICY.category,
+                    config=self._reward_config,
+                ),
                 accepted=False,
             )
         except (SubmissionParseError, ValueError) as error:
@@ -287,6 +302,10 @@ class CartInferenceSession:
                 "true_position_m": measurement.true_position_m,
                 "noise_m": measurement.noise_m,
             },
+            reward_result=reward_accepted_measurement(
+                measurement=measurement,
+                config=self._reward_config,
+            ),
         )
 
     def _handle_final_action(
@@ -318,7 +337,7 @@ class CartInferenceSession:
         """Evaluate and terminate on a final answer."""
 
         evaluation = self._backbone.evaluate_final_answer(submitted_position_m)
-        reward = reward_final_answer(evaluation)
+        reward = reward_final_answer(evaluation, self._reward_config)
         self._turn = None
         return TaskStepResult(
             accepted=True,
@@ -349,7 +368,7 @@ class CartInferenceSession:
             self._turn = None
             return TaskStepResult(
                 accepted=False,
-                reward_result=RewardResult(reward=policy.reward, score=None),
+                reward_result=self._reward_invalid_submission(policy, category),
                 terminal=policy.terminal,
                 truncated=policy.truncated,
                 observation=None,
@@ -373,7 +392,7 @@ class CartInferenceSession:
                 "invalid_submission_policy": policy.category,
             },
             debug_info={},
-            reward=policy.reward,
+            reward_result=self._reward_invalid_submission(policy, category),
         )
 
     def _apply_invalid_submission_policy(self, policy: InvalidSubmissionPolicy) -> None:
@@ -383,6 +402,23 @@ class CartInferenceSession:
         self._submissions_used += policy.consumes_budget.get(TURN_BUDGET, 0)
         self._final_answers_used += policy.consumes_budget.get(FINAL_ANSWER_BUDGET, 0)
 
+    def _reward_invalid_submission(
+        self, policy: InvalidSubmissionPolicy, reason_category: str
+    ) -> RewardResult:
+        """Return the reward for one invalid-submission event."""
+
+        if policy.category == BUDGET_EXCEEDED_POLICY.category:
+            return reward_budget_exceeded(
+                policy_category=policy.category,
+                reason_category=reason_category,
+                config=self._reward_config,
+            )
+        return reward_invalid_submission(
+            policy_category=policy.category,
+            reason_category=reason_category,
+            config=self._reward_config,
+        )
+
     def _continue_or_truncate(
         self,
         turn_index: int,
@@ -390,7 +426,7 @@ class CartInferenceSession:
         current_measurement: CartMeasurementView | None,
         public_info: dict[str, object],
         debug_info: dict[str, object],
-        reward: float = 0.0,
+        reward_result: RewardResult,
     ) -> TaskStepResult:
         """Continue to the next turn unless the turn limit is exhausted."""
 
@@ -400,6 +436,7 @@ class CartInferenceSession:
                 public_info=public_info,
                 debug_info=debug_info,
                 accepted="reason" not in public_info,
+                reward_result=reward_result,
             )
 
         next_turn_index = turn_index + 1
@@ -411,7 +448,7 @@ class CartInferenceSession:
         public_result = self._public_status(public_info)
         return TaskStepResult(
             accepted="reason" not in public_info,
-            reward_result=RewardResult(reward=reward, score=None),
+            reward_result=reward_result,
             terminal=False,
             truncated=False,
             observation=self._turn,
@@ -424,7 +461,7 @@ class CartInferenceSession:
         reason: str,
         public_info: dict[str, object],
         debug_info: dict[str, object],
-        reward: float = 0.0,
+        reward_result: RewardResult,
         accepted: bool = False,
     ) -> TaskStepResult:
         """Terminate the rollout due to a public limit."""
@@ -433,7 +470,7 @@ class CartInferenceSession:
         result_info = self._public_status({"reason": reason, **public_info})
         return TaskStepResult(
             accepted=accepted,
-            reward_result=RewardResult(reward=reward, score=None),
+            reward_result=reward_result,
             terminal=False,
             truncated=True,
             observation=None,
@@ -446,7 +483,7 @@ class CartInferenceSession:
 
         return TaskStepResult(
             accepted=False,
-            reward_result=RewardResult(reward=0.0, score=None),
+            reward_result=reward_session_already_done(self._reward_config),
             terminal=True,
             truncated=False,
             observation=None,

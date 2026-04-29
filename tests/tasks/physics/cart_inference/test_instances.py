@@ -44,6 +44,7 @@ def test_cart_inference_instance_public_view_hides_privileged_state(
     assert budget_limits["actions"] == cart_config.action_budget
     assert budget_limits["final_answers"] == cart_config.final_answer_budget
     assert "acceleration_mps2" not in public_text
+    assert "answer_tolerance_abs_m" not in public_text
     assert "exact_target_position_m" not in public_text
 
 

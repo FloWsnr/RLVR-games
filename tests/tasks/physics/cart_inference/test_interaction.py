@@ -1,6 +1,7 @@
 """Tests for the cart inference JSONL interaction runner."""
 
 from base64 import b64decode
+from collections.abc import Mapping
 from io import StringIO
 import json
 from typing import Any
@@ -340,6 +341,24 @@ def test_cart_play_parameters_reject_unknown_keys() -> None:
 
     with pytest.raises(ValueError, match="max_tunrs"):
         cart_inference_config_from_parameters(parameters)
+
+
+def test_cart_play_parameters_accept_reward_config() -> None:
+    """Public play parameters preserve task reward policy settings."""
+
+    parameters = dict(CART_PLAYABLE.default_parameters)
+    reward_parameter = parameters["reward"]
+    if not isinstance(reward_parameter, Mapping):
+        raise TypeError("reward parameter must be a mapping")
+    reward = dict(reward_parameter)
+    reward["accepted_measurement_reward"] = 0.125
+    reward["invalid_submission_reward"] = -0.25
+    parameters["reward"] = reward
+
+    config = cart_inference_config_from_parameters(parameters)
+
+    assert config.reward.accepted_measurement_reward == 0.125
+    assert config.reward.invalid_submission_reward == -0.25
 
 
 def run_cart_interaction(

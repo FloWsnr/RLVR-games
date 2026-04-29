@@ -214,8 +214,10 @@ submission format describes how a model or player must encode it.
 
 Invalid submission handling is task behavior, not only adapter behavior. A
 session should make rejected-submission categories and their policy visible in
-turn metadata when they affect rewards, retries, terminal state, truncation, or
-rollout budgets. Budget effects should use the same named public budget
+turn metadata when they affect retries, terminal state, truncation, rollout
+budgets, or reward-policy decisions. Invalid-submission policies describe
+control effects; scalar rewards for rejected submissions should be produced by
+the task reward policy. Budget effects should use the same named public budget
 namespace as valid actions, published under ``public_limits["budget_limits"]``
 with names such as ``turns``, ``actions``, and task-specific final-answer or
 tool budgets. Step metadata should report consumed and remaining budgets using
@@ -251,6 +253,10 @@ Reward policies should return a shared reward result shape containing the scalar
 reward, optional domain score, trainer-safe reward metadata, and privileged
 debug metadata. Task-specific reward code may live beside a task backbone, but
 the returned payload should stay consistent across task families.
+For multi-turn tasks, the same task-specific reward policy should handle final
+answers, accepted intermediate actions, especially good or bad actions,
+invalid submissions, truncations, and other step events rather than embedding
+scalar rewards in parser, submission-policy, or renderer code.
 
 ### Rollout Recording
 
@@ -441,8 +447,10 @@ renderer:
 verifier:
   type: exact_numeric
 reward:
-  correct: 1.0
-  invalid: 0.0
+  type: arithmetic_event_rewards
+  parameters:
+    correct_final_answer_reward: 1.0
+    invalid_submission_reward: 0.0
 budget_limits:
   turns: 1
 exports:

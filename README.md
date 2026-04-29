@@ -91,7 +91,9 @@ Each turn publishes consumed rollout budgets under
 `public_limits.budget_limits`, with cart using `turns`, `actions`, and
 `final_answers`. Rejected-submission policies are exposed as
 `invalid_submission_policies`, and step metadata reports `budget_usage` and
-`budget_remaining` with the same budget names.
+`budget_remaining` with the same budget names. Scalar rewards, including
+intermediate accepted-action rewards and rejected-submission rewards, are
+assigned by the task reward policy in `tasks/physics/cart_inference/rewards.py`.
 
 The runner omits privileged debug fields and the private instance seed from its
 stdout protocol.

@@ -19,6 +19,11 @@ from rlvr_physics.tasks.physics.cart_inference.renderers import (
     CART_IMAGE_RENDERER,
     CART_TEXT_RENDERER,
 )
+from rlvr_physics.tasks.physics.cart_inference.rewards import (
+    DEFAULT_REWARD_CONFIG,
+    CartRewardConfig,
+    reward_config_parameters,
+)
 
 CART_INFERENCE_KIND = "physics.cart_inference.v1"
 CART_INFERENCE_DOMAIN = "physics"
@@ -50,6 +55,9 @@ class CartInferenceConfig:
         Maximum number of measurement tool calls allowed.
     final_answer_budget:
         Maximum number of final-answer attempts allowed.
+    reward:
+        Reward configuration for final-answer, accepted-action, and rejected
+        submission events.
 
     Attributes
     ----------
@@ -73,6 +81,9 @@ class CartInferenceConfig:
         Maximum number of measurement tool calls allowed.
     final_answer_budget:
         Maximum number of final-answer attempts allowed.
+    reward:
+        Reward configuration for final-answer, accepted-action, and rejected
+        submission events.
     """
 
     min_measurement_time_s: float
@@ -85,6 +96,7 @@ class CartInferenceConfig:
     token_budget: int | None
     action_budget: int
     final_answer_budget: int
+    reward: CartRewardConfig
 
 
 DEFAULT_CONFIG = CartInferenceConfig(
@@ -98,6 +110,7 @@ DEFAULT_CONFIG = CartInferenceConfig(
     token_budget=512,
     action_budget=3,
     final_answer_budget=1,
+    reward=DEFAULT_REWARD_CONFIG,
 )
 
 
@@ -165,7 +178,7 @@ def _validate_finite_float(value: float, name: str) -> None:
 
 
 def config_parameters(config: CartInferenceConfig) -> dict[str, object]:
-    """Return public configuration parameters as plain data.
+    """Return local construction parameters as plain data.
 
     Parameters
     ----------
@@ -175,7 +188,8 @@ def config_parameters(config: CartInferenceConfig) -> dict[str, object]:
     Returns
     -------
     dict[str, object]
-        Public configuration fields suitable for task specs and metadata.
+        Configuration fields suitable for local play-test overrides and
+        deterministic construction.
     """
 
     return {
@@ -189,6 +203,30 @@ def config_parameters(config: CartInferenceConfig) -> dict[str, object]:
         "token_budget": config.token_budget,
         "action_budget": config.action_budget,
         "final_answer_budget": config.final_answer_budget,
+        "reward": reward_config_parameters(config.reward),
+    }
+
+
+def public_source_parameters(config: CartInferenceConfig) -> dict[str, object]:
+    """Return public source parameters that are safe for task specs.
+
+    Parameters
+    ----------
+    config:
+        Configuration to serialize.
+
+    Returns
+    -------
+    dict[str, object]
+        Public generation fields that exclude privileged verifier settings and
+        reward-policy settings advertised elsewhere in the task spec.
+    """
+
+    return {
+        "min_measurement_time_s": config.min_measurement_time_s,
+        "max_measurement_time_s": config.max_measurement_time_s,
+        "target_time_s": config.target_time_s,
+        "measurement_noise_abs_m": config.measurement_noise_abs_m,
     }
 
 
@@ -207,14 +245,13 @@ def cart_inference_spec(config: CartInferenceConfig) -> TaskSpec:
     """
 
     validate_cart_inference_config(config)
-    parameters = config_parameters(config)
     return TaskSpec(
         kind=CART_INFERENCE_KIND,
         domain=CART_INFERENCE_DOMAIN,
         source=SourceSpec(
             source_type="cart_inference_generator",
             seed=0,
-            parameters=parameters,
+            parameters=public_source_parameters(config),
         ),
         renderers=(
             RendererSpec(renderer_type=CART_TEXT_RENDERER, parameters={}),
@@ -228,16 +265,12 @@ def cart_inference_spec(config: CartInferenceConfig) -> TaskSpec:
             parameters={
                 "answer_field": "x",
                 "answer_units": "m",
-                "absolute_tolerance_m": config.answer_tolerance_abs_m,
+                "absolute_tolerance_source": "privileged_instance_payload",
             },
         ),
         reward=RewardSpec(
-            reward_type="threshold_with_linear_partial_credit",
-            parameters={
-                "perfect_score": 1.0,
-                "incorrect_score": 0.0,
-                "partial_credit_window_tolerances": 10.0,
-            },
+            reward_type="cart_inference_event_rewards",
+            parameters=reward_config_parameters(config.reward),
         ),
         timeout_seconds=config.timeout_seconds,
         token_budget=config.token_budget,

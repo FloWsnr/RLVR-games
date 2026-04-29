@@ -11,6 +11,7 @@ from rlvr_physics.tasks.physics.cart_inference.backbone import (
     CartInferenceBackbone,
 )
 from rlvr_physics.tasks.physics.cart_inference.rewards import (
+    DEFAULT_REWARD_CONFIG,
     reward_final_answer,
 )
 from rlvr_physics.tasks.physics.cart_inference.specs import CartInferenceConfig
@@ -101,7 +102,7 @@ def test_backbone_evaluates_final_answer_action(
     action = backbone.parse_action(submission)
     submitted_position_m = backbone.final_answer_from_action(action)
     evaluation = backbone.evaluate_final_answer(submitted_position_m)
-    reward = reward_final_answer(evaluation)
+    reward = reward_final_answer(evaluation, DEFAULT_REWARD_CONFIG)
 
     assert evaluation.correct
     assert reward.reward == 1.0

@@ -31,7 +31,7 @@ _CART_PACKAGE = "rlvr_physics.tasks.physics.cart_inference"
 
 def test_text_renderer_reports_current_measurement_only() -> None:
     instance = build_cart_inference_instance(seed=123, config=DEFAULT_CONFIG)
-    session = CartInferenceSession(instance, CART_TEXT_RENDERER)
+    session = CartInferenceSession(instance, CART_TEXT_RENDERER, DEFAULT_CONFIG.reward)
     session.reset(seed=456)
 
     first_result = session.submit(
@@ -81,7 +81,7 @@ def test_prompt_template_renderer_rejects_unknown_markers() -> None:
 
 def test_image_renderer_returns_png_image_with_text_fallback() -> None:
     instance = build_cart_inference_instance(seed=123, config=DEFAULT_CONFIG)
-    session = CartInferenceSession(instance, CART_IMAGE_RENDERER)
+    session = CartInferenceSession(instance, CART_IMAGE_RENDERER, DEFAULT_CONFIG.reward)
 
     reset = session.reset(seed=456)
 
@@ -99,7 +99,7 @@ def test_image_renderer_returns_png_image_with_text_fallback() -> None:
 
 def test_image_renderer_omits_privileged_state() -> None:
     instance = _hidden_sentinel_instance()
-    session = CartInferenceSession(instance, CART_IMAGE_RENDERER)
+    session = CartInferenceSession(instance, CART_IMAGE_RENDERER, DEFAULT_CONFIG.reward)
 
     reset = session.reset(seed=456)
 
@@ -162,7 +162,7 @@ def test_render_context_exposes_only_public_state_fields() -> None:
 
 def test_image_renderer_reports_current_measurement_only() -> None:
     instance = build_cart_inference_instance(seed=123, config=DEFAULT_CONFIG)
-    session = CartInferenceSession(instance, CART_IMAGE_RENDERER)
+    session = CartInferenceSession(instance, CART_IMAGE_RENDERER, DEFAULT_CONFIG.reward)
     session.reset(seed=456)
 
     first_result = session.submit(

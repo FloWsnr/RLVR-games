@@ -67,7 +67,7 @@ def cart_inference_task(
             Fresh cart inference session.
         """
 
-        return CartInferenceSession(instance, renderer_type)
+        return CartInferenceSession(instance, renderer_type, config.reward)
 
     return ConfiguredTask(
         spec=cart_inference_spec(config),
