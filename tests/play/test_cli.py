@@ -24,7 +24,9 @@ def test_play_cli_lists_registered_tasks() -> None:
     assert status_code == 0
     assert output_stream.getvalue().splitlines() == [
         "cart_inference",
+        "circuit_diagnosis",
         "physics.cart_inference",
+        "physics.circuit_diagnosis",
     ]
 
 

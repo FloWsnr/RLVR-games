@@ -534,6 +534,12 @@ Each prototype should prove a small number of core behaviors:
 - step results with public metadata and privileged debug details for local
   inspection
 
+The circuit diagnosis prototype is the first richer tool-use physics task. It
+keeps one canonical public circuit graph in the task backbone, applies hidden
+faults and session-local repairs as verifier overlays, and lets text and PNG
+schematic renderers present that same public graph without changing task
+semantics.
+
 Coding verifier tasks should wait until the core needs sandbox or subprocess
 boundaries. Do not add broad abstractions before concrete tasks expose repeated
 structure.
@@ -577,8 +583,9 @@ The initial core is good enough when:
 - How should task payloads be serialized for very large hidden state, images, or
   code sandboxes?
 - How much tool schema generation belongs in core versus trainer integrations?
-- Which physics task should be the first real target: projectile motion,
-  circuits, mechanics constraints, or simulation-based puzzles?
+- Which physics task should be the next target after cart inference and circuit
+  diagnosis: projectile motion, mechanics constraints, or simulation-based
+  puzzles?
 - When do dataset utilities become necessary?
 
 ## Reference Notes

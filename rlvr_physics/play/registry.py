@@ -42,6 +42,13 @@ _PLAYABLE_REGISTRATIONS = (
         aliases=("cart_inference",),
         object_path="rlvr_physics.tasks.physics.cart_inference.play:CART_PLAYABLE",
     ),
+    PlayableTaskRegistration(
+        name="physics.circuit_diagnosis",
+        aliases=("circuit_diagnosis",),
+        object_path=(
+            "rlvr_physics.tasks.physics.circuit_diagnosis.play:CIRCUIT_PLAYABLE"
+        ),
+    ),
 )
 
 

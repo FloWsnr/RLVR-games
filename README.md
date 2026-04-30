@@ -43,11 +43,23 @@ rlvr_physics/
         sessions.py   # scalar runtime session
         specs.py      # public task configuration and spec helpers
         task.py       # configured task builder
+      circuit_diagnosis/
+        backbone.py   # canonical circuit graph, fault overlays, MNA verifier
+        instances.py  # curated deterministic circuit/fault construction
+        prompting.py  # task-local prompt resource loading
+        prompts/      # model-facing prompt text templates
+        play.py       # circuit PlayableTask descriptor
+        renderers.py  # text netlist and PNG schematic observations
+        rewards.py    # task-specific reward assignment
+        sessions.py   # scalar probe/repair session
+        specs.py      # public task configuration and spec helpers
+        task.py       # configured task builder
 
 tests/
   core/
   play/
   tasks/physics/cart_inference/
+  tasks/physics/circuit_diagnosis/
 ```
 
 ## Development
@@ -79,6 +91,7 @@ The generic play command selects the task by name or alias:
 
 ```bash
 uv run play cart_inference --instance-seed 123 --session-seed 456
+uv run play circuit_diagnosis --renderer circuit_diagnosis.image --instance-seed 4 --session-seed 99
 ```
 
 The process prints a public reset event, then reads one action per line from
@@ -90,14 +103,25 @@ JSON envelope shown in each turn's `submission_format`. Supported examples:
 {"action": "final_answer", "arguments": {"x": 3.2}}
 ```
 
+Circuit diagnosis uses the same JSON action envelope. It exposes probe,
+repair, and final-answer actions:
+
+```json
+{"action": "set_source", "arguments": {"node_plus": "VIN", "node_minus": "GND", "voltage_V": 5.0}}
+{"action": "measure_voltage", "arguments": {"node_a": "OUT", "node_b": "GND"}}
+{"action": "replace_component", "arguments": {"component": "R1", "kind": "resistor", "value_ohm": 1000}}
+{"action": "final_answer", "arguments": {"faults": ["R1_open"], "repairs": ["replace_R1_1000_ohm"]}}
+```
+
 Each turn publishes consumed rollout budgets under
-`public_limits.budget_limits`, with cart using `turns`, `actions`, and
-`final_answers`. Rejected-submission policies are exposed as
+`public_limits.budget_limits`. Cart uses `turns`, `actions`, and
+`final_answers`; circuit diagnosis uses `turns`, `probe_actions`,
+`repair_actions`, and `final_answers`. Rejected-submission policies are exposed as
 `invalid_submission_policies`, and step metadata reports `budget_usage` and
 `budget_remaining` with the same budget names. Step events also include
 `reward_info` from the task reward policy. Scalar rewards, including
 intermediate accepted-action rewards and rejected-submission rewards, are
-assigned by the task reward policy in `tasks/physics/cart_inference/rewards.py`.
+assigned by each task-local rewards module.
 
 The runner omits privileged debug fields and the private instance seed from its
 stdout protocol.
