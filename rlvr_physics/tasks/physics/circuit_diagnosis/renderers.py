@@ -12,9 +12,10 @@ from rlvr_physics.core.rendering import (
     text_observation,
 )
 from rlvr_physics.tasks._shared.rendering import rasterize_svg
-from rlvr_physics.tasks.physics.circuit_diagnosis.backbone import (
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.schema import (
     CircuitComponent,
     CircuitDefinition,
+    CircuitPublicView,
     ReplacementSpec,
     SourceSetting,
 )
@@ -38,8 +39,8 @@ class CircuitRenderContext:
 
     Parameters
     ----------
-    definition:
-        Public nominal circuit description.
+    public_view:
+        Trainer-safe public circuit view.
     node_positions:
         Renderer-facing schematic coordinates for public nodes.
     feedback:
@@ -52,7 +53,7 @@ class CircuitRenderContext:
         Public budget status lines.
     """
 
-    definition: CircuitDefinition
+    public_view: CircuitPublicView
     node_positions: Mapping[str, tuple[float, float]]
     feedback: str
     source_setting: SourceSetting | None
@@ -79,7 +80,7 @@ def render_circuit_text(context: CircuitRenderContext) -> str:
     return _render_prompt(
         circuit_text_prompt_template(),
         context,
-        netlist=_render_netlist(context.definition),
+        netlist=_render_netlist(context.public_view.definition),
     )
 
 
@@ -106,7 +107,7 @@ def _render_prompt(template: str, context: CircuitRenderContext, netlist: str) -
         {
             "feedback": context.feedback,
             "netlist": netlist,
-            "target_behavior": _render_target_behavior(context.definition),
+            "target_behavior": _render_target_behavior(context.public_view.definition),
             "source_setting": _render_source_setting(context.source_setting),
             "repair_state": _render_repair_state(context.repairs),
             "budget_status": context.budget_status,
@@ -199,7 +200,7 @@ def _render_repair_state(repairs: Mapping[str, ReplacementSpec]) -> str:
 def _render_circuit_svg(context: CircuitRenderContext) -> str:
     """Return a deterministic SVG schematic for the public circuit."""
 
-    definition = context.definition
+    definition = context.public_view.definition
     width = 960
     height = 640
     elements: list[svg.Element] = [
@@ -304,7 +305,7 @@ def _side_panel(context: CircuitRenderContext) -> list[svg.Element]:
         *_wrapped_text(
             x + 16.0,
             y + 54.0,
-            _compact_target_text(context.definition),
+            _compact_target_text(context.public_view.definition),
             176.0,
             12,
             "#334155",

@@ -30,9 +30,9 @@ renderer peripherals, and deferred trainer integration surfaces.
   consumption, terminal state, and truncation.
 - Public play and adapter surfaces should preserve `RewardResult.public_info`
   and omit `RewardResult.debug_info`.
-- For circuit diagnosis, keep one canonical circuit description in the
-  backbone; text and PNG schematic variants should remain renderer choices, not
-  separate task semantics.
+- For circuit diagnosis, keep the physical circuit truth in the backbone; text
+  and PNG schematic variants should remain renderer choices, not separate task
+  semantics.
 - Do not expose procedural replay seeds through public task metadata. Use
   stable task IDs or explicit trainer-safe source IDs instead.
 - Do not use `from __future__ import annotations`.

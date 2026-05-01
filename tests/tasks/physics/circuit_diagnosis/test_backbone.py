@@ -2,17 +2,30 @@
 
 from dataclasses import replace
 
-from rlvr_physics.tasks.physics.circuit_diagnosis.backbone import (
+import pytest
+
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.constants import (
     GROUND_NODE,
+)
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.payloads import (
+    state_from_instance,
+)
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.repairs import (
+    canonical_repair_code,
+    nominal_replacement_for_component,
+)
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.schema import (
     CircuitComponent,
     CircuitDefinition,
+    CircuitTruth,
     FaultSpec,
     SourceSetting,
-    canonical_repair_code,
-    evaluate_target_checks,
-    nominal_replacement_for_component,
+)
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.simulation import (
     simulate_circuit,
-    state_from_instance,
+)
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.verification import (
+    evaluate_target_checks,
 )
 from rlvr_physics.tasks.physics.circuit_diagnosis.instances import (
     build_circuit_diagnosis_instance,
@@ -23,7 +36,7 @@ from rlvr_physics.tasks.physics.circuit_diagnosis.specs import DEFAULT_CONFIG
 def test_solver_computes_resistor_divider_voltage() -> None:
     definition = _divider_definition()
 
-    result = simulate_circuit(definition, (), {}, definition.target_source)
+    result = simulate_circuit(_truth(definition, ()), {}, definition.target_source)
 
     assert result.node_voltages_V["OUT"] == 2.5
     assert result.component_currents_A["R1"] == 0.0025
@@ -33,25 +46,21 @@ def test_solver_computes_resistor_divider_voltage() -> None:
 def test_hidden_faults_fail_and_nominal_repairs_restore_target() -> None:
     instance = build_circuit_diagnosis_instance(seed=4, config=DEFAULT_CONFIG)
     state = state_from_instance(instance)
-    faulty = simulate_circuit(
-        state.definition, state.faults, {}, state.definition.target_source
-    )
+    definition = state.truth.public_definition
+    faults = state.truth.hidden_faults
+    faulty = simulate_circuit(state.truth, {}, definition.target_source)
     repairs = {
         fault.component_id: nominal_replacement_for_component(
-            state.definition.component(fault.component_id)
+            definition.component(fault.component_id)
         )
-        for fault in state.faults
+        for fault in faults
     }
-    repaired = simulate_circuit(
-        state.definition, state.faults, repairs, state.definition.target_source
-    )
+    repaired = simulate_circuit(state.truth, repairs, definition.target_source)
 
     assert not all(
-        result.passed for result in evaluate_target_checks(state.definition, faulty)
+        result.passed for result in evaluate_target_checks(definition, faulty)
     )
-    assert all(
-        result.passed for result in evaluate_target_checks(state.definition, repaired)
-    )
+    assert all(result.passed for result in evaluate_target_checks(definition, repaired))
 
 
 def test_shorted_capacitor_and_reversed_diode_are_simulated() -> None:
@@ -64,12 +73,10 @@ def test_shorted_capacitor_and_reversed_diode_are_simulated() -> None:
         parameters={},
         repair_code=canonical_repair_code(capacitor),
     )
-    faulty_rc = simulate_circuit(
-        rc_definition, (cap_fault,), {}, rc_definition.target_source
-    )
+    rc_truth = _truth(rc_definition, (cap_fault,))
+    faulty_rc = simulate_circuit(rc_truth, {}, rc_definition.target_source)
     repaired_rc = simulate_circuit(
-        rc_definition,
-        (cap_fault,),
+        rc_truth,
         {"C1": nominal_replacement_for_component(capacitor)},
         rc_definition.target_source,
     )
@@ -86,12 +93,10 @@ def test_shorted_capacitor_and_reversed_diode_are_simulated() -> None:
         parameters={},
         repair_code=canonical_repair_code(diode),
     )
-    faulty_led = simulate_circuit(
-        led_definition, (diode_fault,), {}, led_definition.target_source
-    )
+    led_truth = _truth(led_definition, (diode_fault,))
+    faulty_led = simulate_circuit(led_truth, {}, led_definition.target_source)
     repaired_led = simulate_circuit(
-        led_definition,
-        (diode_fault,),
+        led_truth,
         {"D1": nominal_replacement_for_component(diode)},
         led_definition.target_source,
     )
@@ -110,12 +115,10 @@ def test_broken_switch_and_internal_source_resistance_are_simulated() -> None:
         parameters={"closed": False},
         repair_code=canonical_repair_code(switch),
     )
-    faulty_switch = simulate_circuit(
-        switch_definition, (switch_fault,), {}, switch_definition.target_source
-    )
+    switch_truth = _truth(switch_definition, (switch_fault,))
+    faulty_switch = simulate_circuit(switch_truth, {}, switch_definition.target_source)
     repaired_switch = simulate_circuit(
-        switch_definition,
-        (switch_fault,),
+        switch_truth,
         {"SW1": nominal_replacement_for_component(switch)},
         switch_definition.target_source,
     )
@@ -132,16 +135,75 @@ def test_broken_switch_and_internal_source_resistance_are_simulated() -> None:
         parameters={"internal_resistance_ohm": 500.0},
         repair_code=canonical_repair_code(source),
     )
-    faulty_source = simulate_circuit(source_definition, (source_fault,), {}, None)
+    source_truth = _truth(source_definition, (source_fault,))
+    faulty_source = simulate_circuit(source_truth, {}, None)
     repaired_source = simulate_circuit(
-        source_definition,
-        (source_fault,),
+        source_truth,
         {"VS1": nominal_replacement_for_component(source)},
         None,
     )
 
     assert faulty_source.node_voltages_V["VCC"] == 6.0
     assert repaired_source.node_voltages_V["VCC"] == 9.0
+
+
+def test_state_exposes_truth_and_public_view_separately() -> None:
+    """The public view should not expose hidden physical faults."""
+
+    instance = build_circuit_diagnosis_instance(seed=4, config=DEFAULT_CONFIG)
+    state = state_from_instance(instance)
+
+    assert len(state.truth.hidden_faults) > 0
+    assert state.public_view.definition == state.truth.public_definition
+    assert state.public_view.fault_count_range == state.truth.fault_count_range
+    assert not hasattr(state.public_view, "hidden_faults")
+
+
+def test_circuit_truth_rejects_inconsistent_hidden_fault_metadata() -> None:
+    """Circuit truth should lock hidden fault invariants."""
+
+    definition = _divider_definition()
+    first_fault = FaultSpec(
+        fault_id="R1_open",
+        component_id="R1",
+        fault_type="open_resistor",
+        parameters={},
+        repair_code="replace_R1_1000_ohm",
+    )
+    second_fault = FaultSpec(
+        fault_id="R1_wrong",
+        component_id="R1",
+        fault_type="wrong_value",
+        parameters={"value_ohm": 2000.0},
+        repair_code="replace_R1_1000_ohm",
+    )
+
+    with pytest.raises(ValueError, match="within fault_count_range"):
+        CircuitTruth(
+            public_definition=definition,
+            hidden_faults=(first_fault,),
+            fault_count_range=(2, 2),
+        )
+    with pytest.raises(ValueError, match="unique components"):
+        CircuitTruth(
+            public_definition=definition,
+            hidden_faults=(first_fault, second_fault),
+            fault_count_range=(1, 2),
+        )
+    with pytest.raises(ValueError, match="unknown component"):
+        CircuitTruth(
+            public_definition=definition,
+            hidden_faults=(
+                FaultSpec(
+                    fault_id="R3_open",
+                    component_id="R3",
+                    fault_type="open_resistor",
+                    parameters={},
+                    repair_code="replace_R3_1000_ohm",
+                ),
+            ),
+            fault_count_range=(1, 1),
+        )
 
 
 def _divider_definition() -> CircuitDefinition:
@@ -159,6 +221,18 @@ def _divider_definition() -> CircuitDefinition:
         ),
         target_source=source,
         target_checks=(),
+    )
+
+
+def _truth(
+    definition: CircuitDefinition, faults: tuple[FaultSpec, ...]
+) -> CircuitTruth:
+    """Return circuit truth for simulation tests."""
+
+    return CircuitTruth(
+        public_definition=definition,
+        hidden_faults=faults,
+        fault_count_range=(len(faults), len(faults)),
     )
 
 

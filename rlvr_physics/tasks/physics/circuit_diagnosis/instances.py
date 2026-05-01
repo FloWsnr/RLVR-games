@@ -6,19 +6,30 @@ from random import Random
 
 from rlvr_physics.core.instances import TaskInstance
 from rlvr_physics.core.payloads import stable_hash
-from rlvr_physics.tasks.physics.circuit_diagnosis.backbone import (
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.constants import (
     GROUND_NODE,
+)
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.payloads import (
+    circuit_definition_payload,
+    fault_payload,
+)
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.repairs import (
+    canonical_repair_code,
+    nominal_replacement_for_component,
+)
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.schema import (
     CircuitComponent,
     CircuitDefinition,
+    CircuitTruth,
     FaultSpec,
     SourceSetting,
     TargetCheck,
-    canonical_repair_code,
-    circuit_definition_payload,
-    evaluate_target_checks,
-    fault_payload,
-    nominal_replacement_for_component,
+)
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.simulation import (
     simulate_circuit,
+)
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.verification import (
+    evaluate_target_checks,
 )
 from rlvr_physics.tasks.physics.circuit_diagnosis.budgets import (
     circuit_budget_limits,
@@ -91,12 +102,18 @@ def _instance_from_candidate(
 ) -> TaskInstance:
     """Build a task instance from a validated candidate."""
 
+    truth = CircuitTruth(
+        public_definition=definition,
+        hidden_faults=faults,
+        fault_count_range=(config.min_fault_count, config.max_fault_count),
+    )
+    public_view = truth.public_view
     public_payload: dict[str, object] = {
-        "circuit": circuit_definition_payload(definition),
+        "circuit": circuit_definition_payload(public_view.definition),
         "schematic": {"node_positions": _node_positions_payload(node_positions)},
         "fault_count_range": {
-            "min": config.min_fault_count,
-            "max": config.max_fault_count,
+            "min": public_view.fault_count_range[0],
+            "max": public_view.fault_count_range[1],
         },
         "required_answer": {
             "action": "final_answer",
@@ -104,7 +121,7 @@ def _instance_from_candidate(
         },
     }
     privileged_payload: dict[str, object] = {
-        "faults": [fault_payload(fault) for fault in faults],
+        "faults": [fault_payload(fault) for fault in truth.hidden_faults],
         "template_name": template_name,
     }
     task_hash = stable_hash(
@@ -180,7 +197,7 @@ def _resistor_divider_template(
         "OUT": (420.0, 140.0),
         GROUND_NODE: (420.0, 430.0),
     }
-    nominal = simulate_circuit(base, (), {}, source)
+    nominal = simulate_circuit(_truth_for_simulation(base, ()), {}, source)
     out_voltage = nominal.node_voltages_V["OUT"]
     definition = replace(
         base,
@@ -224,7 +241,7 @@ def _led_limiter_template(
         "LED_A": (430.0, 170.0),
         GROUND_NODE: (650.0, 390.0),
     }
-    nominal = simulate_circuit(base, (), {}, source)
+    nominal = simulate_circuit(_truth_for_simulation(base, ()), {}, source)
     diode_current = nominal.component_currents_A["D1"]
     definition = replace(
         base,
@@ -273,7 +290,7 @@ def _rc_dc_node_template(
         "OUT": (430.0, 140.0),
         GROUND_NODE: (430.0, 430.0),
     }
-    nominal = simulate_circuit(base, (), {}, source)
+    nominal = simulate_circuit(_truth_for_simulation(base, ()), {}, source)
     out_voltage = nominal.node_voltages_V["OUT"]
     definition = replace(
         base,
@@ -316,7 +333,7 @@ def _switched_load_template(
         "LOAD": (430.0, 150.0),
         GROUND_NODE: (430.0, 430.0),
     }
-    nominal = simulate_circuit(base, (), {}, source)
+    nominal = simulate_circuit(_truth_for_simulation(base, ()), {}, source)
     load_current = nominal.component_currents_A["RLOAD"]
     definition = replace(
         base,
@@ -362,7 +379,7 @@ def _internal_source_template(
         "VCC": (280.0, 160.0),
         GROUND_NODE: (280.0, 430.0),
     }
-    nominal = simulate_circuit(base, (), {}, None)
+    nominal = simulate_circuit(_truth_for_simulation(base, ()), {}, None)
     load_current = nominal.component_currents_A["RLOAD"]
     definition = replace(
         base,
@@ -414,7 +431,7 @@ def _bridge_balance_template(
         "B": (630.0, 200.0),
         GROUND_NODE: (500.0, 440.0),
     }
-    nominal = simulate_circuit(base, (), {}, source)
+    nominal = simulate_circuit(_truth_for_simulation(base, ()), {}, source)
     bridge_voltage = nominal.node_voltages_V["A"] - nominal.node_voltages_V["B"]
     definition = replace(
         base,
@@ -440,12 +457,15 @@ def _candidate_is_valid(
     """Return whether a sampled fault set satisfies task invariants."""
 
     try:
-        nominal = simulate_circuit(definition, (), {}, definition.target_source)
+        nominal = simulate_circuit(
+            _truth_for_simulation(definition, ()), {}, definition.target_source
+        )
         if not all(
             result.passed for result in evaluate_target_checks(definition, nominal)
         ):
             return False
-        faulty = simulate_circuit(definition, faults, {}, definition.target_source)
+        truth = _truth_for_simulation(definition, faults)
+        faulty = simulate_circuit(truth, {}, definition.target_source)
         if all(result.passed for result in evaluate_target_checks(definition, faulty)):
             return False
         repairs = {
@@ -454,9 +474,7 @@ def _candidate_is_valid(
             )
             for fault in faults
         }
-        repaired = simulate_circuit(
-            definition, faults, repairs, definition.target_source
-        )
+        repaired = simulate_circuit(truth, repairs, definition.target_source)
         if not all(
             result.passed for result in evaluate_target_checks(definition, repaired)
         ):
@@ -469,7 +487,7 @@ def _candidate_is_valid(
                     )
                 }
                 partial = simulate_circuit(
-                    definition, faults, partial_repairs, definition.target_source
+                    truth, partial_repairs, definition.target_source
                 )
                 if all(
                     result.passed
@@ -486,6 +504,18 @@ def _fault_components_are_unique(faults: tuple[FaultSpec, ...]) -> bool:
 
     component_ids = [fault.component_id for fault in faults]
     return len(component_ids) == len(set(component_ids))
+
+
+def _truth_for_simulation(
+    definition: CircuitDefinition, faults: tuple[FaultSpec, ...]
+) -> CircuitTruth:
+    """Return privileged circuit truth for generation-time simulation."""
+
+    return CircuitTruth(
+        public_definition=definition,
+        hidden_faults=faults,
+        fault_count_range=(len(faults), len(faults)),
+    )
 
 
 def _node_positions_payload(node_positions: NodePositions) -> dict[str, list[float]]:

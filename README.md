@@ -44,7 +44,12 @@ rlvr_physics/
         specs.py      # public task configuration and spec helpers
         task.py       # configured task builder
       circuit_diagnosis/
-        backbone.py   # canonical circuit graph, fault overlays, MNA verifier
+        backbone/     # physical circuit truth, public views, MNA verifier
+          schema.py
+          physical.py
+          simulation.py
+          solver.py
+          runtime.py
         instances.py  # curated deterministic circuit/fault construction
         prompting.py  # task-local prompt resource loading
         prompts/      # model-facing prompt text templates

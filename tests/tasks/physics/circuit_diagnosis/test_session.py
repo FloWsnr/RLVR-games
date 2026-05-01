@@ -1,11 +1,14 @@
 """Tests for the circuit diagnosis scalar session."""
 
+from dataclasses import replace
 import json
 from typing import Any
 from typing import Mapping
 
 from rlvr_physics.core.submissions import TaskSubmission
-from rlvr_physics.tasks.physics.circuit_diagnosis.backbone import state_from_instance
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.payloads import (
+    state_from_instance,
+)
 from rlvr_physics.tasks.physics.circuit_diagnosis.sessions import (
     CircuitDiagnosisSession,
 )
@@ -69,6 +72,25 @@ def test_repair_action_schema_exposes_kind_specific_required_fields(
     assert resistor_schema["required"] == ("value_ohm",)
 
 
+def test_initial_feedback_uses_public_fault_count_range() -> None:
+    """Initial feedback should match the public fault-count range."""
+
+    from rlvr_physics.tasks.physics.circuit_diagnosis.instances import (
+        build_circuit_diagnosis_instance,
+    )
+
+    config = replace(DEFAULT_CONFIG, min_fault_count=1, max_fault_count=1)
+    instance = build_circuit_diagnosis_instance(seed=55, config=config)
+    session = CircuitDiagnosisSession(instance, CIRCUIT_TEXT_RENDERER, config.reward)
+
+    reset = session.reset(seed=CIRCUIT_SESSION_SEED)
+
+    assert "One hidden fault is present in the physical circuit" in (
+        reset.turn.observation.text()
+    )
+    assert "One or two hidden faults" not in reset.turn.observation.text()
+
+
 def test_repair_rejects_non_nominal_replacement_value() -> None:
     from rlvr_physics.tasks.physics.circuit_diagnosis.instances import (
         build_circuit_diagnosis_instance,
@@ -119,9 +141,11 @@ def test_session_repairs_hidden_faults_and_rewards_final_verification() -> None:
     )
     session.reset(seed=CIRCUIT_SESSION_SEED)
     state = state_from_instance(instance)
+    definition = state.truth.public_definition
+    faults = state.truth.hidden_faults
 
-    for fault in state.faults:
-        component = state.definition.component(fault.component_id)
+    for fault in faults:
+        component = definition.component(fault.component_id)
         repair_result = session.submit(
             TaskSubmission.action(json.dumps(_repair_action(component)))
         )
@@ -130,8 +154,8 @@ def test_session_repairs_hidden_faults_and_rewards_final_verification() -> None:
     final = {
         "action": "final_answer",
         "arguments": {
-            "faults": [fault.fault_id for fault in state.faults],
-            "repairs": [fault.repair_code for fault in state.faults],
+            "faults": [fault.fault_id for fault in faults],
+            "repairs": [fault.repair_code for fault in faults],
         },
     }
     result = session.submit(TaskSubmission.action(json.dumps(final)))
@@ -143,7 +167,7 @@ def test_session_repairs_hidden_faults_and_rewards_final_verification() -> None:
     assert result.public_info["diagnosis_correct"] is True
     assert "expected_faults" not in result.public_info
     assert result.debug_info["expected_faults"] == tuple(
-        fault.fault_id for fault in state.faults
+        fault.fault_id for fault in faults
     )
 
 
@@ -160,11 +184,12 @@ def test_final_answer_without_repairs_can_match_diagnosis_but_fail_behavior() ->
     )
     session.reset(seed=CIRCUIT_SESSION_SEED)
     state = state_from_instance(instance)
+    faults = state.truth.hidden_faults
     final = {
         "action": "final_answer",
         "arguments": {
-            "faults": [fault.fault_id for fault in state.faults],
-            "repairs": [fault.repair_code for fault in state.faults],
+            "faults": [fault.fault_id for fault in faults],
+            "repairs": [fault.repair_code for fault in faults],
         },
     }
 

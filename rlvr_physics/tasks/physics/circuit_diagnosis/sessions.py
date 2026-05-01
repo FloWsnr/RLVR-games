@@ -18,21 +18,31 @@ from rlvr_physics.core.submissions import (
     ParsedAction,
     TaskSubmission,
 )
-from rlvr_physics.tasks.physics.circuit_diagnosis.backbone import (
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.constants import (
     FINAL_ANSWER_ACTION,
     MEASURE_CURRENT_ACTION,
     MEASURE_VOLTAGE_ACTION,
     REPLACE_COMPONENT_ACTION,
     SET_SOURCE_ACTION,
-    CircuitDiagnosisBackbone,
+)
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.errors import (
     CircuitSimulationError,
-    CurrentMeasurement,
-    FinalCircuitEvaluation,
-    SourceSetting,
     SubmissionParseError,
-    VoltageMeasurement,
+)
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.payloads import (
     fault_payload,
     replacement_payload,
+)
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.runtime import (
+    CircuitDiagnosisBackbone,
+    CurrentMeasurement,
+    VoltageMeasurement,
+)
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.schema import (
+    SourceSetting,
+)
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.verification import (
+    FinalCircuitEvaluation,
     target_check_debug_payloads,
     target_check_public_payloads,
 )
@@ -110,7 +120,7 @@ class CircuitDiagnosisSession:
         self._renderer_type = renderer_type
         self._backbone = CircuitDiagnosisBackbone(instance)
         self._node_positions = _node_positions_from_instance(
-            instance, self._backbone.state.definition.nodes
+            instance, self._backbone.state.public_view.definition.nodes
         )
         self._budget_state = CircuitRolloutBudgetState(instance.budget_limits)
         self._reward_config = reward_config
@@ -125,7 +135,9 @@ class CircuitDiagnosisSession:
         self._backbone.reset_rollout()
         self._turn = self._build_turn(
             turn_index=0,
-            feedback=circuit_initial_feedback(),
+            feedback=circuit_initial_feedback(
+                self._backbone.state.public_view.fault_count_range
+            ),
         )
         return TaskResetResult(
             session_id=self._session_id,
@@ -140,7 +152,8 @@ class CircuitDiagnosisSession:
             debug_info={
                 "rollout_seed": seed,
                 "faults": [
-                    fault_payload(fault) for fault in self._backbone.state.faults
+                    fault_payload(fault)
+                    for fault in self._backbone.state.truth.hidden_faults
                 ],
             },
         )
@@ -529,7 +542,7 @@ class CircuitDiagnosisSession:
         """Build the next model-facing turn."""
 
         render_context = CircuitRenderContext(
-            definition=self._backbone.state.definition,
+            public_view=self._backbone.state.public_view,
             node_positions=self._node_positions,
             feedback=feedback,
             source_setting=self._backbone.source_setting,
@@ -782,7 +795,10 @@ class CircuitDiagnosisSession:
                 replacement_payload(repair)
                 for repair in self._backbone.repairs.values()
             ],
-            "faults": [fault_payload(fault) for fault in self._backbone.state.faults],
+            "faults": [
+                fault_payload(fault)
+                for fault in self._backbone.state.truth.hidden_faults
+            ],
         }
 
     def _require_reset(self) -> None:

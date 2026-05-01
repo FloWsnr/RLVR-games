@@ -7,10 +7,13 @@ _PROMPT_PACKAGE = "rlvr_physics.tasks.physics.circuit_diagnosis.prompts"
 _MARKER_PATTERN = re.compile(r"{{([a-zA-Z0-9_]+)}}")
 
 
-def circuit_initial_feedback() -> str:
+def circuit_initial_feedback(fault_count_range: tuple[int, int]) -> str:
     """Return the first public feedback message for circuit diagnosis."""
 
-    return _prompt_file_text("initial_feedback.md")
+    return render_prompt_template(
+        _prompt_file_text("initial_feedback.md"),
+        {"fault_count_text": _fault_count_text(fault_count_range)},
+    )
 
 
 def circuit_text_prompt_template() -> str:
@@ -55,3 +58,16 @@ def _prompt_file_text(name: str) -> str:
     """Load one task-local prompt resource."""
 
     return resources.files(_PROMPT_PACKAGE).joinpath(name).read_text(encoding="utf-8")
+
+
+def _fault_count_text(fault_count_range: tuple[int, int]) -> str:
+    """Return readable public hidden-fault count text."""
+
+    min_fault_count, max_fault_count = fault_count_range
+    if min_fault_count == max_fault_count:
+        if min_fault_count == 1:
+            return "One hidden fault is present"
+        return f"{min_fault_count} hidden faults are present"
+    if min_fault_count == 1 and max_fault_count == 2:
+        return "One or two hidden faults are present"
+    return f"Between {min_fault_count} and {max_fault_count} hidden faults are present"

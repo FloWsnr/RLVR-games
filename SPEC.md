@@ -534,10 +534,10 @@ Each prototype should prove a small number of core behaviors:
 - step results with public metadata and privileged debug details for local
   inspection
 
-The circuit diagnosis prototype is the first richer tool-use physics task. It
-keeps one canonical public circuit graph in the task backbone, applies hidden
-faults and session-local repairs as verifier overlays, and lets text and PNG
-schematic renderers present that same public graph without changing task
+The circuit diagnosis prototype is the first richer tool-use physics task. Its
+backbone owns the physical circuit truth: a public nominal schematic plus hidden
+faults, session-local repairs, and source settings. Text and PNG schematic
+renderers expose public views of that backbone state without changing task
 semantics.
 
 Coding verifier tasks should wait until the core needs sandbox or subprocess
