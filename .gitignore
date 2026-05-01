@@ -1,6 +1,7 @@
 /data/
 worktrees/
 references/
+tests/tasks/physics/circuit_diagnosis/images/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

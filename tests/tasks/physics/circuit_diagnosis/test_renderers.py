@@ -1,5 +1,6 @@
 """Tests for circuit diagnosis renderers."""
 
+from pathlib import Path
 from struct import unpack
 
 from rlvr_physics.core.rendering import ImageContent, PNG_MIME_TYPE, TextContent
@@ -50,6 +51,24 @@ def test_image_renderer_returns_png_and_text_omits_netlist() -> None:
     assert "- nodes:" not in observation.text()
     assert "Inspect the schematic image" in observation.text()
     assert "D1_reversed" not in observation.text()
+
+
+def test_image_renderer_writes_visual_artifact() -> None:
+    """Write an ignored PNG artifact for quick visual inspection."""
+
+    instance = build_circuit_diagnosis_instance(seed=5, config=DEFAULT_CONFIG)
+    session = CircuitDiagnosisSession(
+        instance, CIRCUIT_IMAGE_RENDERER, DEFAULT_CONFIG.reward
+    )
+
+    reset = session.reset(seed=2)
+    observation = reset.turn.observation
+
+    assert isinstance(observation.contents[0], ImageContent)
+    image_path = Path(__file__).with_name("images") / "renderer_seed_5.png"
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    image_path.write_bytes(observation.contents[0].data)
+    assert image_path.stat().st_size == len(observation.contents[0].data)
 
 
 def _png_size(data: bytes) -> tuple[int, int]:
