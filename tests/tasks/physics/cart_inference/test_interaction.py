@@ -1,6 +1,5 @@
 """Tests for the cart inference JSONL interaction runner."""
 
-from base64 import b64decode
 from collections.abc import Mapping
 from io import StringIO
 import json
@@ -8,7 +7,6 @@ from typing import Any
 
 import pytest
 
-from rlvr_physics.core.rendering import PNG_MIME_TYPE, PNG_SIGNATURE
 from rlvr_physics.play.interaction import (
     INTERACTION_PROTOCOL_VERSION,
     run_task_interaction,
@@ -18,7 +16,6 @@ from rlvr_physics.tasks.physics.cart_inference.play import (
     CART_PLAYABLE,
     cart_inference_config_from_parameters,
 )
-from rlvr_physics.tasks.physics.cart_inference.renderers import CART_IMAGE_RENDERER
 
 
 def test_cart_interaction_runs_multiple_turns_without_debug_leaks() -> None:
@@ -312,34 +309,17 @@ def test_cart_interaction_final_answer_format_error_uses_final_attempt() -> None
     assert events[1]["public_info"]["final_answers_remaining"] == 0
 
 
-def test_cart_image_interaction_serializes_image_content() -> None:
-    """Image renderer observations include JSONL image payload fields."""
+def test_cart_play_config_rejects_image_renderer_for_now() -> None:
+    """The public cart play descriptor does not accept image observations."""
 
-    output_stream = StringIO()
-    error_stream = StringIO()
-    config = build_playable_interaction_config(
-        playable=CART_PLAYABLE,
-        parameters=CART_PLAYABLE.default_parameters,
-        renderer_type=CART_IMAGE_RENDERER,
-        instance_seed=123,
-        session_seed=456,
-    )
-
-    status_code = run_task_interaction(
-        config=config,
-        input_stream=StringIO(""),
-        output_stream=output_stream,
-        error_stream=error_stream,
-    )
-    reset_event = _jsonl_events(output_stream)[0]
-    image_content = reset_event["turn"]["observation"]["contents"][0]
-
-    assert status_code == 1
-    assert image_content["kind"] == "image"
-    assert image_content["mime_type"] == PNG_MIME_TYPE
-    assert len(image_content["sha256"]) == 64
-    assert b64decode(image_content["data_base64"]).startswith(PNG_SIGNATURE)
-    assert reset_event["turn"]["observation"]["text"] != ""
+    with pytest.raises(ValueError, match="unsupported renderer"):
+        build_playable_interaction_config(
+            playable=CART_PLAYABLE,
+            parameters=CART_PLAYABLE.default_parameters,
+            renderer_type="cart_inference.image",
+            instance_seed=123,
+            session_seed=456,
+        )
 
 
 def test_cart_play_parameters_reject_unknown_keys() -> None:

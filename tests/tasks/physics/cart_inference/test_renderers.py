@@ -1,22 +1,19 @@
 """Tests for cart inference renderers."""
 
 from importlib import resources
-from struct import unpack
 
 import pytest
-from rlvr_physics.core.instances import TaskInstance
-from rlvr_physics.core.rendering import ImageContent, PNG_MIME_TYPE, TextContent
+
 from rlvr_physics.core.submissions import TaskSubmission
 from rlvr_physics.tasks.physics.cart_inference.instances import (
     build_cart_inference_instance,
 )
 from rlvr_physics.tasks.physics.cart_inference.renderers import (
-    CART_IMAGE_RENDERER,
     CART_TEXT_RENDERER,
     CartMeasurementView,
     CartRenderContext,
-    _render_cart_svg,
     render_cart_observation,
+    validate_cart_renderer_type,
 )
 from rlvr_physics.tasks.physics.cart_inference.prompting import (
     cart_initial_feedback,
@@ -58,7 +55,9 @@ def test_text_renderer_reports_current_measurement_only() -> None:
     assert "actions remaining: 1" in observation.text()
     assert "final answer attempts used: 0 / 1" in observation.text()
     assert "final answer attempts remaining: 1" in observation.text()
-    assert '{"action":"measure_position","arguments":{"time":10}}' in observation.text()
+    assert '{"action":"measure_position","arguments":{"time":10}}' in (
+        observation.text()
+    )
 
 
 def test_cart_prompt_templates_are_task_local_files() -> None:
@@ -77,63 +76,6 @@ def test_prompt_template_renderer_allows_literal_json_braces() -> None:
 def test_prompt_template_renderer_rejects_unknown_markers() -> None:
     with pytest.raises(ValueError, match="missing_value"):
         render_prompt_template("x0={{missing_value}} m", {})
-
-
-def test_image_renderer_returns_png_image_with_text_fallback() -> None:
-    instance = build_cart_inference_instance(seed=123, config=DEFAULT_CONFIG)
-    session = CartInferenceSession(instance, CART_IMAGE_RENDERER, DEFAULT_CONFIG.reward)
-
-    reset = session.reset(seed=456)
-
-    observation = reset.turn.observation
-    assert observation.renderer_name == CART_IMAGE_RENDERER
-    assert len(observation.contents) == 2
-    assert isinstance(observation.contents[0], ImageContent)
-    assert isinstance(observation.contents[1], TextContent)
-    assert observation.contents[0].mime_type == PNG_MIME_TYPE
-    assert observation.contents[0].data.startswith(b"\x89PNG\r\n\x1a\n")
-    assert _png_size(observation.contents[0].data) == (960, 640)
-    assert "Initial state:" not in observation.contents[0].alt_text
-    assert "Initial state:" in observation.text()
-
-
-def test_image_renderer_omits_privileged_state() -> None:
-    instance = _hidden_sentinel_instance()
-    session = CartInferenceSession(instance, CART_IMAGE_RENDERER, DEFAULT_CONFIG.reward)
-
-    reset = session.reset(seed=456)
-
-    observation = reset.turn.observation
-    assert isinstance(observation.contents[0], ImageContent)
-    svg_text = _render_cart_svg(
-        CartRenderContext(
-            initial_position_m=1.25,
-            initial_velocity_mps=-0.75,
-            target_time_s=12.0,
-            min_measurement_time_s=0.0,
-            max_measurement_time_s=10.0,
-            measurement_noise_abs_m=0.02,
-            feedback="A cart moves on a horizontal track.",
-            current_measurement=None,
-            actions_used=0,
-            action_budget=3,
-            actions_remaining=3,
-            final_answers_used=0,
-            final_answer_budget=1,
-            final_answers_remaining=1,
-        )
-    )
-    hidden_fragments = (
-        "9.876543",
-        "9.87654",
-        "444.444",
-        "987654321",
-        "0.123456",
-    )
-    for fragment in hidden_fragments:
-        assert fragment not in svg_text
-        assert fragment not in observation.contents[0].alt_text
-        assert fragment not in observation.text()
 
 
 def test_render_context_exposes_only_public_state_fields() -> None:
@@ -160,36 +102,6 @@ def test_render_context_exposes_only_public_state_fields() -> None:
     assert not hasattr(context, "answer_tolerance_abs_m")
 
 
-def test_image_renderer_reports_current_measurement_only() -> None:
-    instance = build_cart_inference_instance(seed=123, config=DEFAULT_CONFIG)
-    session = CartInferenceSession(instance, CART_IMAGE_RENDERER, DEFAULT_CONFIG.reward)
-    session.reset(seed=456)
-
-    first_result = session.submit(
-        TaskSubmission.action(
-            '{"action": "measure_position", "arguments": {"time": 5}}'
-        )
-    )
-    second_result = session.submit(
-        TaskSubmission.action(
-            '{"action": "measure_position", "arguments": {"time": 6}}'
-        )
-    )
-
-    assert first_result.observation is not None
-    first_observation = first_result.observation.observation
-    assert isinstance(first_observation.contents[0], ImageContent)
-    assert "t=5 s" in first_observation.text()
-    assert second_result.observation is not None
-    observation = second_result.observation.observation
-    assert isinstance(observation.contents[0], ImageContent)
-    assert first_observation.contents[0].data != observation.contents[0].data
-    assert observation.contents[0].data.startswith(b"\x89PNG\r\n\x1a\n")
-    assert "Current measurement:" in observation.text()
-    assert "t=6 s" in observation.text()
-    assert "t=5 s" not in observation.text()
-
-
 def test_renderer_context_accepts_current_measurement() -> None:
     context = CartRenderContext(
         initial_position_m=0.0,
@@ -208,44 +120,15 @@ def test_renderer_context_accepts_current_measurement() -> None:
         final_answers_remaining=1,
     )
 
-    observation = render_cart_observation(CART_IMAGE_RENDERER, context)
+    observation = render_cart_observation(CART_TEXT_RENDERER, context)
 
-    assert isinstance(observation.contents[0], ImageContent)
+    assert observation.renderer_name == CART_TEXT_RENDERER
     assert "t=5 s" in observation.text()
-    assert observation.contents[0].mime_type == PNG_MIME_TYPE
-    assert observation.contents[0].data.startswith(b"\x89PNG\r\n\x1a\n")
 
 
-def _hidden_sentinel_instance() -> TaskInstance:
-    """Return a cart instance with distinctive privileged sentinel values."""
-
-    return TaskInstance(
-        task_id="cart-hidden-sentinel",
-        kind="physics.cart_inference.v1",
-        domain="physics",
-        seed=777,
-        public_payload={
-            "initial_position_m": 1.25,
-            "initial_velocity_mps": -0.75,
-            "target_time_s": 12.0,
-            "measurement_time_range_s": {"min": 0.0, "max": 10.0},
-            "measurement_noise_abs_m": 0.02,
-            "required_answer": {"field": "x", "units": "m"},
-        },
-        privileged_payload={
-            "acceleration_mps2": 9.876543,
-            "answer_tolerance_abs_m": 0.123456,
-            "exact_target_position_m": 444.444,
-            "measurement_noise_seed": 987654321,
-        },
-        budget_limits={"turns": 4, "actions": 3, "final_answers": 1},
-    )
-
-
-def _png_size(data: bytes) -> tuple[int, int]:
-    """Return the width and height from a PNG IHDR chunk."""
-
-    return unpack(">II", data[16:24])
+def test_cart_renderer_rejects_image_renderer_for_now() -> None:
+    with pytest.raises(ValueError, match="unsupported cart inference renderer"):
+        validate_cart_renderer_type("cart_inference.image")
 
 
 def _cart_prompt_file_text(filename: str) -> str:

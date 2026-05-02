@@ -7,7 +7,6 @@ from rlvr_physics.core.factory import ConfiguredTask
 from rlvr_physics.play.interaction import DEFAULT_PUBLIC_INFO_EXCLUDED_KEYS
 from rlvr_physics.play.task import PlayableTask
 from rlvr_physics.tasks.physics.cart_inference.renderers import (
-    CART_IMAGE_RENDERER,
     CART_TEXT_RENDERER,
 )
 from rlvr_physics.tasks.physics.cart_inference.rewards import (
@@ -91,7 +90,7 @@ def cart_inference_config_from_parameters(
 CART_PLAYABLE = PlayableTask(
     name="physics.cart_inference",
     default_renderer=CART_TEXT_RENDERER,
-    renderers=(CART_TEXT_RENDERER, CART_IMAGE_RENDERER),
+    renderers=(CART_TEXT_RENDERER,),
     default_parameters=config_parameters(DEFAULT_CONFIG),
     build_task=build_cart_inference_play_task,
     public_info_excluded_keys=DEFAULT_PUBLIC_INFO_EXCLUDED_KEYS,

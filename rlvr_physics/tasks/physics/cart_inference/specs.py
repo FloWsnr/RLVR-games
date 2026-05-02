@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from math import isfinite
 
-from rlvr_physics.core.rendering import PNG_MIME_TYPE
 from rlvr_physics.core.specs import (
     RendererSpec,
     RewardSpec,
@@ -16,7 +15,6 @@ from rlvr_physics.tasks.physics.cart_inference.budgets import (
     validate_cart_budget_limits,
 )
 from rlvr_physics.tasks.physics.cart_inference.renderers import (
-    CART_IMAGE_RENDERER,
     CART_TEXT_RENDERER,
 )
 from rlvr_physics.tasks.physics.cart_inference.rewards import (
@@ -253,13 +251,7 @@ def cart_inference_spec(config: CartInferenceConfig) -> TaskSpec:
             seed=0,
             parameters=public_source_parameters(config),
         ),
-        renderers=(
-            RendererSpec(renderer_type=CART_TEXT_RENDERER, parameters={}),
-            RendererSpec(
-                renderer_type=CART_IMAGE_RENDERER,
-                parameters={"mime_type": PNG_MIME_TYPE},
-            ),
-        ),
+        renderers=(RendererSpec(renderer_type=CART_TEXT_RENDERER, parameters={}),),
         verifier=VerifierSpec(
             verifier_type="constant_acceleration_numeric",
             parameters={
