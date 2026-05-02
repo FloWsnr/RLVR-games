@@ -33,12 +33,17 @@ from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.payloads import (
     fault_payload,
     replacement_payload,
 )
+from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.repairs import (
+    nominal_replacement_for_component,
+)
 from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.runtime import (
     CircuitDiagnosisBackbone,
     CurrentMeasurement,
     VoltageMeasurement,
 )
 from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.schema import (
+    CircuitDefinition,
+    ReplacementSpec,
     SourceSetting,
 )
 from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.verification import (
@@ -119,9 +124,6 @@ class CircuitDiagnosisSession:
         self.instance = instance
         self._renderer_type = renderer_type
         self._backbone = CircuitDiagnosisBackbone(instance)
-        self._node_positions = _node_positions_from_instance(
-            instance, self._backbone.state.public_view.definition.nodes
-        )
         self._budget_state = CircuitRolloutBudgetState(instance.budget_limits)
         self._reward_config = reward_config
         self._session_id: str | None = None
@@ -148,6 +150,7 @@ class CircuitDiagnosisSession:
                 "domain": self.instance.domain,
                 "renderer": self._renderer_type,
                 "limits": self._public_limits(),
+                "diagnosis_options": self._diagnosis_options(),
             },
             debug_info={
                 "rollout_seed": seed,
@@ -155,6 +158,9 @@ class CircuitDiagnosisSession:
                     fault_payload(fault)
                     for fault in self._backbone.state.truth.hidden_faults
                 ],
+                "generation_debug": self.instance.privileged_payload.get(
+                    "generation_debug", {}
+                ),
             },
         )
 
@@ -353,6 +359,7 @@ class CircuitDiagnosisSession:
             submitted_faults, submitted_repairs = (
                 self._backbone.final_answer_from_action(action)
             )
+            self._validate_final_answer_labels(submitted_faults, submitted_repairs)
         except SubmissionParseError as error:
             self._budget_state.record_invalid_after_counted_submission()
             return self._invalid_submission_result(
@@ -543,7 +550,7 @@ class CircuitDiagnosisSession:
 
         render_context = CircuitRenderContext(
             public_view=self._backbone.state.public_view,
-            node_positions=self._node_positions,
+            diagnosis_options=self._diagnosis_options(),
             feedback=feedback,
             source_setting=self._backbone.source_setting,
             repairs=self._backbone.repairs,
@@ -558,45 +565,46 @@ class CircuitDiagnosisSession:
             action_schema=self._action_schema(),
             invalid_submission_policies=_invalid_policies(),
             public_limits=public_limits,
-            public_info=self._public_status({}),
+            public_info=self._public_status(
+                {"diagnosis_options": self._diagnosis_options()}
+            ),
         )
 
     def _submission_format(self) -> dict[str, object]:
         """Return the canonical public JSONL action submission format."""
 
+        definition = self._backbone.state.public_view.definition
+        example_component = definition.components[0]
+        example_replacement = nominal_replacement_for_component(example_component)
         return {
             "type": JSON_LINE_FORMAT,
             "required_fields": (ACTION_NAME_FIELD, ACTION_ARGUMENTS_FIELD),
             "examples": (
                 {
                     ACTION_NAME_FIELD: SET_SOURCE_ACTION,
-                    ACTION_ARGUMENTS_FIELD: {
-                        "node_plus": "A",
-                        "node_minus": "GND",
-                        "voltage_V": 5.0,
-                    },
+                    ACTION_ARGUMENTS_FIELD: _source_example_arguments(definition),
                 },
                 {
                     ACTION_NAME_FIELD: MEASURE_VOLTAGE_ACTION,
-                    ACTION_ARGUMENTS_FIELD: {"node_a": "A", "node_b": "GND"},
+                    ACTION_ARGUMENTS_FIELD: _voltage_example_arguments(definition),
                 },
                 {
                     ACTION_NAME_FIELD: MEASURE_CURRENT_ACTION,
-                    ACTION_ARGUMENTS_FIELD: {"component": "R1"},
+                    ACTION_ARGUMENTS_FIELD: {
+                        "component": example_component.component_id
+                    },
                 },
                 {
                     ACTION_NAME_FIELD: REPLACE_COMPONENT_ACTION,
-                    ACTION_ARGUMENTS_FIELD: {
-                        "component": "R1",
-                        "kind": "resistor",
-                        "value_ohm": 1000,
-                    },
+                    ACTION_ARGUMENTS_FIELD: _repair_example_arguments(
+                        example_replacement
+                    ),
                 },
                 {
                     ACTION_NAME_FIELD: FINAL_ANSWER_ACTION,
                     ACTION_ARGUMENTS_FIELD: {
-                        "faults": ["R1_open"],
-                        "repairs": ["replace_R1_1000_ohm"],
+                        "faults": [self._diagnosis_fault_ids()[0]],
+                        "repairs": [self._diagnosis_repair_codes()[0]],
                     },
                 },
             ),
@@ -654,7 +662,7 @@ class CircuitDiagnosisSession:
                                         "type": "number",
                                         "minimum_exclusive": 0,
                                         "units": "ohm",
-                                        "must_match": "nominal schematic value",
+                                        "must_match": "nominal component value",
                                     }
                                 },
                             },
@@ -665,7 +673,7 @@ class CircuitDiagnosisSession:
                                         "type": "number",
                                         "minimum_exclusive": 0,
                                         "units": "F",
-                                        "must_match": "nominal schematic value",
+                                        "must_match": "nominal component value",
                                     }
                                 },
                             },
@@ -676,7 +684,7 @@ class CircuitDiagnosisSession:
                                         "type": "number",
                                         "minimum_exclusive": 0,
                                         "units": "V",
-                                        "must_match": "nominal schematic value",
+                                        "must_match": "nominal component value",
                                     }
                                 },
                             },
@@ -685,7 +693,7 @@ class CircuitDiagnosisSession:
                                 "fields": {
                                     "closed": {
                                         "type": "boolean",
-                                        "must_match": "nominal schematic value",
+                                        "must_match": "nominal component value",
                                     }
                                 },
                             },
@@ -695,7 +703,7 @@ class CircuitDiagnosisSession:
                                     "voltage_V": {
                                         "type": "number",
                                         "units": "V",
-                                        "must_match": "nominal schematic value",
+                                        "must_match": "nominal component value",
                                     }
                                 },
                             },
@@ -705,7 +713,7 @@ class CircuitDiagnosisSession:
                                     "current_A": {
                                         "type": "number",
                                         "units": "A",
-                                        "must_match": "nominal schematic value",
+                                        "must_match": "nominal component value",
                                     }
                                 },
                             },
@@ -718,8 +726,16 @@ class CircuitDiagnosisSession:
                         FINAL_ANSWER_BUDGET: 1,
                     },
                     "arguments": {
-                        "faults": {"type": "array", "items": "string"},
-                        "repairs": {"type": "array", "items": "string"},
+                        "faults": {
+                            "type": "array",
+                            "items": "string",
+                            "allowed": self._diagnosis_fault_ids(),
+                        },
+                        "repairs": {
+                            "type": "array",
+                            "items": "string",
+                            "allowed": self._diagnosis_repair_codes(),
+                        },
                     },
                 },
             }
@@ -734,6 +750,53 @@ class CircuitDiagnosisSession:
         """Return public rollout counters with event metadata."""
 
         return self._budget_state.public_status(extra_info=extra_info)
+
+    def _diagnosis_options(self) -> Mapping[str, object]:
+        """Return public final-answer diagnosis options from the instance."""
+
+        options = self.instance.public_payload["diagnosis_options"]
+        if isinstance(options, Mapping):
+            return options
+        raise TypeError("diagnosis_options must be a mapping")
+
+    def _diagnosis_fault_ids(self) -> tuple[str, ...]:
+        """Return allowed public final-answer fault IDs."""
+
+        options = self._diagnosis_options()
+        return _string_tuple_field(options, "fault_ids")
+
+    def _diagnosis_repair_codes(self) -> tuple[str, ...]:
+        """Return allowed public final-answer repair codes."""
+
+        options = self._diagnosis_options()
+        return _string_tuple_field(options, "repair_codes")
+
+    def _validate_final_answer_labels(
+        self, submitted_faults: tuple[str, ...], submitted_repairs: tuple[str, ...]
+    ) -> None:
+        """Reject malformed final-answer labels before verifier evaluation."""
+
+        min_fault_count, max_fault_count = (
+            self._backbone.state.public_view.fault_count_range
+        )
+        _reject_duplicate_strings(submitted_faults, "faults")
+        _reject_duplicate_strings(submitted_repairs, "repairs")
+        if len(submitted_faults) < min_fault_count:
+            raise SubmissionParseError(
+                f"faults must contain at least {min_fault_count} label(s)"
+            )
+        if len(submitted_faults) > max_fault_count:
+            raise SubmissionParseError(
+                f"faults must contain at most {max_fault_count} label(s)"
+            )
+        if len(submitted_repairs) != len(submitted_faults):
+            raise SubmissionParseError(
+                "repairs must contain one repair code per submitted fault"
+            )
+        _reject_unknown_strings(submitted_faults, self._diagnosis_fault_ids(), "faults")
+        _reject_unknown_strings(
+            submitted_repairs, self._diagnosis_repair_codes(), "repairs"
+        )
 
     def _budget_status_text(self) -> str:
         """Return public budget status lines for renderers."""
@@ -837,39 +900,83 @@ def _current_public_payload(measurement: CurrentMeasurement) -> dict[str, object
     }
 
 
-def _node_positions_from_instance(
-    instance: TaskInstance, public_nodes: tuple[str, ...]
-) -> Mapping[str, tuple[float, float]]:
-    """Return renderer-facing node positions from public instance payload."""
+def _source_example_arguments(definition: CircuitDefinition) -> dict[str, object]:
+    """Return a valid source action example for a public circuit."""
 
-    schematic = _mapping_field(instance.public_payload, "schematic")
-    raw_positions = _mapping_field(schematic, "node_positions")
-    positions: dict[str, tuple[float, float]] = {}
-    for node_name in public_nodes:
-        raw_position = raw_positions.get(node_name)
-        if not isinstance(raw_position, tuple | list) or len(raw_position) != 2:
-            raise TypeError(f"missing schematic node position: {node_name}")
-        positions[node_name] = (
-            _numeric_value(raw_position[0], f"{node_name}.x"),
-            _numeric_value(raw_position[1], f"{node_name}.y"),
+    if definition.target_source is not None:
+        source = definition.target_source
+        return {
+            "node_plus": source.node_plus,
+            "node_minus": source.node_minus,
+            "voltage_V": source.voltage_V,
+        }
+    non_ground = next(
+        node for node in definition.nodes if node != definition.ground_node
+    )
+    return {
+        "node_plus": non_ground,
+        "node_minus": definition.ground_node,
+        "voltage_V": 5.0,
+    }
+
+
+def _voltage_example_arguments(definition: CircuitDefinition) -> dict[str, object]:
+    """Return a valid voltage measurement example for a public circuit."""
+
+    if definition.target_source is not None:
+        return {
+            "node_a": definition.target_source.node_plus,
+            "node_b": definition.target_source.node_minus,
+        }
+    non_ground = next(
+        node for node in definition.nodes if node != definition.ground_node
+    )
+    return {"node_a": non_ground, "node_b": definition.ground_node}
+
+
+def _repair_example_arguments(replacement: ReplacementSpec) -> dict[str, object]:
+    """Return a valid repair action example from a nominal replacement."""
+
+    return {
+        "component": replacement.component_id,
+        "kind": replacement.kind,
+        **dict(replacement.parameters),
+    }
+
+
+def _reject_duplicate_strings(values: tuple[str, ...], field_name: str) -> None:
+    """Reject duplicate strings in a final-answer field."""
+
+    seen: set[str] = set()
+    for value in values:
+        if value in seen:
+            raise SubmissionParseError(f"{field_name} must not contain duplicates")
+        seen.add(value)
+
+
+def _reject_unknown_strings(
+    values: tuple[str, ...], allowed_values: tuple[str, ...], field_name: str
+) -> None:
+    """Reject strings outside a final-answer allowed vocabulary."""
+
+    allowed = set(allowed_values)
+    unknown_values = tuple(value for value in values if value not in allowed)
+    if len(unknown_values) > 0:
+        joined_values = ", ".join(unknown_values)
+        raise SubmissionParseError(
+            f"{field_name} contain unsupported label(s): {joined_values}"
         )
-    return positions
 
 
-def _mapping_field(values: Mapping[str, object], name: str) -> Mapping[str, object]:
-    """Return a required mapping field from a mapping."""
+def _string_tuple_field(values: Mapping[str, object], name: str) -> tuple[str, ...]:
+    """Return a tuple of strings from a public payload field."""
 
-    value = values[name]
-    if isinstance(value, Mapping):
-        return value
-    raise TypeError(f"{name} must be a mapping")
-
-
-def _numeric_value(value: object, name: str) -> float:
-    """Return a finite numeric value."""
-
-    if isinstance(value, bool):
-        raise TypeError(f"{name} must be numeric")
-    if isinstance(value, int | float):
-        return float(value)
-    raise TypeError(f"{name} must be numeric")
+    raw_values = values[name]
+    if not isinstance(raw_values, tuple):
+        raise TypeError(f"{name} must be a tuple")
+    result: list[str] = []
+    for value in raw_values:
+        if not isinstance(value, str):
+            raise TypeError(f"{name} values must be strings")
+        result.append(value)
+    return tuple(result)

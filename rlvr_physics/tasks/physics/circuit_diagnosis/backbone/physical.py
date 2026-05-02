@@ -1,4 +1,4 @@
-"""Physical circuit construction from public schematics and hidden state."""
+"""Physical circuit construction from public definitions and hidden state."""
 
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -100,6 +100,9 @@ def _component_from_fault(
     if fault.fault_type == "open_resistor":
         _require_kind(component, "resistor", fault)
         return _faulted_component(component, "open", component.parameters, 1.0)
+    if fault.fault_type == "shorted_resistor":
+        _require_kind(component, "resistor", fault)
+        return _faulted_component(component, "short", component.parameters, 1.0)
     if fault.fault_type == "wrong_value":
         _require_kind(component, "resistor", fault)
         return _faulted_component(

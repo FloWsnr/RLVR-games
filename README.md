@@ -29,8 +29,6 @@ rlvr_physics/
     registry.py     # registered playable task descriptors
     task.py         # reusable play-test descriptors and CLI helpers
   tasks/
-    _shared/
-      rendering.py  # cross-task SVG rasterization helpers
     physics/
       cart_inference/
         backbone.py   # authoritative constant-acceleration rules
@@ -38,7 +36,7 @@ rlvr_physics/
         prompting.py  # task-local prompt resource loading
         prompts/      # model-facing prompt text templates
         play.py       # cart PlayableTask descriptor
-        renderers.py  # deterministic text and PNG image observations
+        renderers.py  # deterministic text observations
         rewards.py    # task-specific reward assignment
         sessions.py   # scalar runtime session
         specs.py      # public task configuration and spec helpers
@@ -50,11 +48,12 @@ rlvr_physics/
           simulation.py
           solver.py
           runtime.py
-        instances.py  # curated deterministic circuit/fault construction
+        generation.py # procedural graph generation and validation
+        instances.py  # immutable generated circuit/fault construction
         prompting.py  # task-local prompt resource loading
         prompts/      # model-facing prompt text templates
         play.py       # circuit PlayableTask descriptor
-        renderers.py  # text netlist and PNG schematic observations
+        renderers.py  # text netlist observations
         rewards.py    # task-specific reward assignment
         sessions.py   # scalar probe/repair session
         specs.py      # public task configuration and spec helpers
@@ -96,7 +95,7 @@ The generic play command selects the task by name or alias:
 
 ```bash
 uv run play cart_inference --instance-seed 123 --session-seed 456
-uv run play circuit_diagnosis --renderer circuit_diagnosis.image --instance-seed 4 --session-seed 99
+uv run play circuit_diagnosis --instance-seed 4 --session-seed 99
 ```
 
 The process prints a public reset event, then reads one action per line from
@@ -108,8 +107,12 @@ JSON envelope shown in each turn's `submission_format`. Supported examples:
 {"action": "final_answer", "arguments": {"x": 3.2}}
 ```
 
-Circuit diagnosis uses the same JSON action envelope. It exposes probe,
-repair, and final-answer actions:
+Circuit diagnosis uses the same JSON action envelope. Instances are generated
+from validated passive resistor graphs and rendered as text netlists from the
+same canonical state. It exposes probe, repair, and final-answer actions. The
+public instance payload, turn metadata, and action schema publish the allowed
+fault IDs and repair codes so adapters do not need debug fields to form a
+correct final answer.
 
 ```json
 {"action": "set_source", "arguments": {"node_plus": "VIN", "node_minus": "GND", "voltage_V": 5.0}}
@@ -132,7 +135,10 @@ The runner omits privileged debug fields and the private instance seed from its
 stdout protocol.
 
 Public task parameters can be overridden with repeated `--parameter KEY=JSON`
-arguments when a task's `PlayableTask` builder supports them.
+arguments when a task's `PlayableTask` builder supports them. Circuit diagnosis
+supports bounded procedural controls such as `component_count` from 2 to 10,
+`min_diagnosis_measurements`, `max_diagnosis_measurements`,
+`max_mna_condition_number`, and `min_observable_delta`.
 
 List registered playable tasks with:
 

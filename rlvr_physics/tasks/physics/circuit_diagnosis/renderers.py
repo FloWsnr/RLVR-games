@@ -1,17 +1,11 @@
-"""Renderers for the circuit diagnosis task."""
+"""Text renderer for the circuit diagnosis task."""
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal
+import json
 
-import svg
-
-from rlvr_physics.core.rendering import (
-    RenderedObservation,
-    image_observation,
-    text_observation,
-)
-from rlvr_physics.tasks._shared.rendering import rasterize_svg
+from rlvr_physics.core.payloads import to_plain_data
+from rlvr_physics.core.rendering import RenderedObservation, text_observation
 from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.schema import (
     CircuitComponent,
     CircuitDefinition,
@@ -20,17 +14,13 @@ from rlvr_physics.tasks.physics.circuit_diagnosis.backbone.schema import (
     SourceSetting,
 )
 from rlvr_physics.tasks.physics.circuit_diagnosis.prompting import (
-    circuit_image_prompt_template,
     circuit_text_prompt_template,
     render_prompt_template,
 )
 from rlvr_physics.tasks.physics.circuit_diagnosis.specs import (
-    CIRCUIT_IMAGE_RENDERER,
     CIRCUIT_TEXT_RENDERER,
     validate_circuit_renderer_type,
 )
-
-SVG_FONT_FAMILY = "Arial, sans-serif"
 
 
 @dataclass(frozen=True)
@@ -41,8 +31,8 @@ class CircuitRenderContext:
     ----------
     public_view:
         Trainer-safe public circuit view.
-    node_positions:
-        Renderer-facing schematic coordinates for public nodes.
+    diagnosis_options:
+        Public final-answer fault and repair vocabulary.
     feedback:
         Latest public feedback shown to the model.
     source_setting:
@@ -54,7 +44,7 @@ class CircuitRenderContext:
     """
 
     public_view: CircuitPublicView
-    node_positions: Mapping[str, tuple[float, float]]
+    diagnosis_options: Mapping[str, object]
     feedback: str
     source_setting: SourceSetting | None
     repairs: Mapping[str, ReplacementSpec]
@@ -64,38 +54,43 @@ class CircuitRenderContext:
 def render_circuit_observation(
     renderer_type: str, context: CircuitRenderContext
 ) -> RenderedObservation:
-    """Render one circuit diagnosis observation."""
+    """Render one circuit diagnosis observation.
+
+    Parameters
+    ----------
+    renderer_type:
+        Supported renderer identifier.
+    context:
+        Public circuit rollout state to render.
+
+    Returns
+    -------
+    RenderedObservation
+        Text-only observation for the requested renderer.
+    """
 
     validate_circuit_renderer_type(renderer_type)
-    if renderer_type == CIRCUIT_TEXT_RENDERER:
-        return text_observation(CIRCUIT_TEXT_RENDERER, render_circuit_text(context))
-    if renderer_type == CIRCUIT_IMAGE_RENDERER:
-        return render_circuit_image(context)
-    raise AssertionError(f"validated renderer was not handled: {renderer_type}")
+    return text_observation(CIRCUIT_TEXT_RENDERER, render_circuit_text(context))
 
 
 def render_circuit_text(context: CircuitRenderContext) -> str:
-    """Build the text-only observation for one circuit diagnosis turn."""
+    """Build the text-only observation for one circuit diagnosis turn.
+
+    Parameters
+    ----------
+    context:
+        Public circuit rollout state to render.
+
+    Returns
+    -------
+    str
+        Model-facing text prompt.
+    """
 
     return _render_prompt(
         circuit_text_prompt_template(),
         context,
         netlist=_render_netlist(context.public_view.definition),
-    )
-
-
-def render_circuit_image(context: CircuitRenderContext) -> RenderedObservation:
-    """Build a PNG schematic observation for one circuit diagnosis turn."""
-
-    text = _render_prompt(circuit_image_prompt_template(), context, netlist="")
-    svg_payload = _render_circuit_svg(context)
-    raster_image = rasterize_svg(svg_payload)
-    return image_observation(
-        renderer_name=CIRCUIT_IMAGE_RENDERER,
-        data=raster_image.data,
-        mime_type=raster_image.mime_type,
-        alt_text="Schematic of the nominal DC circuit with labeled nodes and components.",
-        text=text,
     )
 
 
@@ -108,9 +103,11 @@ def _render_prompt(template: str, context: CircuitRenderContext, netlist: str) -
             "feedback": context.feedback,
             "netlist": netlist,
             "target_behavior": _render_target_behavior(context.public_view.definition),
+            "diagnosis_options": _render_diagnosis_options(context.diagnosis_options),
             "source_setting": _render_source_setting(context.source_setting),
             "repair_state": _render_repair_state(context.repairs),
             "budget_status": context.budget_status,
+            "submission_examples": _render_submission_examples(context),
         },
     )
 
@@ -197,339 +194,129 @@ def _render_repair_state(repairs: Mapping[str, ReplacementSpec]) -> str:
     return "\n".join(lines)
 
 
-def _render_circuit_svg(context: CircuitRenderContext) -> str:
-    """Return a deterministic SVG schematic for the public circuit."""
+def _render_diagnosis_options(options: Mapping[str, object]) -> str:
+    """Return public final-answer vocabulary text."""
+
+    faults = _mapping_tuple_field(options, "faults")
+    repairs = _mapping_tuple_field(options, "repairs")
+    repair_by_component = {
+        _str_field(repair, "component"): repair for repair in repairs
+    }
+    lines: list[str] = []
+    for repair in repairs:
+        component_id = _str_field(repair, "component")
+        component_faults = [
+            fault for fault in faults if _str_field(fault, "component") == component_id
+        ]
+        fault_text = "; ".join(_fault_option_text(fault) for fault in component_faults)
+        lines.append(
+            "- "
+            f"{component_id}: faults [{fault_text}]; "
+            f"repair {_str_field(repair_by_component[component_id], 'repair_code')}"
+        )
+    return "\n".join(lines)
+
+
+def _render_submission_examples(context: CircuitRenderContext) -> str:
+    """Return valid public JSON action examples for one circuit instance."""
 
     definition = context.public_view.definition
-    width = 960
-    height = 640
-    elements: list[svg.Element] = [
-        svg.Rect(x=0.0, y=0.0, width=width, height=height, fill="#f8fafc"),
-        _text(34.0, 44.0, "Circuit diagnosis", 23, "#0f172a", "700"),
-        _text(34.0, 68.0, definition.description, 13, "#475569", "400"),
-    ]
-    for component in definition.components:
-        elements.extend(
-            _component_elements(definition, context.node_positions, component)
-        )
-    for node_name, position in context.node_positions.items():
-        elements.extend(_node_elements(definition, node_name, position))
-    elements.extend(_side_panel(context))
-    return str(
-        svg.SVG(
-            width=width,
-            height=height,
-            viewBox=svg.ViewBoxSpec(0, 0, width, height),
-            extra={"role": "img"},
-            elements=elements,
-        )
-    )
-
-
-def _component_elements(
-    definition: CircuitDefinition,
-    node_positions: Mapping[str, tuple[float, float]],
-    component: CircuitComponent,
-) -> list[svg.Element]:
-    """Return SVG elements for one component."""
-
-    del definition
-    x1, y1 = node_positions[component.node_a]
-    x2, y2 = node_positions[component.node_b]
-    mid_x = (x1 + x2) / 2.0
-    mid_y = (y1 + y2) / 2.0
-    elements: list[svg.Element] = [
-        svg.Line(
-            x1=x1,
-            y1=y1,
-            x2=x2,
-            y2=y2,
-            stroke="#64748b",
-            stroke_width=3,
-        )
-    ]
-    if component.kind == "resistor":
-        elements.extend(_resistor_symbol(x1, y1, x2, y2))
-    elif component.kind == "capacitor":
-        elements.extend(_capacitor_symbol(mid_x, mid_y))
-    elif component.kind == "diode":
-        elements.extend(_diode_symbol(mid_x, mid_y))
-    elif component.kind == "switch":
-        elements.extend(_switch_symbol(mid_x, mid_y))
-    elif component.kind == "voltage_source":
-        elements.extend(_source_symbol(mid_x, mid_y))
-    elements.append(
-        _label_box(
-            mid_x,
-            mid_y - 28.0,
-            f"{component.component_id} {_component_short_value(component)}",
-        )
-    )
-    return elements
-
-
-def _node_elements(
-    definition: CircuitDefinition, node_name: str, position: tuple[float, float]
-) -> list[svg.Element]:
-    """Return SVG elements for one labeled node."""
-
-    x, y = position
-    elements: list[svg.Element] = [
-        svg.Circle(cx=x, cy=y, r=7.0, fill="#0f172a"),
-        _text(x + 12.0, y - 10.0, node_name, 14, "#0f172a", "700"),
-    ]
-    if node_name == definition.ground_node:
-        elements.extend(_ground_symbol(x, y + 18.0))
-    return elements
-
-
-def _side_panel(context: CircuitRenderContext) -> list[svg.Element]:
-    """Return the schematic side panel with target and feedback."""
-
-    x = 710.0
-    y = 96.0
-    width = 214.0
-    height = 488.0
-    return [
-        svg.Rect(
-            x=x,
-            y=y,
-            width=width,
-            height=height,
-            rx=6,
-            fill="#ffffff",
-            stroke="#cbd5e1",
-            stroke_width=1,
+    first_component = definition.components[0]
+    examples = (
+        (
+            "source",
+            _action_payload("set_source", _source_example_arguments(definition)),
         ),
-        _text(x + 16.0, y + 30.0, "Target", 16, "#0f172a", "700"),
-        *_wrapped_text(
-            x + 16.0,
-            y + 54.0,
-            _compact_target_text(context.public_view.definition),
-            176.0,
-            12,
-            "#334155",
+        (
+            "voltage",
+            _action_payload("measure_voltage", _voltage_example_arguments(definition)),
         ),
-        _text(x + 16.0, y + 236.0, "Latest feedback", 16, "#0f172a", "700"),
-        *_wrapped_text(
-            x + 16.0,
-            y + 260.0,
-            context.feedback,
-            176.0,
-            12,
-            "#334155",
-        ),
-    ]
-
-
-def _resistor_symbol(x1: float, y1: float, x2: float, y2: float) -> list[svg.Element]:
-    """Return a simple resistor symbol centered on a connection."""
-
-    mid_x = (x1 + x2) / 2.0
-    mid_y = (y1 + y2) / 2.0
-    return [
-        svg.Rect(
-            x=mid_x - 34.0,
-            y=mid_y - 13.0,
-            width=68.0,
-            height=26.0,
-            rx=3,
-            fill="#fef3c7",
-            stroke="#92400e",
-            stroke_width=2,
-        )
-    ]
-
-
-def _capacitor_symbol(mid_x: float, mid_y: float) -> list[svg.Element]:
-    """Return a capacitor symbol."""
-
-    return [
-        svg.Line(
-            x1=mid_x - 10.0,
-            y1=mid_y - 24.0,
-            x2=mid_x - 10.0,
-            y2=mid_y + 24.0,
-            stroke="#0369a1",
-            stroke_width=4,
-        ),
-        svg.Line(
-            x1=mid_x + 10.0,
-            y1=mid_y - 24.0,
-            x2=mid_x + 10.0,
-            y2=mid_y + 24.0,
-            stroke="#0369a1",
-            stroke_width=4,
-        ),
-    ]
-
-
-def _diode_symbol(mid_x: float, mid_y: float) -> list[svg.Element]:
-    """Return a diode symbol."""
-
-    elements: list[svg.Element] = [
-        svg.Polygon(
-            points=[
-                svg.Point(mid_x - 28.0, mid_y - 22.0),
-                svg.Point(mid_x - 28.0, mid_y + 22.0),
-                svg.Point(mid_x + 10.0, mid_y),
-            ],
-            fill="#dbeafe",
-            stroke="#1d4ed8",
-            stroke_width=2,
-        ),
-        svg.Line(
-            x1=mid_x + 16.0,
-            y1=mid_y - 24.0,
-            x2=mid_x + 16.0,
-            y2=mid_y + 24.0,
-            stroke="#1d4ed8",
-            stroke_width=4,
-        ),
-    ]
-    return elements
-
-
-def _switch_symbol(mid_x: float, mid_y: float) -> list[svg.Element]:
-    """Return a switch symbol."""
-
-    return [
-        svg.Circle(cx=mid_x - 28.0, cy=mid_y, r=4.0, fill="#334155"),
-        svg.Circle(cx=mid_x + 28.0, cy=mid_y, r=4.0, fill="#334155"),
-        svg.Line(
-            x1=mid_x - 24.0,
-            y1=mid_y - 2.0,
-            x2=mid_x + 24.0,
-            y2=mid_y - 18.0,
-            stroke="#334155",
-            stroke_width=4,
-        ),
-    ]
-
-
-def _source_symbol(mid_x: float, mid_y: float) -> list[svg.Element]:
-    """Return a voltage source symbol."""
-
-    return [
-        svg.Circle(
-            cx=mid_x,
-            cy=mid_y,
-            r=28.0,
-            fill="#f0fdf4",
-            stroke="#15803d",
-            stroke_width=2,
-        ),
-        _text(mid_x, mid_y - 4.0, "+", 16, "#15803d", "700", "middle"),
-        _text(mid_x, mid_y + 16.0, "-", 16, "#15803d", "700", "middle"),
-    ]
-
-
-def _ground_symbol(x: float, y: float) -> list[svg.Element]:
-    """Return a ground symbol."""
-
-    return [
-        svg.Line(
-            x1=x - 18.0, y1=y, x2=x + 18.0, y2=y, stroke="#334155", stroke_width=3
-        ),
-        svg.Line(
-            x1=x - 12.0,
-            y1=y + 8.0,
-            x2=x + 12.0,
-            y2=y + 8.0,
-            stroke="#334155",
-            stroke_width=3,
-        ),
-        svg.Line(
-            x1=x - 6.0,
-            y1=y + 16.0,
-            x2=x + 6.0,
-            y2=y + 16.0,
-            stroke="#334155",
-            stroke_width=3,
-        ),
-    ]
-
-
-def _label_box(x: float, y: float, label: str) -> svg.Element:
-    """Return a label in a schematic callout."""
-
-    return svg.G(
-        elements=[
-            svg.Rect(
-                x=x - 54.0,
-                y=y - 16.0,
-                width=108.0,
-                height=24.0,
-                rx=4,
-                fill="#ffffff",
-                stroke="#cbd5e1",
-                stroke_width=1,
+        (
+            "current",
+            _action_payload(
+                "measure_current", {"component": first_component.component_id}
             ),
-            _text(x, y, label, 12, "#0f172a", "700", "middle"),
-        ]
+        ),
+        ("repair", _first_repair_action(context.diagnosis_options)),
+        ("final", _final_answer_example(context.diagnosis_options)),
+    )
+    return "\n".join(
+        f"- {label} example: {_compact_json(payload)}" for label, payload in examples
     )
 
 
-def _text(
-    x: float,
-    y: float,
-    text: str,
-    size: int,
-    fill: str,
-    weight: Literal["400", "700"],
-    anchor: Literal["start", "middle", "end"] = "start",
-) -> svg.Text:
-    """Return an SVG text element."""
+def _source_example_arguments(definition: CircuitDefinition) -> dict[str, object]:
+    """Return a valid source action example for a public circuit."""
 
-    return svg.Text(
-        x=x,
-        y=y,
-        text=text,
-        font_size=size,
-        font_family=SVG_FONT_FAMILY,
-        font_weight=weight,
-        fill=fill,
-        text_anchor=anchor,
+    if definition.target_source is not None:
+        source = definition.target_source
+        return {
+            "node_plus": source.node_plus,
+            "node_minus": source.node_minus,
+            "voltage_V": source.voltage_V,
+        }
+    non_ground = next(
+        node for node in definition.nodes if node != definition.ground_node
+    )
+    return {
+        "node_plus": non_ground,
+        "node_minus": definition.ground_node,
+        "voltage_V": 5.0,
+    }
+
+
+def _voltage_example_arguments(definition: CircuitDefinition) -> dict[str, object]:
+    """Return a valid voltage measurement example for a public circuit."""
+
+    if definition.target_source is not None:
+        return {
+            "node_a": definition.target_source.node_plus,
+            "node_b": definition.target_source.node_minus,
+        }
+    non_ground = next(
+        node for node in definition.nodes if node != definition.ground_node
+    )
+    return {"node_a": non_ground, "node_b": definition.ground_node}
+
+
+def _first_repair_action(options: Mapping[str, object]) -> Mapping[str, object]:
+    """Return the first public repair action from diagnosis options."""
+
+    repairs = _mapping_tuple_field(options, "repairs")
+    first_repair = repairs[0]
+    action = first_repair["action"]
+    if isinstance(action, Mapping):
+        return action
+    raise TypeError("repair action must be a mapping")
+
+
+def _final_answer_example(options: Mapping[str, object]) -> dict[str, object]:
+    """Return a final-answer example using public allowed labels."""
+
+    fault_ids = _str_tuple_field(options, "fault_ids")
+    repair_codes = _str_tuple_field(options, "repair_codes")
+    return _action_payload(
+        "final_answer",
+        {"faults": [fault_ids[0]], "repairs": [repair_codes[0]]},
     )
 
 
-def _wrapped_text(
-    x: float, y: float, text: str, width: float, size: int, fill: str
-) -> list[svg.Element]:
-    """Return simple wrapped SVG text lines."""
+def _action_payload(action: str, arguments: Mapping[str, object]) -> dict[str, object]:
+    """Return one JSON action payload."""
 
-    del width
-    words = text.replace("\n", " ").split()
-    lines: list[str] = []
-    current = ""
-    for word in words:
-        candidate = word if current == "" else f"{current} {word}"
-        if len(candidate) > 28:
-            lines.append(current)
-            current = word
-        else:
-            current = candidate
-    if current != "":
-        lines.append(current)
-    return [
-        _text(x, y + index * (size + 5), line, size, fill, "400")
-        for index, line in enumerate(lines[:12])
-    ]
+    return {"action": action, "arguments": dict(arguments)}
 
 
-def _compact_target_text(definition: CircuitDefinition) -> str:
-    """Return a compact target summary for the image side panel."""
+def _compact_json(value: object) -> str:
+    """Return deterministic compact JSON for prompt examples."""
 
-    if definition.target_source is None:
-        source = "internal source"
-    else:
-        target_source = definition.target_source
-        source = (
-            f"{target_source.node_plus}-{target_source.node_minus} "
-            f"{_fmt(target_source.voltage_V)} V"
-        )
-    checks = ", ".join(check.check_id for check in definition.target_checks)
-    return f"Use {source}; satisfy {checks}."
+    return json.dumps(to_plain_data(value), sort_keys=True, separators=(",", ":"))
+
+
+def _fault_option_text(fault: Mapping[str, object]) -> str:
+    """Return one compact fault option description."""
+
+    return f"{_str_field(fault, 'fault_id')} ({_str_field(fault, 'description')})"
 
 
 def _component_parameter_text(component: CircuitComponent) -> str:
@@ -554,22 +341,6 @@ def _component_parameter_text(component: CircuitComponent) -> str:
     )
 
 
-def _component_short_value(component: CircuitComponent) -> str:
-    """Return compact component value text for image labels."""
-
-    if component.kind == "resistor":
-        return f"{_fmt(_num(component.parameters, 'value_ohm'))} ohm"
-    if component.kind == "capacitor":
-        return f"{_fmt(_num(component.parameters, 'value_F'))} F"
-    if component.kind == "diode":
-        return f"{_fmt(_num(component.parameters, 'forward_drop_V'))} V"
-    if component.kind == "switch":
-        return "closed" if bool(component.parameters["closed"]) else "open"
-    if component.kind == "voltage_source":
-        return f"{_fmt(_num(component.parameters, 'voltage_V'))} V"
-    return component.kind
-
-
 def _param(values: Mapping[str, object], name: str) -> str:
     """Return a string parameter for rendering."""
 
@@ -577,6 +348,45 @@ def _param(values: Mapping[str, object], name: str) -> str:
     if not isinstance(value, str):
         raise TypeError(f"{name} must be a string")
     return value
+
+
+def _str_field(values: Mapping[str, object], name: str) -> str:
+    """Return a string field from public payload data."""
+
+    value = values[name]
+    if not isinstance(value, str):
+        raise TypeError(f"{name} must be a string")
+    return value
+
+
+def _mapping_tuple_field(
+    values: Mapping[str, object], name: str
+) -> tuple[Mapping[str, object], ...]:
+    """Return a tuple of mapping fields from public payload data."""
+
+    raw_values = values[name]
+    if not isinstance(raw_values, tuple):
+        raise TypeError(f"{name} must be a tuple")
+    result: list[Mapping[str, object]] = []
+    for raw_value in raw_values:
+        if not isinstance(raw_value, Mapping):
+            raise TypeError(f"{name} values must be mappings")
+        result.append(raw_value)
+    return tuple(result)
+
+
+def _str_tuple_field(values: Mapping[str, object], name: str) -> tuple[str, ...]:
+    """Return a tuple of string fields from public payload data."""
+
+    raw_values = values[name]
+    if not isinstance(raw_values, tuple):
+        raise TypeError(f"{name} must be a tuple")
+    result: list[str] = []
+    for raw_value in raw_values:
+        if not isinstance(raw_value, str):
+            raise TypeError(f"{name} values must be strings")
+        result.append(raw_value)
+    return tuple(result)
 
 
 def _num(values: Mapping[str, object], name: str) -> float:

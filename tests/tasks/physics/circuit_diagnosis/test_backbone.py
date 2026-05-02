@@ -43,6 +43,30 @@ def test_solver_computes_resistor_divider_voltage() -> None:
     assert result.component_currents_A["R2"] == 0.0025
 
 
+def test_shorted_resistor_fault_is_simulated() -> None:
+    definition = _divider_definition()
+    resistor = definition.component("R1")
+    fault = FaultSpec(
+        fault_id="R1_short",
+        component_id="R1",
+        fault_type="shorted_resistor",
+        parameters={},
+        repair_code=canonical_repair_code(resistor),
+    )
+
+    faulty = simulate_circuit(
+        _truth(definition, (fault,)), {}, definition.target_source
+    )
+    repaired = simulate_circuit(
+        _truth(definition, (fault,)),
+        {"R1": nominal_replacement_for_component(resistor)},
+        definition.target_source,
+    )
+
+    assert faulty.node_voltages_V["OUT"] == 5.0
+    assert repaired.node_voltages_V["OUT"] == 2.5
+
+
 def test_hidden_faults_fail_and_nominal_repairs_restore_target() -> None:
     instance = build_circuit_diagnosis_instance(seed=4, config=DEFAULT_CONFIG)
     state = state_from_instance(instance)

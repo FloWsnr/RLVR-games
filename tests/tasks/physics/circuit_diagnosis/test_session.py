@@ -72,6 +72,58 @@ def test_repair_action_schema_exposes_kind_specific_required_fields(
     assert resistor_schema["required"] == ("value_ohm",)
 
 
+def test_final_answer_schema_and_public_info_include_answer_vocabulary(
+    circuit_task_fixture: CircuitDiagnosisFixture,
+) -> None:
+    reset = circuit_task_fixture.reset
+    schema = reset.turn.action_schema
+    actions = schema["actions"]
+    assert isinstance(actions, Mapping)
+    final_schema = actions["final_answer"]
+    assert isinstance(final_schema, Mapping)
+    arguments = final_schema["arguments"]
+    assert isinstance(arguments, Mapping)
+    faults = arguments["faults"]
+    repairs = arguments["repairs"]
+    assert isinstance(faults, Mapping)
+    assert isinstance(repairs, Mapping)
+
+    assert "R1_wrong_low" in faults["allowed"]
+    assert "replace_R1_470_ohm" in repairs["allowed"]
+    assert isinstance(reset.public_info["diagnosis_options"], Mapping)
+    assert isinstance(reset.turn.public_info["diagnosis_options"], Mapping)
+
+
+def test_submission_format_examples_are_valid_for_generated_circuit(
+    circuit_task_fixture: CircuitDiagnosisFixture,
+) -> None:
+    reset = circuit_task_fixture.reset
+    state = state_from_instance(circuit_task_fixture.instance)
+    definition = state.truth.public_definition
+    examples = reset.turn.submission_format["examples"]
+
+    assert isinstance(examples, tuple)
+    source_example = examples[0]
+    voltage_example = examples[1]
+    repair_example = examples[3]
+    assert isinstance(source_example, Mapping)
+    assert isinstance(voltage_example, Mapping)
+    assert isinstance(repair_example, Mapping)
+    source_arguments = source_example["arguments"]
+    voltage_arguments = voltage_example["arguments"]
+    repair_arguments = repair_example["arguments"]
+    assert isinstance(source_arguments, Mapping)
+    assert isinstance(voltage_arguments, Mapping)
+    assert isinstance(repair_arguments, Mapping)
+
+    assert source_arguments["node_plus"] == "VIN"
+    assert source_arguments["node_minus"] == "GND"
+    assert voltage_arguments["node_a"] == "VIN"
+    assert voltage_arguments["node_b"] == "GND"
+    repaired_component = definition.component(str(repair_arguments["component"]))
+    assert repair_arguments["value_ohm"] == repaired_component.parameters["value_ohm"]
+
+
 def test_initial_feedback_uses_public_fault_count_range() -> None:
     """Initial feedback should match the public fault-count range."""
 
@@ -200,6 +252,68 @@ def test_final_answer_without_repairs_can_match_diagnosis_but_fail_behavior() ->
     assert result.reward == 0.0
     assert result.public_info["target_restored"] is False
     assert result.public_info["diagnosis_correct"] is True
+
+
+def test_final_answer_rejects_duplicate_labels() -> None:
+    from rlvr_physics.tasks.physics.circuit_diagnosis.instances import (
+        build_circuit_diagnosis_instance,
+    )
+
+    instance = build_circuit_diagnosis_instance(
+        seed=CIRCUIT_INSTANCE_SEED, config=DEFAULT_CONFIG
+    )
+    session = CircuitDiagnosisSession(
+        instance, CIRCUIT_TEXT_RENDERER, DEFAULT_CONFIG.reward
+    )
+    session.reset(seed=CIRCUIT_SESSION_SEED)
+    state = state_from_instance(instance)
+    fault = state.truth.hidden_faults[0]
+    final = {
+        "action": "final_answer",
+        "arguments": {
+            "faults": [fault.fault_id, fault.fault_id],
+            "repairs": [fault.repair_code, fault.repair_code],
+        },
+    }
+
+    result = session.submit(TaskSubmission.action(json.dumps(final)))
+
+    assert not result.accepted
+    assert result.terminal
+    assert result.public_info["invalid_submission_category"] == (
+        "invalid_final_answer_arguments"
+    )
+    assert "duplicates" in str(result.public_info["reason"])
+
+
+def test_final_answer_rejects_out_of_vocabulary_labels() -> None:
+    from rlvr_physics.tasks.physics.circuit_diagnosis.instances import (
+        build_circuit_diagnosis_instance,
+    )
+
+    instance = build_circuit_diagnosis_instance(
+        seed=CIRCUIT_INSTANCE_SEED, config=DEFAULT_CONFIG
+    )
+    session = CircuitDiagnosisSession(
+        instance, CIRCUIT_TEXT_RENDERER, DEFAULT_CONFIG.reward
+    )
+    session.reset(seed=CIRCUIT_SESSION_SEED)
+    final = {
+        "action": "final_answer",
+        "arguments": {
+            "faults": ["not_a_fault"],
+            "repairs": ["not_a_repair"],
+        },
+    }
+
+    result = session.submit(TaskSubmission.action(json.dumps(final)))
+
+    assert not result.accepted
+    assert result.terminal
+    assert result.public_info["invalid_submission_category"] == (
+        "invalid_final_answer_arguments"
+    )
+    assert "unsupported label" in str(result.public_info["reason"])
 
 
 def test_session_reset_debug_contains_faults_but_public_metadata_omits_them(

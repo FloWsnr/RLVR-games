@@ -22,12 +22,6 @@ def circuit_text_prompt_template() -> str:
     return _prompt_file_text("text_observation.md")
 
 
-def circuit_image_prompt_template() -> str:
-    """Return the task-local image observation text template."""
-
-    return _prompt_file_text("image_observation.md")
-
-
 def render_prompt_template(template: str, values: dict[str, str]) -> str:
     """Render a simple ``{{name}}`` prompt template.
 

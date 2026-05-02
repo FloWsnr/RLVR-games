@@ -114,7 +114,7 @@ def replacement_from_action(
 def validate_nominal_replacement(
     nominal: CircuitComponent, replacement: ReplacementSpec
 ) -> None:
-    """Reject replacements that do not match the nominal schematic component."""
+    """Reject replacements that do not match the nominal circuit component."""
 
     nominal_parameters = nominal_replacement_parameters(nominal)
     if replacement.kind != nominal.kind:

@@ -11,7 +11,6 @@ from rlvr_physics.tasks.physics.circuit_diagnosis.rewards import (
     reward_config_from_mapping,
 )
 from rlvr_physics.tasks.physics.circuit_diagnosis.specs import (
-    CIRCUIT_IMAGE_RENDERER,
     CIRCUIT_TEXT_RENDERER,
     DEFAULT_CONFIG,
     CircuitDiagnosisConfig,
@@ -42,6 +41,22 @@ def circuit_diagnosis_config_from_parameters(
     return CircuitDiagnosisConfig(
         min_fault_count=_required_int_parameter(parameters, "min_fault_count"),
         max_fault_count=_required_int_parameter(parameters, "max_fault_count"),
+        component_count=_required_int_parameter(parameters, "component_count"),
+        min_diagnosis_measurements=_required_int_parameter(
+            parameters, "min_diagnosis_measurements"
+        ),
+        max_diagnosis_measurements=_required_int_parameter(
+            parameters, "max_diagnosis_measurements"
+        ),
+        generator_attempt_limit=_required_int_parameter(
+            parameters, "generator_attempt_limit"
+        ),
+        max_mna_condition_number=_required_float_parameter(
+            parameters, "max_mna_condition_number"
+        ),
+        min_observable_delta=_required_float_parameter(
+            parameters, "min_observable_delta"
+        ),
         target_tolerance_fraction=_required_float_parameter(
             parameters, "target_tolerance_fraction"
         ),
@@ -61,7 +76,7 @@ def circuit_diagnosis_config_from_parameters(
 CIRCUIT_PLAYABLE = PlayableTask(
     name="physics.circuit_diagnosis",
     default_renderer=CIRCUIT_TEXT_RENDERER,
-    renderers=(CIRCUIT_TEXT_RENDERER, CIRCUIT_IMAGE_RENDERER),
+    renderers=(CIRCUIT_TEXT_RENDERER,),
     default_parameters=config_parameters(DEFAULT_CONFIG),
     build_task=build_circuit_diagnosis_play_task,
     public_info_excluded_keys=DEFAULT_PUBLIC_INFO_EXCLUDED_KEYS,

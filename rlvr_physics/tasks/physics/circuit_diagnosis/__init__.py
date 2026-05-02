@@ -14,7 +14,6 @@ from rlvr_physics.tasks.physics.circuit_diagnosis.sessions import (
 from rlvr_physics.tasks.physics.circuit_diagnosis.specs import (
     CIRCUIT_DIAGNOSIS_DOMAIN,
     CIRCUIT_DIAGNOSIS_KIND,
-    CIRCUIT_IMAGE_RENDERER,
     CIRCUIT_TEXT_RENDERER,
     DEFAULT_CONFIG,
     CircuitDiagnosisConfig,
@@ -25,7 +24,6 @@ from rlvr_physics.tasks.physics.circuit_diagnosis.task import circuit_diagnosis_
 __all__ = [
     "CIRCUIT_DIAGNOSIS_DOMAIN",
     "CIRCUIT_DIAGNOSIS_KIND",
-    "CIRCUIT_IMAGE_RENDERER",
     "CIRCUIT_PLAYABLE",
     "CIRCUIT_TEXT_RENDERER",
     "DEFAULT_CONFIG",

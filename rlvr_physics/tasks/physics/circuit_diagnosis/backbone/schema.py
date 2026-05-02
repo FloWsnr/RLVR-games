@@ -213,7 +213,7 @@ class CircuitPublicView:
     Parameters
     ----------
     definition:
-        Public nominal schematic and target behavior checks.
+        Public nominal circuit definition and target behavior checks.
     fault_count_range:
         Public lower and upper bounds for the number of hidden faults.
     """
@@ -229,7 +229,7 @@ class CircuitTruth:
     Parameters
     ----------
     public_definition:
-        Public nominal schematic used as the basis for observations.
+        Public nominal circuit definition used as the basis for observations.
     hidden_faults:
         Privileged physical fault overlays applied before simulation.
     fault_count_range:
@@ -241,7 +241,7 @@ class CircuitTruth:
     fault_count_range: tuple[int, int]
 
     def __post_init__(self) -> None:
-        """Validate hidden faults against the public schematic."""
+        """Validate hidden faults against the public circuit definition."""
 
         min_fault_count, max_fault_count = self.fault_count_range
         if min_fault_count < 0 or max_fault_count < 0:

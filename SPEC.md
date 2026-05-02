@@ -493,7 +493,7 @@ rlvr_physics/play/
   task.py         # PlayableTask descriptors and CLI helpers
 
 rlvr_physics/tasks/
-  _shared/    # cross-task helpers such as SVG rasterization
+  _shared/    # cross-task helpers when repeated task code appears
   arithmetic/
   physics/
   coding/
@@ -535,10 +535,20 @@ Each prototype should prove a small number of core behaviors:
   inspection
 
 The circuit diagnosis prototype is the first richer tool-use physics task. Its
-backbone owns the physical circuit truth: a public nominal schematic plus hidden
-faults, session-local repairs, and source settings. Text and PNG schematic
-renderers expose public views of that backbone state without changing task
-semantics.
+backbone owns the physical circuit truth: a public nominal circuit definition
+plus hidden faults, session-local repairs, and source settings. The current task
+surface exposes this state through text observations while the core image
+content abstraction remains available for future renderer work.
+
+Circuit diagnosis instances are generated from canonical passive resistor
+graphs, not from diagrams. The generator samples a bounded exact-size two-terminal
+topology, assigns component values, validates graph connectivity, validates the
+nominal dense MNA system, scores candidate fault signatures, chooses a hidden
+fault only after task validity checks pass, and emits trainer-safe generation
+metrics. Public payloads include the nominal graph, safe generation metrics, and
+the complete final-answer vocabulary: allowed fault IDs, repair codes, and
+repair actions. Privileged payloads keep the selected hidden fault, replay seed,
+validation diagnostics, and difficulty details out of trainer-facing metadata.
 
 Coding verifier tasks should wait until the core needs sandbox or subprocess
 boundaries. Do not add broad abstractions before concrete tasks expose repeated
