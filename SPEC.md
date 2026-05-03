@@ -140,6 +140,19 @@ should depend on it rather than duplicate task rules.
 Backbones may be implemented as small classes, functions, or modules. The core
 should require behavior, not inheritance from a single base class.
 
+### Shared Domain Backends
+
+Task families may depend on shared domain backends when a domain has reusable
+authoritative state and executable rules. For circuit tasks, the shared backend
+owns canonical topology, part catalogs, motif catalogs, electronic rule
+checking, procedural generation, SPICE export, layout data, and
+dependency-free static analysis helpers. Individual circuit task packages
+should layer task-specific faults, observations, actions, rewards, and sessions
+on top of that backend instead of redefining circuit semantics.
+Circuit SVG and PNG renderers should run the shared layout planner before
+drawing unless they receive a precomputed layout, keeping placement and routing
+as renderer-derived views of canonical circuit state.
+
 ### Task Session
 
 A task session is the scalar runtime wrapper around one task instance and one
@@ -534,21 +547,9 @@ Each prototype should prove a small number of core behaviors:
 - step results with public metadata and privileged debug details for local
   inspection
 
-The circuit diagnosis prototype is the first richer tool-use physics task. Its
-backbone owns the physical circuit truth: a public nominal circuit definition
-plus hidden faults, session-local repairs, and source settings. The current task
-surface exposes this state through text observations while the core image
-content abstraction remains available for future renderer work.
-
-Circuit diagnosis instances are generated from canonical passive resistor
-graphs, not from diagrams. The generator samples a bounded exact-size two-terminal
-topology, assigns component values, validates graph connectivity, validates the
-nominal dense MNA system, scores candidate fault signatures, chooses a hidden
-fault only after task validity checks pass, and emits trainer-safe generation
-metrics. Public payloads include the nominal graph, safe generation metrics, and
-the complete final-answer vocabulary: allowed fault IDs, repair codes, and
-repair actions. Privileged payloads keep the selected hidden fault, replay seed,
-validation diagnostics, and difficulty details out of trainer-facing metadata.
+Cart inference is the current physics prototype. Additional task families should
+be added only when they prove a new scalar-session, verification, rendering, or
+trainer-export requirement that the existing task does not exercise.
 
 Coding verifier tasks should wait until the core needs sandbox or subprocess
 boundaries. Do not add broad abstractions before concrete tasks expose repeated
@@ -593,9 +594,8 @@ The initial core is good enough when:
 - How should task payloads be serialized for very large hidden state, images, or
   code sandboxes?
 - How much tool schema generation belongs in core versus trainer integrations?
-- Which physics task should be the next target after cart inference and circuit
-  diagnosis: projectile motion, mechanics constraints, or simulation-based
-  puzzles?
+- Which physics task should be the next target after cart inference: projectile
+  motion, mechanics constraints, or simulation-based puzzles?
 - When do dataset utilities become necessary?
 
 ## Reference Notes

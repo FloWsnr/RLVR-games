@@ -30,6 +30,17 @@ rlvr_physics/
     task.py         # reusable play-test descriptors and CLI helpers
   tasks/
     physics/
+      circuits/
+        parts.py       # reusable component definitions
+        motifs.py      # procedural circuit motif definitions
+        erc.py         # structured electronic rule checking
+        generation.py  # seeded procedural circuit assembly
+        layout.py      # force-directed schematic placement/routing data
+        model.py       # canonical circuit data and builder
+        solver.py      # small dependency-free linear DC sanity solver
+        spice.py       # dependency-free SPICE netlist export
+        symbol_assets.py # SVG symbol asset loading and placement
+        svg.py         # deterministic SVG/PNG schematic drawing
       cart_inference/
         backbone.py   # authoritative constant-acceleration rules
         instances.py  # deterministic instance construction
@@ -41,30 +52,23 @@ rlvr_physics/
         sessions.py   # scalar runtime session
         specs.py      # public task configuration and spec helpers
         task.py       # configured task builder
-      circuit_diagnosis/
-        backbone/     # physical circuit truth, public views, MNA verifier
-          schema.py
-          physical.py
-          simulation.py
-          solver.py
-          runtime.py
-        generation.py # procedural graph generation and validation
-        instances.py  # immutable generated circuit/fault construction
-        prompting.py  # task-local prompt resource loading
-        prompts/      # model-facing prompt text templates
-        play.py       # circuit PlayableTask descriptor
-        renderers.py  # text netlist observations
-        rewards.py    # task-specific reward assignment
-        sessions.py   # scalar probe/repair session
-        specs.py      # public task configuration and spec helpers
-        task.py       # configured task builder
 
 tests/
   core/
   play/
+  tasks/physics/circuits/
   tasks/physics/cart_inference/
-  tasks/physics/circuit_diagnosis/
 ```
+
+The `physics.circuits` package is a reusable backend for future circuit tasks,
+not a playable task by itself. Circuit task backbones should use it as the
+canonical topology, validation, generation, analysis-export, and renderer-input
+layer instead of duplicating circuit semantics in task-local code.
+SVG and PNG circuit rendering invokes the force-directed layout planner when no
+precomputed layout is supplied, so generated images use the same non-overlapping
+placement path as explicit layout tests.
+The circuit SVG drawer uses editable per-symbol SVG assets for common schematic
+symbols while keeping rendering deterministic and local.
 
 ## Development
 
@@ -95,50 +99,32 @@ The generic play command selects the task by name or alias:
 
 ```bash
 uv run play cart_inference --instance-seed 123 --session-seed 456
-uv run play circuit_diagnosis --instance-seed 4 --session-seed 99
 ```
 
 The process prints a public reset event, then reads one action per line from
-stdin until the rollout is terminal or truncated. Cart actions use the canonical
-JSON envelope shown in each turn's `submission_format`. Supported examples:
+stdin until the rollout is terminal or truncated. Cart inference actions use the
+canonical JSON envelope shown in each turn's `submission_format`. Supported
+examples:
 
 ```json
 {"action": "measure_position", "arguments": {"time": 5}}
 {"action": "final_answer", "arguments": {"x": 3.2}}
 ```
 
-Circuit diagnosis uses the same JSON action envelope. Instances are generated
-from validated passive resistor graphs and rendered as text netlists from the
-same canonical state. It exposes probe, repair, and final-answer actions. The
-public instance payload, turn metadata, and action schema publish the allowed
-fault IDs and repair codes so adapters do not need debug fields to form a
-correct final answer.
-
-```json
-{"action": "set_source", "arguments": {"node_plus": "VIN", "node_minus": "GND", "voltage_V": 5.0}}
-{"action": "measure_voltage", "arguments": {"node_a": "OUT", "node_b": "GND"}}
-{"action": "replace_component", "arguments": {"component": "R1", "kind": "resistor", "value_ohm": 1000}}
-{"action": "final_answer", "arguments": {"faults": ["R1_open"], "repairs": ["replace_R1_1000_ohm"]}}
-```
-
 Each turn publishes consumed rollout budgets under
-`public_limits.budget_limits`. Cart uses `turns`, `actions`, and
-`final_answers`; circuit diagnosis uses `turns`, `probe_actions`,
-`repair_actions`, and `final_answers`. Rejected-submission policies are exposed as
+`public_limits.budget_limits`. Cart inference uses `turns`, `actions`, and
+`final_answers`. Rejected-submission policies are exposed as
 `invalid_submission_policies`, and step metadata reports `budget_usage` and
 `budget_remaining` with the same budget names. Step events also include
-`reward_info` from the task reward policy. Scalar rewards, including
-intermediate accepted-action rewards and rejected-submission rewards, are
-assigned by each task-local rewards module.
+`reward_info` from the task reward policy. Scalar rewards, including accepted
+action rewards and rejected-submission rewards, are assigned by each task-local
+rewards module.
 
 The runner omits privileged debug fields and the private instance seed from its
 stdout protocol.
 
 Public task parameters can be overridden with repeated `--parameter KEY=JSON`
-arguments when a task's `PlayableTask` builder supports them. Circuit diagnosis
-supports bounded procedural controls such as `component_count` from 2 to 10,
-`min_diagnosis_measurements`, `max_diagnosis_measurements`,
-`max_mna_condition_number`, and `min_observable_delta`.
+arguments when a task's `PlayableTask` builder supports them.
 
 List registered playable tasks with:
 

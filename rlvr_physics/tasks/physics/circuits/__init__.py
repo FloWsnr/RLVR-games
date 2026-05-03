@@ -1,0 +1,113 @@
+"""Reusable circuit backend for physics task families."""
+
+from rlvr_physics.tasks.physics.circuits.parts import (
+    default_catalog,
+    default_part_catalog,
+    require_part_spec,
+)
+from rlvr_physics.tasks.physics.circuits.erc import (
+    CheckIssue,
+    CheckReport,
+    IssueSeverity,
+    check_circuit,
+)
+from rlvr_physics.tasks.physics.circuits.generation import (
+    GeneratedCircuit,
+    GeneratorConfig,
+    generate_circuit,
+)
+from rlvr_physics.tasks.physics.circuits.motifs import (
+    CircuitMotif,
+    default_motif_weights,
+    default_motifs,
+)
+from rlvr_physics.tasks.physics.circuits.layout import (
+    Bounds,
+    Layout,
+    PlacedPart,
+    Point,
+    Size,
+    WirePath,
+    WireSegment,
+    plan_layout,
+)
+from rlvr_physics.tasks.physics.circuits.model import (
+    AnalysisSupport,
+    Circuit,
+    CircuitBuilder,
+    CircuitTopologyError,
+    ComponentFamily,
+    Connection,
+    PartInstance,
+    PartSpec,
+    PinKind,
+    PinSide,
+    PinSpec,
+    SpiceSpec,
+    is_ground_net,
+)
+from rlvr_physics.tasks.physics.circuits.solver import (
+    LinearDcResult,
+    UnsupportedCircuitError,
+    solve_dc_linear,
+)
+from rlvr_physics.tasks.physics.circuits.spice import (
+    SpiceAnalysis,
+    SpiceAnalysisKind,
+    SpiceNetlist,
+    dc_sweep_analysis,
+    export_spice,
+    operating_point_analysis,
+    transient_analysis,
+)
+from rlvr_physics.tasks.physics.circuits.svg import draw_png, draw_svg, to_png
+
+__all__ = [
+    "AnalysisSupport",
+    "Bounds",
+    "CheckIssue",
+    "CheckReport",
+    "CircuitMotif",
+    "Circuit",
+    "CircuitBuilder",
+    "CircuitTopologyError",
+    "ComponentFamily",
+    "Connection",
+    "GeneratedCircuit",
+    "GeneratorConfig",
+    "IssueSeverity",
+    "Layout",
+    "LinearDcResult",
+    "PartInstance",
+    "PartSpec",
+    "PinKind",
+    "PinSide",
+    "PinSpec",
+    "PlacedPart",
+    "Point",
+    "Size",
+    "SpiceAnalysis",
+    "SpiceAnalysisKind",
+    "SpiceNetlist",
+    "SpiceSpec",
+    "UnsupportedCircuitError",
+    "WirePath",
+    "WireSegment",
+    "check_circuit",
+    "dc_sweep_analysis",
+    "default_catalog",
+    "default_motif_weights",
+    "default_motifs",
+    "default_part_catalog",
+    "draw_svg",
+    "draw_png",
+    "export_spice",
+    "generate_circuit",
+    "is_ground_net",
+    "operating_point_analysis",
+    "plan_layout",
+    "require_part_spec",
+    "solve_dc_linear",
+    "to_png",
+    "transient_analysis",
+]

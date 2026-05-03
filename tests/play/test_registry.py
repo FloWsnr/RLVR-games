@@ -24,9 +24,7 @@ def test_playable_task_names_do_not_import_registered_tasks(
 
     assert registry.playable_task_names() == (
         "cart_inference",
-        "circuit_diagnosis",
         "physics.cart_inference",
-        "physics.circuit_diagnosis",
     )
 
 
