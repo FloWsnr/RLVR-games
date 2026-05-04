@@ -5,7 +5,7 @@ from functools import cache
 from html import escape
 from importlib.resources import files
 from math import cos, radians, sin
-from typing import Mapping
+from typing import Mapping, Optional
 from xml.etree import ElementTree
 
 from rlvr_physics.tasks.physics.circuits.layout import (
@@ -19,6 +19,7 @@ from rlvr_physics.tasks.physics.circuits.model import PartSpec, PinSide
 
 _SVG_NS = "http://www.w3.org/2000/svg"
 _NORMALIZED_STROKE_WIDTH = "1.25"
+_SYMBOL_MASK_INSET = 1.5
 
 ElementTree.register_namespace("", _SVG_NS)
 
@@ -98,7 +99,7 @@ def draw_asset_part(part: PlacedPart, spec: PartSpec, value: str) -> list[str]:
         Raised when no asset is registered for the part.
     """
 
-    asset = asset_for_part(part.kind, spec)
+    asset = _asset_for_rendered_part(part.kind, spec, value)
     if asset is None:
         raise ValueError(f"no SVG asset registered for part kind: {part.kind}")
     terminals = _asset_terminals(part, spec, asset)
@@ -106,9 +107,10 @@ def draw_asset_part(part: PlacedPart, spec: PartSpec, value: str) -> list[str]:
         f'<g id="{escape(part.ref)}" class="circuit-symbol">',
         f"<title>{escape(part.ref)} {escape(spec.display_name)}</title>",
         (
-            f'<rect class="symbol-mask" x="{part.bounds.x - 2.0:.1f}" '
-            f'y="{part.bounds.y - 2.0:.1f}" width="{part.bounds.width + 4.0:.1f}" '
-            f'height="{part.bounds.height + 4.0:.1f}"/>'
+            f'<rect class="symbol-mask" x="{part.bounds.x + _SYMBOL_MASK_INSET:.1f}" '
+            f'y="{part.bounds.y + _SYMBOL_MASK_INSET:.1f}" '
+            f'width="{part.bounds.width - 2.0 * _SYMBOL_MASK_INSET:.1f}" '
+            f'height="{part.bounds.height - 2.0 * _SYMBOL_MASK_INSET:.1f}"/>'
         ),
     ]
     lines.extend(_lead_lines(part, spec, terminals))
@@ -137,12 +139,40 @@ def svg_namespace_attributes() -> str:
 def asset_for_part(part_kind: str, spec: PartSpec) -> SymbolAsset | None:
     """Return the preferred editable SVG asset for a part kind."""
 
-    asset_spec = _ASSETS_BY_KIND.get(part_kind)
-    if asset_spec is None:
-        asset_spec = _ASSETS_BY_ICON.get(spec.icon)
+    asset_spec = _asset_spec_for_part(part_kind, spec, "")
     if asset_spec is None:
         return None
     return _load_asset(asset_spec)
+
+
+def _asset_for_rendered_part(
+    part_kind: str, spec: PartSpec, value: str
+) -> SymbolAsset | None:
+    """Return the asset variant for one rendered part instance."""
+
+    asset_spec = _asset_spec_for_part(part_kind, spec, value)
+    if asset_spec is None:
+        return None
+    return _load_asset(asset_spec)
+
+
+def _asset_spec_for_part(
+    part_kind: str, spec: PartSpec, value: str
+) -> Optional["_AssetSpec"]:
+    """Return static asset metadata for one part and display value."""
+
+    if part_kind == "ideal_switch" and _is_closed_switch_value(value):
+        return _SPST_SWITCH_CLOSED
+    asset_spec = _ASSETS_BY_KIND.get(part_kind)
+    if asset_spec is None:
+        asset_spec = _ASSETS_BY_ICON.get(spec.icon)
+    return asset_spec
+
+
+def _is_closed_switch_value(value: str) -> bool:
+    """Return whether a switch display value requests closed contacts."""
+
+    return value.strip().lower() == "closed"
 
 
 def anchor_name_for_side(side: PinSide) -> str:
@@ -549,6 +579,13 @@ _ZENER = _AssetSpec(
 _SPST_SWITCH = _AssetSpec(
     key="spst_switch",
     filename="spst_switch.svg",
+    anchor_names=_HORIZONTAL_TWO_PIN,
+    rotation_degrees=90.0,
+)
+
+_SPST_SWITCH_CLOSED = _AssetSpec(
+    key="spst_switch_closed",
+    filename="spst_switch_closed.svg",
     anchor_names=_HORIZONTAL_TWO_PIN,
     rotation_degrees=90.0,
 )

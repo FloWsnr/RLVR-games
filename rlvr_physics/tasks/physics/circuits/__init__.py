@@ -24,6 +24,7 @@ from rlvr_physics.tasks.physics.circuits.motifs import (
 from rlvr_physics.tasks.physics.circuits.layout import (
     Bounds,
     Layout,
+    NetLabel,
     PlacedPart,
     Point,
     Size,
@@ -78,6 +79,7 @@ __all__ = [
     "IssueSeverity",
     "Layout",
     "LinearDcResult",
+    "NetLabel",
     "PartInstance",
     "PartSpec",
     "PinKind",

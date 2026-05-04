@@ -12,7 +12,9 @@ from rlvr_physics.tasks.physics.circuits import (
     CircuitBuilder,
     GeneratorConfig,
     Layout,
+    NetLabel,
     PartSpec,
+    PinSide,
     PlacedPart,
     Point,
     Size,
@@ -470,6 +472,57 @@ def test_controlled_current_source_uses_current_symbol() -> None:
     svg = draw_svg(builder.freeze(), catalog)
 
     assert 'data-symbol="controlled_current_source"' in svg
+
+
+def test_switch_state_selects_open_or_closed_symbol() -> None:
+    catalog = default_catalog()
+    spec = catalog["ideal_switch"]
+    part = PlacedPart(
+        ref="S1",
+        kind="ideal_switch",
+        center=Point(100.0, 100.0),
+        size=Size(82.0, 48.0),
+    )
+
+    open_fragments = "\n".join(draw_asset_part(part, spec, "open"))
+    closed_fragments = "\n".join(draw_asset_part(part, spec, "closed"))
+
+    assert 'data-symbol="spst_switch"' in open_fragments
+    assert 'data-symbol="spst_switch_closed"' not in open_fragments
+    assert 'data-symbol="spst_switch_closed"' in closed_fragments
+
+
+def test_symbol_mask_leaves_pin_boundary_visible() -> None:
+    catalog = default_catalog()
+    spec = catalog["resistor"]
+    part = PlacedPart(
+        ref="R1",
+        kind="resistor",
+        center=Point(100.0, 100.0),
+        size=Size(82.0, 48.0),
+    )
+
+    fragments = "\n".join(draw_asset_part(part, spec, "1k"))
+
+    assert (
+        f'<rect class="symbol-mask" x="{part.bounds.x + 1.5:.1f}" '
+        f'y="{part.bounds.y + 1.5:.1f}"'
+    ) in fragments
+    assert f'x="{part.bounds.x - 2.0:.1f}"' not in fragments
+
+
+def test_net_label_is_exported_with_public_layout_type() -> None:
+    label = NetLabel(
+        net="VCC",
+        text="VCC",
+        side=PinSide.LEFT,
+        anchor=Point(10.0, 20.0),
+        position=Point(0.0, 20.0),
+    )
+
+    layout = Layout(parts=(), wires=(), size=Size(10.0, 10.0), net_labels=(label,))
+
+    assert layout.net_labels == (label,)
 
 
 def test_controlled_source_assets_draw_visible_terminal_leads() -> None:

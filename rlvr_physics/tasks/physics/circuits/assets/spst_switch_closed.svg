@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg
+   width="17.648745"
+   height="50.001858"
+   viewBox="0 0 17.648745 50.001858"
+   version="1.0"
+   xmlns="http://www.w3.org/2000/svg">
+  <g id="closed-switch">
+    <path
+       style="fill:none;stroke:#000000;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:1"
+       d="M 8.8243725,0 V 50.001858" />
+    <circle
+       style="fill:#ffffff;stroke:#000000;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:1"
+       cx="8.8243725"
+       cy="17.8"
+       r="2.0" />
+    <circle
+       style="fill:#ffffff;stroke:#000000;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:1"
+       cx="8.8243725"
+       cy="32.2"
+       r="2.0" />
+  </g>
+</svg>
