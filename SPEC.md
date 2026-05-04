@@ -140,18 +140,8 @@ should depend on it rather than duplicate task rules.
 Backbones may be implemented as small classes, functions, or modules. The core
 should require behavior, not inheritance from a single base class.
 
-### Shared Domain Backends
-
 Task families may depend on shared domain backends when a domain has reusable
-authoritative state and executable rules. For circuit tasks, the shared backend
-owns canonical topology, part catalogs, motif catalogs, electronic rule
-checking, procedural generation, SPICE export, layout data, and
-dependency-free static analysis helpers. Individual circuit task packages
-should layer task-specific faults, observations, actions, rewards, and sessions
-on top of that backend instead of redefining circuit semantics.
-Circuit SVG and PNG renderers should run the shared layout planner before
-drawing unless they receive a precomputed layout, keeping placement and routing
-as renderer-derived views of canonical circuit state.
+authoritative state and executable rules.
 
 ### Task Session
 
@@ -547,13 +537,6 @@ Each prototype should prove a small number of core behaviors:
 - step results with public metadata and privileged debug details for local
   inspection
 
-Cart inference is the current physics prototype. Additional task families should
-be added only when they prove a new scalar-session, verification, rendering, or
-trainer-export requirement that the existing task does not exercise.
-
-Coding verifier tasks should wait until the core needs sandbox or subprocess
-boundaries. Do not add broad abstractions before concrete tasks expose repeated
-structure.
 
 ## Acceptance Criteria For The Core
 

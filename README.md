@@ -30,17 +30,6 @@ rlvr_physics/
     task.py         # reusable play-test descriptors and CLI helpers
   tasks/
     physics/
-      circuits/
-        parts.py       # reusable component definitions
-        motifs.py      # procedural circuit motif definitions
-        erc.py         # structured electronic rule checking
-        generation.py  # seeded procedural circuit assembly
-        layout.py      # force-directed schematic placement/routing data
-        model.py       # canonical circuit data and builder
-        solver.py      # small dependency-free linear DC sanity solver
-        spice.py       # dependency-free SPICE netlist export
-        symbol_assets.py # SVG symbol asset loading and placement
-        svg.py         # deterministic SVG/PNG schematic drawing
       cart_inference/
         backbone.py   # authoritative constant-acceleration rules
         instances.py  # deterministic instance construction
@@ -52,23 +41,14 @@ rlvr_physics/
         sessions.py   # scalar runtime session
         specs.py      # public task configuration and spec helpers
         task.py       # configured task builder
+      task2/
 
 tests/
   core/
   play/
-  tasks/physics/circuits/
   tasks/physics/cart_inference/
+  tasks/physics/task2/
 ```
-
-The `physics.circuits` package is a reusable backend for future circuit tasks,
-not a playable task by itself. Circuit task backbones should use it as the
-canonical topology, validation, generation, analysis-export, and renderer-input
-layer instead of duplicating circuit semantics in task-local code.
-SVG and PNG circuit rendering invokes the force-directed layout planner when no
-precomputed layout is supplied, so generated images use the same non-overlapping
-placement path as explicit layout tests.
-The circuit SVG drawer uses editable per-symbol SVG assets for common schematic
-symbols while keeping rendering deterministic and local.
 
 ## Development
 
