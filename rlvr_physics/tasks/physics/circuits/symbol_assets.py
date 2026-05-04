@@ -15,11 +15,12 @@ from rlvr_physics.tasks.physics.circuits.layout import (
     component_label_position,
     pin_position,
 )
-from rlvr_physics.tasks.physics.circuits.model import PartSpec, PinSide
+from rlvr_physics.tasks.physics.circuits.model import PartInstance, PartSpec, PinSide
 
 _SVG_NS = "http://www.w3.org/2000/svg"
 _NORMALIZED_STROKE_WIDTH = "1.25"
 _SYMBOL_MASK_INSET = 1.5
+_SWITCH_CLOSED_MAX_RESISTANCE_OHM = 1.0e6
 
 ElementTree.register_namespace("", _SVG_NS)
 
@@ -76,7 +77,11 @@ class SymbolAsset:
         return None
 
 
-def draw_asset_part(part: PlacedPart, spec: PartSpec, value: str) -> list[str]:
+def draw_asset_part(
+    part: PlacedPart,
+    spec: PartSpec,
+    instance: PartInstance,
+) -> list[str]:
     """Draw one placed part using only exported SVG assets.
 
     Parameters
@@ -85,8 +90,8 @@ def draw_asset_part(part: PlacedPart, spec: PartSpec, value: str) -> list[str]:
         Placed part to draw.
     spec:
         Static component specification.
-    value:
-        Rendered value label.
+    instance:
+        Canonical component instance to render.
 
     Returns
     -------
@@ -99,7 +104,7 @@ def draw_asset_part(part: PlacedPart, spec: PartSpec, value: str) -> list[str]:
         Raised when no asset is registered for the part.
     """
 
-    asset = _asset_for_rendered_part(part.kind, spec, value)
+    asset = _asset_for_rendered_part(part.kind, spec, instance)
     if asset is None:
         raise ValueError(f"no SVG asset registered for part kind: {part.kind}")
     terminals = _asset_terminals(part, spec, asset)
@@ -115,8 +120,8 @@ def draw_asset_part(part: PlacedPart, spec: PartSpec, value: str) -> list[str]:
     ]
     lines.extend(_lead_lines(part, spec, terminals))
     lines.extend(_asset_symbol(part, asset))
-    label_text = f"{part.ref} {value}".strip()
-    label_position = component_label_position(part, spec, value)
+    label_text = f"{part.ref} {instance.value}".strip()
+    label_position = component_label_position(part, spec, instance.value)
     lines.append(
         f'<text class="label-halo" x="{label_position.x:.1f}" '
         f'y="{label_position.y:.1f}">{escape(label_text)}</text>'
@@ -139,29 +144,33 @@ def svg_namespace_attributes() -> str:
 def asset_for_part(part_kind: str, spec: PartSpec) -> SymbolAsset | None:
     """Return the preferred editable SVG asset for a part kind."""
 
-    asset_spec = _asset_spec_for_part(part_kind, spec, "")
+    asset_spec = _asset_spec_for_part(part_kind, spec, None)
     if asset_spec is None:
         return None
     return _load_asset(asset_spec)
 
 
 def _asset_for_rendered_part(
-    part_kind: str, spec: PartSpec, value: str
+    part_kind: str, spec: PartSpec, instance: PartInstance
 ) -> SymbolAsset | None:
     """Return the asset variant for one rendered part instance."""
 
-    asset_spec = _asset_spec_for_part(part_kind, spec, value)
+    asset_spec = _asset_spec_for_part(part_kind, spec, instance)
     if asset_spec is None:
         return None
     return _load_asset(asset_spec)
 
 
 def _asset_spec_for_part(
-    part_kind: str, spec: PartSpec, value: str
+    part_kind: str, spec: PartSpec, instance: PartInstance | None
 ) -> Optional["_AssetSpec"]:
     """Return static asset metadata for one part and display value."""
 
-    if part_kind == "ideal_switch" and _is_closed_switch_value(value):
+    if (
+        part_kind == "ideal_switch"
+        and instance is not None
+        and _is_closed_switch(instance)
+    ):
         return _SPST_SWITCH_CLOSED
     asset_spec = _ASSETS_BY_KIND.get(part_kind)
     if asset_spec is None:
@@ -169,10 +178,30 @@ def _asset_spec_for_part(
     return asset_spec
 
 
-def _is_closed_switch_value(value: str) -> bool:
-    """Return whether a switch display value requests closed contacts."""
+def _is_closed_switch(instance: PartInstance) -> bool:
+    """Return whether an ideal switch instance should render closed."""
 
-    return value.strip().lower() == "closed"
+    state = instance.metadata.get("state")
+    if isinstance(state, str):
+        return state.strip().lower() == "closed"
+    resistance = _numeric_parameter(instance, "state_resistance_ohm")
+    if resistance is None:
+        return False
+    return resistance <= _SWITCH_CLOSED_MAX_RESISTANCE_OHM
+
+
+def _numeric_parameter(instance: PartInstance, name: str) -> float | None:
+    """Return a numeric instance parameter if present and parseable."""
+
+    value = instance.parameters.get(name)
+    if isinstance(value, (float, int)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
 
 
 def anchor_name_for_side(side: PinSide) -> str:
@@ -713,7 +742,7 @@ _CONNECTOR = _AssetSpec(
     anchor_names=(("1", "left:1/2"), ("2", "left:2/2")),
 )
 
-_METER = _AssetSpec(
+_VOLTMETER = _AssetSpec(
     key="meter",
     filename="meter.svg",
     anchor_names=(
@@ -721,6 +750,19 @@ _METER = _AssetSpec(
         ("n", "bottom"),
         ("left", "left"),
         ("right", "right"),
+    ),
+)
+
+_AMMETER = _AssetSpec(
+    key="meter",
+    filename="meter.svg",
+    anchor_names=(
+        ("p", "left"),
+        ("n", "right"),
+        ("left", "left"),
+        ("right", "right"),
+        ("top", "top"),
+        ("bottom", "bottom"),
     ),
 )
 
@@ -772,6 +814,7 @@ _NOT_GATE = _AssetSpec(
 )
 
 _ASSETS_BY_KIND = {
+    "ammeter": _AMMETER,
     "bjt_npn": _NPN,
     "bjt_pnp": _PNP,
     "current_source_dc": _CURRENT_SOURCE,
@@ -785,6 +828,7 @@ _ASSETS_BY_KIND = {
     "or_gate": _OR_GATE,
     "vccs": _CONTROLLED_CURRENT_SOURCE,
     "voltage_source_dc": _DC_SOURCE,
+    "voltmeter": _VOLTMETER,
     "zener": _ZENER,
 }
 
@@ -797,7 +841,7 @@ _ASSETS_BY_ICON = {
     "inductor": _INDUCTOR,
     "lamp": _LAMP,
     "logic": _LOGIC,
-    "meter": _METER,
+    "meter": _VOLTMETER,
     "motor": _MOTOR,
     "opamp": _OPAMP,
     "relay": _RELAY,

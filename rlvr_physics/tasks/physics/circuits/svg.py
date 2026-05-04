@@ -96,8 +96,9 @@ def draw_svg(
                 f'y2="{segment.end.y:.1f}"/>'
             )
     for part in planned_layout.parts:
-        spec = catalog[parts[part.ref].kind]
-        lines.extend(draw_asset_part(part, spec, parts[part.ref].value))
+        instance = parts[part.ref]
+        spec = catalog[instance.kind]
+        lines.extend(draw_asset_part(part, spec, instance))
     for point in _terminal_points(circuit, catalog, planned_layout):
         lines.append(
             f'<circle class="junction" cx="{point.x:.1f}" cy="{point.y:.1f}" r="1.1"/>'

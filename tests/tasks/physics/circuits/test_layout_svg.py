@@ -13,6 +13,7 @@ from rlvr_physics.tasks.physics.circuits import (
     GeneratorConfig,
     Layout,
     NetLabel,
+    PartInstance,
     PartSpec,
     PinSide,
     PlacedPart,
@@ -310,7 +311,7 @@ def test_layout_uses_local_labels_for_shared_global_nets() -> None:
 def test_layout_places_local_net_labels_clear_of_rendered_geometry() -> None:
     catalog = default_catalog()
 
-    for seed, element_count in (*GENERATED_CASES, (2, 6), (12, 6)):
+    for seed, element_count in (*GENERATED_CASES, (2, 6), (12, 6), (3, 24)):
         circuit, layout = _planned_generated_case(seed, element_count)
         _assert_net_labels_are_clear((seed, element_count), circuit, layout, catalog)
     for index, (name, motif) in enumerate(default_motifs().items()):
@@ -484,12 +485,50 @@ def test_switch_state_selects_open_or_closed_symbol() -> None:
         size=Size(82.0, 48.0),
     )
 
-    open_fragments = "\n".join(draw_asset_part(part, spec, "open"))
-    closed_fragments = "\n".join(draw_asset_part(part, spec, "closed"))
+    open_fragments = "\n".join(
+        draw_asset_part(
+            part,
+            spec,
+            PartInstance(
+                "S1",
+                "ideal_switch",
+                "jumper",
+                {"state_resistance_ohm": 1e12},
+                {"state": "open"},
+            ),
+        )
+    )
+    closed_fragments = "\n".join(
+        draw_asset_part(
+            part,
+            spec,
+            PartInstance(
+                "S1",
+                "ideal_switch",
+                "jumper",
+                {"state_resistance_ohm": 0.05},
+                {"state": "closed"},
+            ),
+        )
+    )
+    closed_by_resistance_fragments = "\n".join(
+        draw_asset_part(
+            part,
+            spec,
+            PartInstance(
+                "S1",
+                "ideal_switch",
+                "jumper",
+                {"state_resistance_ohm": 0.05},
+                {},
+            ),
+        )
+    )
 
     assert 'data-symbol="spst_switch"' in open_fragments
     assert 'data-symbol="spst_switch_closed"' not in open_fragments
     assert 'data-symbol="spst_switch_closed"' in closed_fragments
+    assert 'data-symbol="spst_switch_closed"' in closed_by_resistance_fragments
 
 
 def test_symbol_mask_leaves_pin_boundary_visible() -> None:
@@ -502,7 +541,9 @@ def test_symbol_mask_leaves_pin_boundary_visible() -> None:
         size=Size(82.0, 48.0),
     )
 
-    fragments = "\n".join(draw_asset_part(part, spec, "1k"))
+    fragments = "\n".join(
+        draw_asset_part(part, spec, PartInstance("R1", "resistor", "1k", {}, {}))
+    )
 
     assert (
         f'<rect class="symbol-mask" x="{part.bounds.x + 1.5:.1f}" '
@@ -565,6 +606,7 @@ def test_logic_and_op_amp_assets_draw_visible_supply_leads() -> None:
 def test_multi_pin_asset_terminals_match_layout_pins() -> None:
     catalog = default_catalog()
     multi_pin_kinds = (
+        "ammeter",
         "and_gate",
         "or_gate",
         "op_amp",
@@ -574,6 +616,7 @@ def test_multi_pin_asset_terminals_match_layout_pins() -> None:
         "connector_2",
         "vcvs",
         "vccs",
+        "voltmeter",
         "relay",
     )
 
@@ -700,7 +743,7 @@ def test_symbol_drawer_covers_default_part_catalog() -> None:
                 size=Size(110.0, 90.0),
             ),
             spec,
-            "value",
+            PartInstance(f"{spec.ref_prefix}1", kind, "value", {}, {}),
         )
 
         assert any('class="circuit-symbol"' in fragment for fragment in fragments)

@@ -1116,13 +1116,26 @@ def _expand_net_label_candidates(*points: Point) -> tuple[Point, ...]:
     """Return nearby label positions with deterministic farther fallbacks."""
 
     step = LABEL_HEIGHT + 2.0 * LABEL_GAP
-    offsets = (0.0, step, -step, 2.0 * step, -2.0 * step, 3.0 * step, -3.0 * step)
+    offsets = (
+        0.0,
+        step,
+        -step,
+        2.0 * step,
+        -2.0 * step,
+        3.0 * step,
+        -3.0 * step,
+        4.0 * step,
+        -4.0 * step,
+        5.0 * step,
+        -5.0 * step,
+    )
     result: list[Point] = []
     for point in points:
-        for dy in offsets:
-            candidate = point.translate(0.0, dy)
-            if candidate not in result:
-                result.append(candidate)
+        for dx in offsets:
+            for dy in offsets:
+                candidate = point.translate(dx, dy)
+                if candidate not in result:
+                    result.append(candidate)
     return tuple(result)
 
 
