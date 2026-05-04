@@ -1,12 +1,17 @@
 """Tests for procedural circuit generation."""
 
+from collections import Counter
+
 from rlvr_physics.tasks.physics.circuits import (
     AnalysisSupport,
     GeneratorConfig,
     check_circuit,
     default_catalog,
     default_motif_weights,
+    default_motifs,
+    export_spice,
     generate_circuit,
+    operating_point_analysis,
 )
 
 
@@ -56,7 +61,71 @@ def test_generate_circuit_passes_erc_without_errors() -> None:
         AnalysisSupport.SPICE_EXPORT,
     )
 
-    assert report.is_valid
+    assert report.issues == ()
+
+
+def test_generate_circuit_can_emit_every_default_motif() -> None:
+    catalog = default_catalog()
+
+    for name, motif in default_motifs().items():
+        generated = generate_circuit(
+            GeneratorConfig(
+                seed=123,
+                element_count=motif.element_count + 1,
+                motif_weights={name: 1.0},
+            ),
+            catalog,
+        )
+
+        assert generated.motif_names == (name,)
+
+
+def test_single_default_motif_generations_are_spice_exportable() -> None:
+    catalog = default_catalog()
+
+    for name, motif in default_motifs().items():
+        generated = generate_circuit(
+            GeneratorConfig(
+                seed=123,
+                element_count=motif.element_count + 1,
+                motif_weights={name: 1.0},
+            ),
+            catalog,
+        )
+        report = check_circuit(
+            generated.circuit,
+            catalog,
+            AnalysisSupport.SPICE_EXPORT,
+        )
+
+        assert report.issues == (), (name, report.issues)
+        assert export_spice(
+            generated.circuit,
+            catalog,
+            operating_point_analysis(),
+        ).text.endswith(".op\n.end\n")
+
+
+def test_default_generation_uses_every_part_kind_multiple_times() -> None:
+    catalog = default_catalog()
+    weights = default_motif_weights()
+    part_counts: Counter[str] = Counter()
+
+    for seed in range(10):
+        generated = generate_circuit(
+            GeneratorConfig(
+                seed=seed,
+                element_count=80,
+                motif_weights=weights,
+            ),
+            catalog,
+        )
+        part_counts.update(part.kind for part in generated.circuit.parts)
+
+    sparse_kinds = {
+        kind: part_counts[kind] for kind in catalog if part_counts[kind] < 2
+    }
+    assert sparse_kinds == {}
 
 
 def test_generate_circuit_seed_sweep_passes_erc_without_errors() -> None:
@@ -82,4 +151,4 @@ def test_generate_circuit_seed_sweep_passes_erc_without_errors() -> None:
             assert sum(part.kind != "ground" for part in generated.circuit.parts) == (
                 element_count
             )
-            assert report.is_valid, (seed, element_count, report.errors)
+            assert report.issues == (), (seed, element_count, report.issues)

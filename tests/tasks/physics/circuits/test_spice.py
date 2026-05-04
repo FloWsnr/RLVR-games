@@ -4,7 +4,6 @@ import pytest
 
 from rlvr_physics.tasks.physics.circuits import (
     CircuitBuilder,
-    CircuitTopologyError,
     SpiceAnalysis,
     SpiceAnalysisKind,
     dc_sweep_analysis,
@@ -67,7 +66,7 @@ def test_export_spice_normalizes_dc_sweep_source_ref() -> None:
     assert ".dc SRC1 0 5 1" not in netlist.text
 
 
-def test_export_spice_rejects_connector_without_spice_semantics() -> None:
+def test_export_spice_preserves_connector_as_noop_subcircuit() -> None:
     catalog = default_catalog()
     builder = CircuitBuilder("connector", catalog)
     builder.add_part("GND1", "ground", "0", {}, {})
@@ -76,8 +75,10 @@ def test_export_spice_rejects_connector_without_spice_semantics() -> None:
     builder.connect("J1", "1", "A")
     builder.connect("J1", "2", "0")
 
-    with pytest.raises(CircuitTopologyError, match="cannot export J1"):
-        export_spice(builder.freeze(), catalog, operating_point_analysis())
+    netlist = export_spice(builder.freeze(), catalog, operating_point_analysis())
+
+    assert "XJ1 A 0 RLVR_CONNECTOR_2" in netlist.text
+    assert ".subckt RLVR_CONNECTOR_2 1 2\n.ends RLVR_CONNECTOR_2" in netlist.text
 
 
 @pytest.mark.parametrize(

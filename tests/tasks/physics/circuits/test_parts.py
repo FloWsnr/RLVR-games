@@ -48,6 +48,7 @@ def test_part_catalog_covers_planned_common_component_classes() -> None:
     assert catalog["bjt_npn"].ref_prefix == "Q"
     assert catalog["mosfet_n"].ref_prefix == "Q"
     assert catalog["jfet_n"].ref_prefix == "J"
+    assert AnalysisSupport.SPICE_EXPORT in catalog["connector_2"].analysis_support
 
 
 def test_spice_export_support_requires_spice_semantics() -> None:
@@ -58,5 +59,3 @@ def test_spice_export_support_requires_spice_semantics() -> None:
             continue
         if AnalysisSupport.SPICE_EXPORT in spec.analysis_support:
             assert spec.spice is not None, spec.kind
-
-    assert AnalysisSupport.SPICE_EXPORT not in catalog["connector_2"].analysis_support

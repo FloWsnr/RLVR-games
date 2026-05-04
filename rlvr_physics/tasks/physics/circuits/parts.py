@@ -190,19 +190,29 @@ def _transistor(
     model_name: str,
     model_definition: str,
     tags: tuple[str, ...],
+    emitter_on_top: bool,
 ) -> PartSpec:
     """Build a three-pin BJT specification."""
 
+    pins = (
+        (
+            PinSpec("e", PinKind.OPEN_EMITTER, PinSide.TOP),
+            PinSpec("b", PinKind.INPUT, PinSide.LEFT),
+            PinSpec("c", PinKind.OPEN_COLLECTOR, PinSide.BOTTOM),
+        )
+        if emitter_on_top
+        else (
+            PinSpec("c", PinKind.OPEN_COLLECTOR, PinSide.TOP),
+            PinSpec("b", PinKind.INPUT, PinSide.LEFT),
+            PinSpec("e", PinKind.OPEN_EMITTER, PinSide.BOTTOM),
+        )
+    )
     return PartSpec(
         kind=kind,
         display_name=display_name,
         ref_prefix="Q",
         family=ComponentFamily.SEMICONDUCTOR,
-        pins=(
-            PinSpec("c", PinKind.OPEN_COLLECTOR, PinSide.TOP),
-            PinSpec("b", PinKind.INPUT, PinSide.LEFT),
-            PinSpec("e", PinKind.OPEN_EMITTER, PinSide.BOTTOM),
-        ),
+        pins=pins,
         icon="transistor",
         spice=SpiceSpec(
             prefix="Q",
@@ -226,19 +236,29 @@ def _mosfet(
     model_name: str,
     model_definition: str,
     tags: tuple[str, ...],
+    source_on_top: bool,
 ) -> PartSpec:
     """Build a three-pin MOSFET specification."""
 
+    pins = (
+        (
+            PinSpec("s", PinKind.PASSIVE, PinSide.TOP),
+            PinSpec("g", PinKind.INPUT, PinSide.LEFT),
+            PinSpec("d", PinKind.PASSIVE, PinSide.BOTTOM),
+        )
+        if source_on_top
+        else (
+            PinSpec("d", PinKind.PASSIVE, PinSide.TOP),
+            PinSpec("g", PinKind.INPUT, PinSide.LEFT),
+            PinSpec("s", PinKind.PASSIVE, PinSide.BOTTOM),
+        )
+    )
     return PartSpec(
         kind=kind,
         display_name=display_name,
         ref_prefix="Q",
         family=ComponentFamily.SEMICONDUCTOR,
-        pins=(
-            PinSpec("d", PinKind.PASSIVE, PinSide.TOP),
-            PinSpec("g", PinKind.INPUT, PinSide.LEFT),
-            PinSpec("s", PinKind.PASSIVE, PinSide.BOTTOM),
-        ),
+        pins=pins,
         icon="mosfet",
         spice=SpiceSpec(
             prefix="M",
@@ -262,19 +282,29 @@ def _jfet(
     model_name: str,
     model_definition: str,
     tags: tuple[str, ...],
+    source_on_top: bool,
 ) -> PartSpec:
     """Build a three-pin JFET specification."""
 
+    pins = (
+        (
+            PinSpec("s", PinKind.PASSIVE, PinSide.TOP),
+            PinSpec("g", PinKind.INPUT, PinSide.LEFT),
+            PinSpec("d", PinKind.PASSIVE, PinSide.BOTTOM),
+        )
+        if source_on_top
+        else (
+            PinSpec("d", PinKind.PASSIVE, PinSide.TOP),
+            PinSpec("g", PinKind.INPUT, PinSide.LEFT),
+            PinSpec("s", PinKind.PASSIVE, PinSide.BOTTOM),
+        )
+    )
     return PartSpec(
         kind=kind,
         display_name=display_name,
         ref_prefix="J",
         family=ComponentFamily.SEMICONDUCTOR,
-        pins=(
-            PinSpec("d", PinKind.PASSIVE, PinSide.TOP),
-            PinSpec("g", PinKind.INPUT, PinSide.LEFT),
-            PinSpec("s", PinKind.PASSIVE, PinSide.BOTTOM),
-        ),
+        pins=pins,
         icon="jfet",
         spice=SpiceSpec(
             prefix="J",
@@ -342,6 +372,7 @@ def _logic_gate(kind: str, display_name: str, pin_count: int) -> PartSpec:
         PinSpec("gnd", PinKind.POWER_IN, PinSide.BOTTOM),
     )
     model_name = f"RLVR_{kind.upper()}"
+    input_names = tuple(pin.name for pin in input_pins)
     return PartSpec(
         kind=kind,
         display_name=display_name,
@@ -355,13 +386,34 @@ def _logic_gate(kind: str, display_name: str, pin_count: int) -> PartSpec:
             value_parameter=None,
             default_value="",
             model_name=model_name,
-            model_definition=f".subckt {model_name} {' '.join(pin.name for pin in pins)}\n.ends {model_name}",
+            model_definition=_logic_model_definition(model_name, kind, input_names),
         ),
         generation_tags=("logic", "digital"),
         analysis_support=(
             AnalysisSupport.SPICE_EXPORT,
             AnalysisSupport.TRANSIENT_EXPORT,
         ),
+    )
+
+
+def _logic_model_definition(
+    model_name: str, kind: str, input_names: tuple[str, ...]
+) -> str:
+    """Return a simple behavioral SPICE model for a logic gate."""
+
+    pins = " ".join((*input_names, "out", "vcc", "gnd"))
+    if kind == "not_gate":
+        expression = "limit(V(vcc)-V(in1), 0, V(vcc))"
+    elif kind == "and_gate":
+        expression = "limit(V(in1)*V(in2)/max(V(vcc), 1e-9), 0, V(vcc))"
+    else:
+        expression = "limit(max(V(in1), V(in2)), 0, V(vcc))"
+    return (
+        f".subckt {model_name} {pins}\n"
+        "RIN1 in1 gnd 1e12\n"
+        f"{'RIN2 in2 gnd 1e12\n' if len(input_names) > 1 else ''}"
+        f"BOUT out gnd V = {{{expression}}}\n"
+        f".ends {model_name}"
     )
 
 
@@ -509,6 +561,7 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "Q_NPN_RLVR",
             ".model Q_NPN_RLVR NPN(Is=1e-15 Bf=120)",
             ("semiconductor", "switch", "amplifier"),
+            False,
         )
     )
     add(
@@ -518,6 +571,7 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "Q_PNP_RLVR",
             ".model Q_PNP_RLVR PNP(Is=1e-15 Bf=80)",
             ("semiconductor", "switch", "amplifier"),
+            True,
         )
     )
     add(
@@ -527,6 +581,7 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "M_NMOS_RLVR",
             ".model M_NMOS_RLVR NMOS(Level=1 Vto=2 Kp=1m)",
             ("semiconductor", "switch"),
+            False,
         )
     )
     add(
@@ -536,6 +591,7 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "M_PMOS_RLVR",
             ".model M_PMOS_RLVR PMOS(Level=1 Vto=-2 Kp=1m)",
             ("semiconductor", "switch"),
+            True,
         )
     )
     add(
@@ -545,6 +601,7 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "J_NJFET_RLVR",
             ".model J_NJFET_RLVR NJF(Beta=1m Vto=-2 Lambda=0.01)",
             ("semiconductor", "amplifier"),
+            False,
         )
     )
     add(
@@ -554,6 +611,7 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "J_PJFET_RLVR",
             ".model J_PJFET_RLVR PJF(Beta=1m Vto=2 Lambda=0.01)",
             ("semiconductor", "amplifier"),
+            True,
         )
     )
     add(
@@ -675,7 +733,13 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
                 value_parameter=None,
                 default_value="",
                 model_name="RLVR_RELAY",
-                model_definition=".subckt RLVR_RELAY coil_p coil_n com no nc\n.ends RLVR_RELAY",
+                model_definition=(
+                    ".subckt RLVR_RELAY coil_p coil_n com no nc\n"
+                    "RCOIL coil_p coil_n 100\n"
+                    "RNC com nc 0.05\n"
+                    "RNO com no 1e12\n"
+                    ".ends RLVR_RELAY"
+                ),
             ),
             generation_tags=("switch", "electromechanical", "load"),
             analysis_support=(AnalysisSupport.SPICE_EXPORT,),
@@ -759,6 +823,9 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
                 model_name="RLVR_GENERIC_IC",
                 model_definition=(
                     ".subckt RLVR_GENERIC_IC in1 in2 out1 vcc gnd\n"
+                    "RIN1 in1 gnd 1e12\n"
+                    "RIN2 in2 gnd 1e12\n"
+                    "EOUT out1 gnd in1 in2 1\n"
                     ".ends RLVR_GENERIC_IC"
                 ),
             ),
@@ -785,7 +852,13 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
                 value_parameter=None,
                 default_value="",
                 model_name="RLVR_TRANSFORMER",
-                model_definition=".subckt RLVR_TRANSFORMER p1 p2 s1 s2\n.ends RLVR_TRANSFORMER",
+                model_definition=(
+                    ".subckt RLVR_TRANSFORMER p1 p2 s1 s2\n"
+                    "LPRI p1 p2 1m\n"
+                    "LSEC s1 s2 1m\n"
+                    "KCOUPLE LPRI LSEC 0.98\n"
+                    ".ends RLVR_TRANSFORMER"
+                ),
             ),
             generation_tags=("coupled", "power", "ac"),
             analysis_support=(AnalysisSupport.SPICE_EXPORT,),
@@ -802,9 +875,16 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
                 PinSpec("2", PinKind.PASSIVE, PinSide.LEFT),
             ),
             icon="connector",
-            spice=None,
+            spice=SpiceSpec(
+                prefix="X",
+                pin_order=("1", "2"),
+                value_parameter=None,
+                default_value="",
+                model_name="RLVR_CONNECTOR_2",
+                model_definition=".subckt RLVR_CONNECTOR_2 1 2\n.ends RLVR_CONNECTOR_2",
+            ),
             generation_tags=("connector", "io"),
-            analysis_support=(),
+            analysis_support=(AnalysisSupport.SPICE_EXPORT,),
         )
     )
     add(

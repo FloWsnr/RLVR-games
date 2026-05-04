@@ -8,3 +8,6 @@ https://www.mbeckler.org/inkscape/circuit_symbols/
 The source page says those drawings are released into the public domain. The
 renderer loads the exported files directly and keeps placement metadata in
 `symbol_assets.py`.
+
+Small supplemental symbols that were missing from the sheet are drawn directly
+as plain SVG files in the same normalized style.

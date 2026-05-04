@@ -739,13 +739,6 @@ def _spine_score(
     for ref, bounds in bounds_by_ref.items():
         if _segment_crosses_bounds(vertical, bounds):
             score += 100_000.0
-    for connection, anchor in anchors:
-        branch = WireSegment(anchor, Point(spine_x, anchor.y))
-        for ref, bounds in bounds_by_ref.items():
-            if ref == connection.ref:
-                continue
-            if _segment_crosses_bounds(branch, bounds):
-                score += 100_000.0
     return score
 
 

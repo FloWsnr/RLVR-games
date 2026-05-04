@@ -445,6 +445,17 @@ _VERTICAL_TWO_PIN = (
     ("n", "bottom"),
 )
 
+_DIRECT_HORIZONTAL_TWO_PIN = (
+    ("left", "left"),
+    ("right", "right"),
+    ("1", "left"),
+    ("2", "right"),
+    ("net", "left"),
+    ("rail", "right"),
+    ("a", "left"),
+    ("k", "right"),
+)
+
 _VARIABLE_RESISTOR = _AssetSpec(
     key="variable_resistor",
     filename="variable_resistor.svg",
@@ -513,6 +524,12 @@ _AC_SOURCE = _AssetSpec(
     anchor_names=_VERTICAL_TWO_PIN,
 )
 
+_CURRENT_SOURCE = _AssetSpec(
+    key="current_source_dc",
+    filename="current_source_dc.svg",
+    anchor_names=_VERTICAL_TWO_PIN,
+)
+
 _GROUND = _AssetSpec(
     key="ground",
     filename="ground.svg",
@@ -528,7 +545,7 @@ _NPN = _AssetSpec(
 _PNP = _AssetSpec(
     key="pnp",
     filename="pnp.svg",
-    anchor_names=(("b", "left"), ("c", "top"), ("e", "bottom")),
+    anchor_names=(("b", "left"), ("e", "top"), ("c", "bottom")),
 )
 
 _NMOS = _AssetSpec(
@@ -540,7 +557,7 @@ _NMOS = _AssetSpec(
 _PMOS = _AssetSpec(
     key="pmos",
     filename="pmos.svg",
-    anchor_names=(("g", "left"), ("d", "top"), ("s", "bottom")),
+    anchor_names=(("g", "left"), ("s", "top"), ("d", "bottom")),
 )
 
 _OPAMP = _AssetSpec(
@@ -618,6 +635,18 @@ _METER = _AssetSpec(
     ),
 )
 
+_LAMP = _AssetSpec(
+    key="lamp",
+    filename="lamp.svg",
+    anchor_names=_DIRECT_HORIZONTAL_TWO_PIN,
+)
+
+_MOTOR = _AssetSpec(
+    key="motor",
+    filename="motor.svg",
+    anchor_names=_DIRECT_HORIZONTAL_TWO_PIN,
+)
+
 _LOGIC = _AssetSpec(
     key="logic",
     filename="logic.svg",
@@ -633,7 +662,7 @@ _LOGIC = _AssetSpec(
 _ASSETS_BY_KIND = {
     "bjt_npn": _NPN,
     "bjt_pnp": _PNP,
-    "current_source_dc": _AC_SOURCE,
+    "current_source_dc": _CURRENT_SOURCE,
     "diode": _DIODE,
     "jfet_n": _NMOS,
     "jfet_p": _PMOS,
@@ -651,10 +680,10 @@ _ASSETS_BY_ICON = {
     "ground": _GROUND,
     "ic": _GENERIC_IC,
     "inductor": _INDUCTOR,
-    "lamp": _RESISTOR,
+    "lamp": _LAMP,
     "logic": _LOGIC,
     "meter": _METER,
-    "motor": _RESISTOR,
+    "motor": _MOTOR,
     "opamp": _OPAMP,
     "relay": _RELAY,
     "resistor": _RESISTOR,
