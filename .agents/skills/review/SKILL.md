@@ -6,6 +6,7 @@ description: Use this skill when asked to review a task you did or independently
 # Independent Review Workflow
 
 Run this skill after larger tasks or changes. A meaningful change is any non-trivial behavior change, refactor, or update that materially affects the implementation. Do not run the reviewer for small fixes or immediately after addressing the last review comment.
+If the change is larger (multiple files), you need to dispatch two subagent reviews, one for the general design and architecture, one for details in the most critical parts of the change. For smaller changes, one review is sufficient.
 
 ## Goal
 

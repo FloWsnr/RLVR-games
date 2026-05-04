@@ -35,8 +35,10 @@ Make sure we ran all relevant tests already. If not, run them now and fix any fa
 
 ### Step 5: Update AGENTs.md, SPEC.md, and README.md if relevant
 
-If the commit includes important changes in API or functionality, update the `AGENTS.md` documentation file to reflect these changes. This ensures that the documentation stays accurate and helpful for future reference. Also check and update the `SPEC.md` and `README.md` files if relevant.
-
+If the commit includes important changes in API or functionality, we need to update our docs.
+- `AGENTS.md` should include specific rules and details agents need to know about. It should NOT include specific information about one task or feature.
+- `SPEC.md` should include the overall mission, constraints, and performance evaluation criteria for the agent. Again, it should not include specific information about one task or feature except if it's a core part of the package.
+- `README.md` should include a high-level overview of the package, installation instructions, and basic usage examples. It can include some specific information about features if it helps users understand how to use the package.
 
 ### Step 6: Stage and Commit
 
