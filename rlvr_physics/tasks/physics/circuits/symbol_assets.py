@@ -12,12 +12,13 @@ from rlvr_physics.tasks.physics.circuits.layout import (
     Bounds,
     PlacedPart,
     Point,
+    component_label_position,
     pin_position,
 )
 from rlvr_physics.tasks.physics.circuits.model import PartSpec, PinSide
 
 _SVG_NS = "http://www.w3.org/2000/svg"
-_NORMALIZED_STROKE_WIDTH = "1.4"
+_NORMALIZED_STROKE_WIDTH = "1.25"
 
 ElementTree.register_namespace("", _SVG_NS)
 
@@ -104,12 +105,24 @@ def draw_asset_part(part: PlacedPart, spec: PartSpec, value: str) -> list[str]:
     lines = [
         f'<g id="{escape(part.ref)}" class="circuit-symbol">',
         f"<title>{escape(part.ref)} {escape(spec.display_name)}</title>",
+        (
+            f'<rect class="symbol-mask" x="{part.bounds.x - 2.0:.1f}" '
+            f'y="{part.bounds.y - 2.0:.1f}" width="{part.bounds.width + 4.0:.1f}" '
+            f'height="{part.bounds.height + 4.0:.1f}"/>'
+        ),
     ]
     lines.extend(_lead_lines(part, spec, terminals))
     lines.extend(_asset_symbol(part, asset))
+    label_text = f"{part.ref} {value}".strip()
+    label_position = component_label_position(part, spec, value)
     lines.append(
-        f'<text class="label" x="{part.bounds.x:.1f}" y="{part.bounds.y - 8:.1f}">'
-        f"{escape(part.ref)} {escape(value)}</text>"
+        f'<text class="label-halo" x="{label_position.x:.1f}" '
+        f'y="{label_position.y:.1f}">{escape(label_text)}</text>'
+    )
+    lines.append(
+        f'<text class="label" x="{label_position.x:.1f}" '
+        f'y="{label_position.y:.1f}">'
+        f"{escape(label_text)}</text>"
     )
     lines.append("</g>")
     return lines
@@ -326,20 +339,48 @@ def _asset_anchors(
 ) -> tuple[tuple[str, SourcePoint], ...]:
     """Return named source anchors for an exported asset."""
 
-    points = {
-        "left": SourcePoint(view_box.x, view_box.y + view_box.height / 2.0),
-        "right": SourcePoint(
-            view_box.x + view_box.width, view_box.y + view_box.height / 2.0
-        ),
-        "top": SourcePoint(view_box.x + view_box.width / 2.0, view_box.y),
-        "bottom": SourcePoint(
-            view_box.x + view_box.width / 2.0, view_box.y + view_box.height
-        ),
-    }
     anchors: list[tuple[str, SourcePoint]] = []
     for anchor_name, point_name in asset_spec.anchor_names:
-        anchors.append((anchor_name, points[point_name]))
+        anchors.append((anchor_name, _anchor_point(view_box, point_name)))
     return tuple(anchors)
+
+
+def _anchor_point(view_box: SourceViewBox, point_name: str) -> SourcePoint:
+    """Return a source anchor point from side or side-slot metadata."""
+
+    if ":" not in point_name:
+        if point_name == "left":
+            return SourcePoint(view_box.x, view_box.y + view_box.height / 2.0)
+        if point_name == "right":
+            return SourcePoint(
+                view_box.x + view_box.width, view_box.y + view_box.height / 2.0
+            )
+        if point_name == "top":
+            return SourcePoint(view_box.x + view_box.width / 2.0, view_box.y)
+        if point_name == "bottom":
+            return SourcePoint(
+                view_box.x + view_box.width / 2.0, view_box.y + view_box.height
+            )
+        raise ValueError(f"unknown symbol anchor point: {point_name!r}")
+
+    side, slot_text = point_name.split(":", maxsplit=1)
+    index_text, count_text = slot_text.split("/", maxsplit=1)
+    index = int(index_text)
+    count = int(count_text)
+    slot = float(index) / float(count + 1)
+    if side == "left":
+        return SourcePoint(view_box.x, view_box.y + view_box.height * slot)
+    if side == "right":
+        return SourcePoint(
+            view_box.x + view_box.width, view_box.y + view_box.height * slot
+        )
+    if side == "top":
+        return SourcePoint(view_box.x + view_box.width * slot, view_box.y)
+    if side == "bottom":
+        return SourcePoint(
+            view_box.x + view_box.width * slot, view_box.y + view_box.height
+        )
+    raise ValueError(f"unknown symbol anchor side: {side!r}")
 
 
 def _parse_number(raw_value: str) -> float:
@@ -564,8 +605,8 @@ _OPAMP = _AssetSpec(
     key="op_amp",
     filename="op_amp.svg",
     anchor_names=(
-        ("noninv", "left"),
-        ("inv", "left"),
+        ("noninv", "left:1/2"),
+        ("inv", "left:2/2"),
         ("out", "right"),
         ("vpos", "top"),
         ("vneg", "bottom"),
@@ -576,10 +617,10 @@ _TRANSFORMER = _AssetSpec(
     key="transformer",
     filename="transformer.svg",
     anchor_names=(
-        ("p1", "left"),
-        ("p2", "left"),
-        ("s1", "right"),
-        ("s2", "right"),
+        ("p1", "left:1/2"),
+        ("p2", "left:2/2"),
+        ("s1", "right:1/2"),
+        ("s2", "right:2/2"),
     ),
 )
 
@@ -587,10 +628,21 @@ _CONTROLLED_SOURCE = _AssetSpec(
     key="controlled_source",
     filename="controlled_source.svg",
     anchor_names=(
-        ("p", "right"),
-        ("n", "right"),
-        ("cp", "left"),
-        ("cn", "left"),
+        ("p", "right:1/2"),
+        ("n", "right:2/2"),
+        ("cp", "left:1/2"),
+        ("cn", "left:2/2"),
+    ),
+)
+
+_CONTROLLED_CURRENT_SOURCE = _AssetSpec(
+    key="controlled_current_source",
+    filename="controlled_current_source.svg",
+    anchor_names=(
+        ("p", "right:1/2"),
+        ("n", "right:2/2"),
+        ("cp", "left:1/2"),
+        ("cn", "left:2/2"),
     ),
 )
 
@@ -598,11 +650,11 @@ _RELAY = _AssetSpec(
     key="relay",
     filename="relay.svg",
     anchor_names=(
-        ("coil_p", "left"),
-        ("coil_n", "left"),
+        ("coil_p", "left:1/2"),
+        ("coil_n", "left:2/2"),
         ("com", "bottom"),
-        ("no", "right"),
-        ("nc", "right"),
+        ("no", "right:1/2"),
+        ("nc", "right:2/2"),
     ),
 )
 
@@ -610,8 +662,8 @@ _GENERIC_IC = _AssetSpec(
     key="generic_ic",
     filename="generic_ic.svg",
     anchor_names=(
-        ("in1", "left"),
-        ("in2", "left"),
+        ("in1", "left:1/2"),
+        ("in2", "left:2/2"),
         ("out1", "right"),
         ("vcc", "top"),
         ("gnd", "bottom"),
@@ -621,7 +673,7 @@ _GENERIC_IC = _AssetSpec(
 _CONNECTOR = _AssetSpec(
     key="connector",
     filename="connector.svg",
-    anchor_names=(("1", "left"), ("2", "left")),
+    anchor_names=(("1", "left:1/2"), ("2", "left:2/2")),
 )
 
 _METER = _AssetSpec(
@@ -648,11 +700,34 @@ _MOTOR = _AssetSpec(
 )
 
 _LOGIC = _AssetSpec(
-    key="logic",
+    key="and_gate",
     filename="logic.svg",
     anchor_names=(
+        ("in1", "left:1/2"),
+        ("in2", "left:2/2"),
+        ("out", "right"),
+        ("vcc", "top"),
+        ("gnd", "bottom"),
+    ),
+)
+
+_OR_GATE = _AssetSpec(
+    key="or_gate",
+    filename="or_gate.svg",
+    anchor_names=(
+        ("in1", "left:1/2"),
+        ("in2", "left:2/2"),
+        ("out", "right"),
+        ("vcc", "top"),
+        ("gnd", "bottom"),
+    ),
+)
+
+_NOT_GATE = _AssetSpec(
+    key="not_gate",
+    filename="not_gate.svg",
+    anchor_names=(
         ("in1", "left"),
-        ("in2", "left"),
         ("out", "right"),
         ("vcc", "top"),
         ("gnd", "bottom"),
@@ -669,6 +744,9 @@ _ASSETS_BY_KIND = {
     "led": _LED,
     "mosfet_n": _NMOS,
     "mosfet_p": _PMOS,
+    "not_gate": _NOT_GATE,
+    "or_gate": _OR_GATE,
+    "vccs": _CONTROLLED_CURRENT_SOURCE,
     "voltage_source_dc": _DC_SOURCE,
     "zener": _ZENER,
 }

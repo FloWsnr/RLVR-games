@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 
 <svg
-   width="82"
-   height="70"
+   width="64"
+   height="50"
    id="svg4490"
    version="1.0"
    xmlns="http://www.w3.org/2000/svg">
@@ -11,20 +11,16 @@
   <g
      id="layer1">
     <path
-       id="body"
-       d="M 18,10 V 60 L 70,35 Z"
+       id="diamond"
+       d="M 32,1 63,25 32,49 1,25 Z"
        style="fill:#ffffff;stroke:#000000;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:1" />
     <path
        id="pins"
-       d="M 0,23 H 18 M 0,47 H 18 M 70,35 H 82 M 41,0 V 21 M 41,49 V 70"
+       d="M 0,16.7 H 11.8 M 0,33.3 H 11.8 M 52.2,16.7 H 64 M 52.2,33.3 H 64"
        style="fill:none;stroke:#000000;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:1" />
     <path
-       id="plus"
-       d="M 25,23 H 33 M 29,19 V 27"
-       style="fill:none;stroke:#000000;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:1" />
-    <path
-       id="minus"
-       d="M 25,47 H 33"
+       id="current-arrow"
+       d="M 32,36 V 14 M 32,14 L 25,23 M 32,14 L 39,23"
        style="fill:none;stroke:#000000;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:1" />
   </g>
 </svg>
