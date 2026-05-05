@@ -1,6 +1,10 @@
 """Tests for built-in component catalog coverage."""
 
-from rlvr_physics.tasks.physics.circuits import AnalysisSupport, default_part_catalog
+from rlvr_physics.tasks.physics.circuits import (
+    AnalysisSupport,
+    PinSide,
+    default_part_catalog,
+)
 
 
 def test_part_catalog_covers_planned_common_component_classes() -> None:
@@ -10,15 +14,18 @@ def test_part_catalog_covers_planned_common_component_classes() -> None:
         "resistor",
         "capacitor",
         "inductor",
+        "crystal",
         "lamp",
         "motor",
         "voltage_source_dc",
+        "voltage_source_ac",
         "current_source_dc",
         "vcvs",
         "vccs",
         "diode",
         "led",
         "zener",
+        "photodiode",
         "bjt_npn",
         "bjt_pnp",
         "mosfet_n",
@@ -28,15 +35,21 @@ def test_part_catalog_covers_planned_common_component_classes() -> None:
         "pullup_resistor",
         "pulldown_resistor",
         "ideal_switch",
+        "controlled_switch",
         "relay",
         "op_amp",
         "comparator",
+        "instrumentation_amplifier",
+        "timer_555",
+        "counter_4bit",
         "transformer",
         "connector_2",
         "voltmeter",
         "ammeter",
         "and_gate",
+        "nand_gate",
         "or_gate",
+        "xor_gate",
         "not_gate",
         "generic_ic",
     }
@@ -59,3 +72,14 @@ def test_spice_export_support_requires_spice_semantics() -> None:
             continue
         if AnalysisSupport.SPICE_EXPORT in spec.analysis_support:
             assert spec.spice is not None, spec.kind
+
+
+def test_polarity_specific_device_pins_face_supply_rails() -> None:
+    catalog = default_part_catalog()
+
+    assert catalog["bjt_pnp"].pin("e").side == PinSide.TOP
+    assert catalog["bjt_pnp"].pin("c").side == PinSide.BOTTOM
+    assert catalog["mosfet_p"].pin("s").side == PinSide.TOP
+    assert catalog["mosfet_p"].pin("d").side == PinSide.BOTTOM
+    assert catalog["jfet_p"].pin("s").side == PinSide.TOP
+    assert catalog["jfet_p"].pin("d").side == PinSide.BOTTOM

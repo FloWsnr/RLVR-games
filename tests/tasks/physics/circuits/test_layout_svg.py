@@ -4,6 +4,7 @@ from functools import cache
 from importlib.resources import files
 from math import inf, nan
 from pathlib import Path
+from random import Random
 from typing import Mapping
 
 import pytest
@@ -607,12 +608,26 @@ def test_logic_symbols_use_distinct_assets() -> None:
     builder.connect("U3", "out", "E")
     builder.connect("U3", "vcc", "VCC")
     builder.connect("U3", "gnd", "0")
+    builder.add_part("U4", "nand_gate", "NAND", {}, {})
+    builder.connect("U4", "in1", "A")
+    builder.connect("U4", "in2", "B")
+    builder.connect("U4", "out", "F")
+    builder.connect("U4", "vcc", "VCC")
+    builder.connect("U4", "gnd", "0")
+    builder.add_part("U5", "xor_gate", "XOR", {}, {})
+    builder.connect("U5", "in1", "A")
+    builder.connect("U5", "in2", "B")
+    builder.connect("U5", "out", "G")
+    builder.connect("U5", "vcc", "VCC")
+    builder.connect("U5", "gnd", "0")
 
     svg = draw_svg(builder.freeze(), catalog)
 
     assert 'data-symbol="and_gate"' in svg
     assert 'data-symbol="or_gate"' in svg
     assert 'data-symbol="not_gate"' in svg
+    assert 'data-symbol="nand_gate"' in svg
+    assert 'data-symbol="xor_gate"' in svg
 
 
 def test_controlled_current_source_uses_current_symbol() -> None:
@@ -795,18 +810,22 @@ def test_svg_routes_to_asset_pin_anchors_without_corrective_leads() -> None:
 
 def test_svg_supplied_layout_keeps_terminal_dots_on_layout_pins() -> None:
     catalog = default_catalog()
-    motif = default_motifs()["led_indicator"]
-    generated = generate_circuit(
-        GeneratorConfig(
-            seed=1004,
-            element_count=motif.element_count + 1,
-            motif_weights={"led_indicator": 1.0},
-        ),
-        catalog,
-    )
-    layout = plan_layout(generated.circuit, catalog)
+    builder = CircuitBuilder("led-indicator", catalog)
+    builder.add_part("V1", "voltage_source_dc", "5V", {"voltage_v": 5.0}, {})
+    builder.connect("V1", "p", "VCC")
+    builder.connect("V1", "n", "0")
+    builder.add_part("GND1", "ground", "0", {}, {})
+    builder.connect("GND1", "0", "0")
+    builder.add_part("R1", "resistor", "1k", {"resistance_ohm": 1000.0}, {})
+    builder.add_part("D1", "led", "LED", {}, {})
+    builder.connect("R1", "1", "VCC")
+    builder.connect("R1", "2", "N1")
+    builder.connect("D1", "a", "N1")
+    builder.connect("D1", "k", "0")
+    circuit = builder.freeze()
+    layout = plan_layout(circuit, catalog)
     placed_led = layout.part_by_ref()["D1"]
-    led_instance = generated.circuit.part_by_ref()["D1"]
+    led_instance = circuit.part_by_ref()["D1"]
     led_spec = catalog[led_instance.kind]
     layout_anchor = pin_position(placed_led, led_spec, "a")
     asset_anchor = asset_terminals_for_part(
@@ -815,7 +834,7 @@ def test_svg_supplied_layout_keeps_terminal_dots_on_layout_pins() -> None:
         led_instance,
     )["a"]
 
-    svg = draw_svg(generated.circuit, catalog, layout)
+    svg = draw_svg(circuit, catalog, layout)
 
     assert _point_key(layout_anchor) != _point_key(asset_anchor)
     assert (
@@ -950,7 +969,9 @@ def test_logic_and_op_amp_assets_draw_visible_supply_leads() -> None:
     asset_root = files("rlvr_physics.tasks.physics.circuits.assets")
     expected_leads = {
         "logic.svg": ("M 35,0 V 10", "M 35,60 V 70"),
+        "nand_gate.svg": ("M 35,0 V 10", "M 35,60 V 70"),
         "or_gate.svg": ("M 35,0 V 12", "M 35,58 V 70"),
+        "xor_gate.svg": ("M 35,0 V 12", "M 35,58 V 70"),
         "not_gate.svg": ("M 35,0 V 23", "M 35,47 V 70"),
         "op_amp.svg": ("M 41,0 V 21", "M 41,49 V 70"),
     }
@@ -1201,6 +1222,20 @@ def test_generated_circuit_png_artifacts_are_written() -> None:
             GENERATED_IMAGE_DIR
             / f"generated_seed_{seed:03d}_count_{element_count:02d}.png"
         )
+
+        validate_png_image_data(png, PNG_MIME_TYPE)
+        image_path.write_bytes(png)
+        assert image_path.stat().st_size > 0
+
+
+def test_default_motif_png_artifacts_are_written() -> None:
+    catalog = default_catalog()
+    GENERATED_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+    for index, (name, motif) in enumerate(default_motifs().items(), start=1):
+        circuit = _motif_rendering_circuit(name)
+        png = draw_png(circuit, catalog)
+        image_path = GENERATED_IMAGE_DIR / f"motif_{index:02d}_{name}.png"
 
         validate_png_image_data(png, PNG_MIME_TYPE)
         image_path.write_bytes(png)
@@ -1630,6 +1665,58 @@ def _planned_motif_case(
         catalog,
     )
     return generated.circuit, plan_layout(generated.circuit, catalog)
+
+
+def _motif_rendering_circuit(motif_name: str) -> Circuit:
+    """Build one default motif circuit for image artifact inspection."""
+
+    catalog = default_catalog()
+    motif = default_motifs()[motif_name]
+    ctx = _MotifRenderingContext(CircuitBuilder(f"motif-{motif_name}", catalog))
+    assert motif.build(ctx, motif.element_count)
+    nets = ctx.builder._nets
+    if "VCC" in nets:
+        ctx.builder.add_part("V1", "voltage_source_dc", "5V", {"voltage_v": 5.0}, {})
+        ctx.builder.connect("V1", "p", "VCC")
+        ctx.builder.connect("V1", "n", "0")
+    if "0" in nets:
+        ctx.builder.add_part("GND1", "ground", "0", {}, {})
+        ctx.builder.connect("GND1", "0", "0")
+    return ctx.builder.freeze()
+
+
+class _MotifRenderingContext:
+    """Motif context used by image artifact tests."""
+
+    def __init__(self, builder: CircuitBuilder) -> None:
+        """Initialize a motif rendering context."""
+
+        self.builder = builder
+        self.rng = Random(123)
+        self.counters: dict[str, int] = {}
+        self.node_counter = 0
+
+    def add_part(
+        self,
+        prefix: str,
+        kind: str,
+        value: str,
+        parameters: Mapping[str, object],
+        metadata: Mapping[str, object],
+    ) -> str:
+        """Add a numbered part to the rendered motif circuit."""
+
+        number = self.counters.get(prefix, 0) + 1
+        self.counters[prefix] = number
+        ref = f"{prefix}{number}"
+        self.builder.add_part(ref, kind, value, parameters, metadata)
+        return ref
+
+    def node(self) -> str:
+        """Return a fresh node name."""
+
+        self.node_counter += 1
+        return f"N{self.node_counter}"
 
 
 def _default_rendered_boxes(

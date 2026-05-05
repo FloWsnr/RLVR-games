@@ -404,8 +404,12 @@ def _logic_model_definition(
     pins = " ".join((*input_names, "out", "vcc", "gnd"))
     if kind == "not_gate":
         expression = "limit(V(vcc)-V(in1), 0, V(vcc))"
+    elif kind == "nand_gate":
+        expression = "limit(V(vcc)-V(in1)*V(in2)/max(V(vcc), 1e-9), 0, V(vcc))"
     elif kind == "and_gate":
         expression = "limit(V(in1)*V(in2)/max(V(vcc), 1e-9), 0, V(vcc))"
+    elif kind == "xor_gate":
+        expression = "limit(abs(V(in1)-V(in2)), 0, V(vcc))"
     else:
         expression = "limit(max(V(in1), V(in2)), 0, V(vcc))"
     return (
@@ -414,6 +418,38 @@ def _logic_model_definition(
         f"{'RIN2 in2 gnd 1e12\n' if len(input_names) > 1 else ''}"
         f"BOUT out gnd V = {{{expression}}}\n"
         f".ends {model_name}"
+    )
+
+
+def _subcircuit_part(
+    kind: str,
+    display_name: str,
+    ref_prefix: str,
+    pins: tuple[PinSpec, ...],
+    icon: str,
+    model_name: str,
+    model_definition: str,
+    tags: tuple[str, ...],
+) -> PartSpec:
+    """Build a SPICE-exportable symbolic subcircuit part."""
+
+    return PartSpec(
+        kind=kind,
+        display_name=display_name,
+        ref_prefix=ref_prefix,
+        family=ComponentFamily.INTEGRATED,
+        pins=pins,
+        icon=icon,
+        spice=SpiceSpec(
+            prefix="X",
+            pin_order=tuple(pin.name for pin in pins),
+            value_parameter=None,
+            default_value="",
+            model_name=model_name,
+            model_definition=model_definition,
+        ),
+        generation_tags=tags,
+        analysis_support=(AnalysisSupport.SPICE_EXPORT,),
     )
 
 
@@ -478,6 +514,33 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
         )
     )
     add(
+        PartSpec(
+            kind="crystal",
+            display_name="Crystal",
+            ref_prefix="XTAL",
+            family=ComponentFamily.PASSIVE,
+            pins=_two_pin_passive_pins(),
+            icon="crystal",
+            spice=SpiceSpec(
+                prefix="X",
+                pin_order=("1", "2"),
+                value_parameter=None,
+                default_value="",
+                model_name="RLVR_CRYSTAL",
+                model_definition=(
+                    ".subckt RLVR_CRYSTAL 1 2\n"
+                    "RLOSS 1 nx 50\n"
+                    "LM nx ny 10m\n"
+                    "CM ny 2 20f\n"
+                    "CP 1 2 5p\n"
+                    ".ends RLVR_CRYSTAL"
+                ),
+            ),
+            generation_tags=("timing", "oscillator"),
+            analysis_support=(AnalysisSupport.SPICE_EXPORT,),
+        )
+    )
+    add(
         _two_pin_passive(
             "lamp",
             "Lamp",
@@ -513,6 +576,32 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "DC 5",
             ("source", "power"),
             PinKind.POWER_OUT,
+        )
+    )
+    add(
+        PartSpec(
+            kind="voltage_source_ac",
+            display_name="AC Voltage Source",
+            ref_prefix="VAC",
+            family=ComponentFamily.SOURCE,
+            pins=(
+                PinSpec("p", PinKind.POWER_OUT, PinSide.TOP),
+                PinSpec("n", PinKind.PASSIVE, PinSide.BOTTOM),
+            ),
+            icon="source",
+            spice=SpiceSpec(
+                prefix="V",
+                pin_order=("p", "n"),
+                value_parameter="voltage_spec",
+                default_value="AC 1",
+                model_name=None,
+                model_definition=None,
+            ),
+            generation_tags=("source", "power", "ac"),
+            analysis_support=(
+                AnalysisSupport.SPICE_EXPORT,
+                AnalysisSupport.TRANSIENT_EXPORT,
+            ),
         )
     )
     add(
@@ -552,6 +641,15 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "D_ZENER_RLVR",
             ".model D_ZENER_RLVR D(Is=1e-14 Rs=2 Bv=5.1 Ibv=1m)",
             ("semiconductor", "clamp", "reference"),
+        )
+    )
+    add(
+        _diode_like(
+            "photodiode",
+            "Photodiode",
+            "D_PHOTO_RLVR",
+            ".model D_PHOTO_RLVR D(Is=1e-12 Rs=5 Cjo=10p)",
+            ("semiconductor", "sensor", "photodiode"),
         )
     )
     add(
@@ -714,6 +812,28 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
         )
     )
     add(
+        _subcircuit_part(
+            "controlled_switch",
+            "Controlled Switch",
+            "S",
+            (
+                PinSpec("in", PinKind.PASSIVE, PinSide.LEFT),
+                PinSpec("out", PinKind.PASSIVE, PinSide.RIGHT),
+                PinSpec("ctrl", PinKind.INPUT, PinSide.TOP),
+            ),
+            "switch",
+            "RLVR_CONTROLLED_SWITCH",
+            (
+                ".subckt RLVR_CONTROLLED_SWITCH in out ctrl\n"
+                "SCTRL in out ctrl 0 RLVR_CONTROLLED_SWITCH_MODEL\n"
+                "RCTRL ctrl 0 1e12\n"
+                ".model RLVR_CONTROLLED_SWITCH_MODEL SW(Ron=0.1 Roff=1e12 Vt=2 Vh=0.1)\n"
+                ".ends RLVR_CONTROLLED_SWITCH"
+            ),
+            ("switch", "control"),
+        )
+    )
+    add(
         PartSpec(
             kind="relay",
             display_name="Relay",
@@ -736,8 +856,10 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
                 model_definition=(
                     ".subckt RLVR_RELAY coil_p coil_n com no nc\n"
                     "RCOIL coil_p coil_n 100\n"
-                    "RNC com nc 0.05\n"
-                    "RNO com no 1e12\n"
+                    "SNO com no coil_p coil_n RLVR_RELAY_NO\n"
+                    "SNC com nc coil_n coil_p RLVR_RELAY_NC\n"
+                    ".model RLVR_RELAY_NO SW(Ron=0.05 Roff=1e12 Vt=2 Vh=0.1)\n"
+                    ".model RLVR_RELAY_NC SW(Ron=0.05 Roff=1e12 Vt=-2 Vh=0.1)\n"
                     ".ends RLVR_RELAY"
                 ),
             ),
@@ -765,7 +887,11 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
                 value_parameter=None,
                 default_value="",
                 model_name="RLVR_IDEAL_OPAMP",
-                model_definition=".subckt RLVR_IDEAL_OPAMP noninv inv vpos vneg out\nEOUT out 0 noninv inv 1e6\n.ends RLVR_IDEAL_OPAMP",
+                model_definition=(
+                    ".subckt RLVR_IDEAL_OPAMP noninv inv vpos vneg out\n"
+                    "BOUT out vneg V = {limit(1e6*(V(noninv)-V(inv)), 0, V(vpos)-V(vneg))}\n"
+                    ".ends RLVR_IDEAL_OPAMP"
+                ),
             ),
             generation_tags=("amplifier", "filter", "integrated"),
             analysis_support=(AnalysisSupport.SPICE_EXPORT,),
@@ -793,12 +919,70 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
                 model_name="RLVR_COMPARATOR",
                 model_definition=(
                     ".subckt RLVR_COMPARATOR noninv inv vpos vneg out\n"
-                    "EOUT out 0 noninv inv 1e6\n"
+                    "BOUT out vneg V = {limit(1e6*(V(noninv)-V(inv)), 0, V(vpos)-V(vneg))}\n"
                     ".ends RLVR_COMPARATOR"
                 ),
             ),
             generation_tags=("comparator", "integrated", "threshold"),
             analysis_support=(AnalysisSupport.SPICE_EXPORT,),
+        )
+    )
+    add(
+        _subcircuit_part(
+            "instrumentation_amplifier",
+            "Instrumentation Amplifier",
+            "UINA",
+            (
+                PinSpec("inp", PinKind.INPUT, PinSide.LEFT),
+                PinSpec("inn", PinKind.INPUT, PinSide.LEFT),
+                PinSpec("ref", PinKind.INPUT, PinSide.LEFT),
+                PinSpec("rg1", PinKind.PASSIVE, PinSide.BOTTOM),
+                PinSpec("rg2", PinKind.PASSIVE, PinSide.BOTTOM),
+                PinSpec("vpos", PinKind.POWER_IN, PinSide.TOP),
+                PinSpec("vneg", PinKind.POWER_IN, PinSide.BOTTOM),
+                PinSpec("out", PinKind.OUTPUT, PinSide.RIGHT),
+            ),
+            "ic",
+            "RLVR_INSTRUMENTATION_AMP",
+            (
+                ".subckt RLVR_INSTRUMENTATION_AMP inp inn ref rg1 rg2 vpos vneg out\n"
+                "RINP inp ref 1e12\n"
+                "RINN inn ref 1e12\n"
+                "RGINT rg1 rg2 1e9\n"
+                "EOUT out ref inp inn 100\n"
+                ".ends RLVR_INSTRUMENTATION_AMP"
+            ),
+            ("amplifier", "instrumentation", "integrated"),
+        )
+    )
+    add(
+        _subcircuit_part(
+            "timer_555",
+            "555 Timer",
+            "U",
+            (
+                PinSpec("gnd", PinKind.POWER_IN, PinSide.BOTTOM),
+                PinSpec("vcc", PinKind.POWER_IN, PinSide.TOP),
+                PinSpec("reset", PinKind.INPUT, PinSide.LEFT),
+                PinSpec("ctrl", PinKind.INPUT, PinSide.LEFT),
+                PinSpec("disch", PinKind.OPEN_COLLECTOR, PinSide.RIGHT),
+                PinSpec("thresh", PinKind.INPUT, PinSide.LEFT),
+                PinSpec("trig", PinKind.INPUT, PinSide.LEFT),
+                PinSpec("out", PinKind.OUTPUT, PinSide.RIGHT),
+            ),
+            "ic",
+            "RLVR_TIMER_555",
+            (
+                ".subckt RLVR_TIMER_555 gnd vcc reset ctrl disch thresh trig out\n"
+                "RRESET reset vcc 1e12\n"
+                "RCTRL ctrl gnd 1e12\n"
+                "RTH thresh gnd 1e12\n"
+                "RTRIG trig gnd 1e12\n"
+                "RDISCH disch gnd 1e9\n"
+                "VOUT out gnd PULSE(0 5 0 1u 1u 1m 2m)\n"
+                ".ends RLVR_TIMER_555"
+            ),
+            ("timer", "oscillator", "integrated"),
         )
     )
     add(
@@ -831,6 +1015,52 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ),
             generation_tags=("integrated", "block", "generic"),
             analysis_support=(AnalysisSupport.SPICE_EXPORT,),
+        )
+    )
+    add(
+        _subcircuit_part(
+            "counter_4bit",
+            "4-bit Synchronous Counter",
+            "U",
+            (
+                PinSpec("clk", PinKind.INPUT, PinSide.LEFT),
+                PinSpec("clr_n", PinKind.INPUT, PinSide.LEFT),
+                PinSpec("load_n", PinKind.INPUT, PinSide.LEFT),
+                PinSpec("enp", PinKind.INPUT, PinSide.LEFT),
+                PinSpec("ent", PinKind.INPUT, PinSide.LEFT),
+                PinSpec("a", PinKind.INPUT, PinSide.LEFT),
+                PinSpec("b", PinKind.INPUT, PinSide.LEFT),
+                PinSpec("c", PinKind.INPUT, PinSide.LEFT),
+                PinSpec("d", PinKind.INPUT, PinSide.LEFT),
+                PinSpec("vcc", PinKind.POWER_IN, PinSide.TOP),
+                PinSpec("gnd", PinKind.POWER_IN, PinSide.BOTTOM),
+                PinSpec("qa", PinKind.OUTPUT, PinSide.RIGHT),
+                PinSpec("qb", PinKind.OUTPUT, PinSide.RIGHT),
+                PinSpec("qc", PinKind.OUTPUT, PinSide.RIGHT),
+                PinSpec("qd", PinKind.OUTPUT, PinSide.RIGHT),
+                PinSpec("rco", PinKind.OUTPUT, PinSide.RIGHT),
+            ),
+            "ic",
+            "RLVR_COUNTER_4BIT",
+            (
+                ".subckt RLVR_COUNTER_4BIT clk clr_n load_n enp ent a b c d vcc gnd qa qb qc qd rco\n"
+                "RCLK clk gnd 1e12\n"
+                "RCLR clr_n vcc 1e12\n"
+                "RLOAD load_n vcc 1e12\n"
+                "REN1 enp vcc 1e12\n"
+                "REN2 ent vcc 1e12\n"
+                "RA a gnd 1e12\n"
+                "RB b gnd 1e12\n"
+                "RC c gnd 1e12\n"
+                "RD d gnd 1e12\n"
+                "VQA qa gnd PULSE(0 5 0 1n 1n 1u 2u)\n"
+                "VQB qb gnd PULSE(0 5 0 1n 1n 2u 4u)\n"
+                "VQC qc gnd PULSE(0 5 0 1n 1n 4u 8u)\n"
+                "VQD qd gnd PULSE(0 5 0 1n 1n 8u 16u)\n"
+                "VRCO rco gnd PULSE(0 5 0 1n 1n 16u 32u)\n"
+                ".ends RLVR_COUNTER_4BIT"
+            ),
+            ("logic", "counter", "digital"),
         )
     )
     add(
@@ -934,7 +1164,9 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
         )
     )
     add(_logic_gate("and_gate", "AND Gate", 2))
+    add(_logic_gate("nand_gate", "NAND Gate", 2))
     add(_logic_gate("or_gate", "OR Gate", 2))
+    add(_logic_gate("xor_gate", "XOR Gate", 2))
     add(_logic_gate("not_gate", "NOT Gate", 1))
     return MappingProxyType(specs)
 

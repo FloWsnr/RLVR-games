@@ -400,6 +400,8 @@ def _asset_terminals(
         source = asset.anchor(pin.name)
         if source is not None:
             terminals[pin.name] = _asset_point(part, asset, source)
+        else:
+            terminals[pin.name] = pin_position(part, spec, pin.name)
     return terminals
 
 
@@ -853,6 +855,12 @@ _INDUCTOR = _AssetSpec(
     rotation_degrees=90.0,
 )
 
+_CRYSTAL = _AssetSpec(
+    key="crystal",
+    filename="crystal.svg",
+    rotation_degrees=90.0,
+)
+
 _LED = _AssetSpec(
     key="led",
     filename="led.svg",
@@ -988,6 +996,16 @@ _OR_GATE = _AssetSpec(
     filename="or_gate.svg",
 )
 
+_NAND_GATE = _AssetSpec(
+    key="nand_gate",
+    filename="nand_gate.svg",
+)
+
+_XOR_GATE = _AssetSpec(
+    key="xor_gate",
+    filename="xor_gate.svg",
+)
+
 _NOT_GATE = _AssetSpec(
     key="not_gate",
     filename="not_gate.svg",
@@ -997,6 +1015,7 @@ _ASSETS_BY_KIND = {
     "ammeter": _AMMETER,
     "bjt_npn": _NPN,
     "bjt_pnp": _PNP,
+    "crystal": _CRYSTAL,
     "current_source_dc": _CURRENT_SOURCE,
     "diode": _DIODE,
     "jfet_n": _NMOS,
@@ -1004,13 +1023,17 @@ _ASSETS_BY_KIND = {
     "led": _LED,
     "mosfet_n": _NMOS,
     "mosfet_p": _PMOS,
+    "nand_gate": _NAND_GATE,
+    "photodiode": _DIODE,
     "not_gate": _NOT_GATE,
     "or_gate": _OR_GATE,
     "pulldown_resistor": _PULLDOWN_RESISTOR,
     "pullup_resistor": _PULLUP_RESISTOR,
     "vccs": _CONTROLLED_CURRENT_SOURCE,
+    "voltage_source_ac": _AC_SOURCE,
     "voltage_source_dc": _DC_SOURCE,
     "voltmeter": _VOLTMETER,
+    "xor_gate": _XOR_GATE,
     "zener": _ZENER,
 }
 
