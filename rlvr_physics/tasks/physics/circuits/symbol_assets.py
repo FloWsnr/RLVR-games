@@ -181,13 +181,13 @@ def _asset_spec_for_part(
 def _is_closed_switch(instance: PartInstance) -> bool:
     """Return whether an ideal switch instance should render closed."""
 
+    resistance = _numeric_parameter(instance, "state_resistance_ohm")
+    if resistance is not None:
+        return resistance <= _SWITCH_CLOSED_MAX_RESISTANCE_OHM
     state = instance.metadata.get("state")
     if isinstance(state, str):
         return state.strip().lower() == "closed"
-    resistance = _numeric_parameter(instance, "state_resistance_ohm")
-    if resistance is None:
-        return False
-    return resistance <= _SWITCH_CLOSED_MAX_RESISTANCE_OHM
+    return False
 
 
 def _numeric_parameter(instance: PartInstance, name: str) -> float | None:

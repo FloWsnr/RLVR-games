@@ -524,11 +524,25 @@ def test_switch_state_selects_open_or_closed_symbol() -> None:
             ),
         )
     )
+    closed_with_stale_metadata_fragments = "\n".join(
+        draw_asset_part(
+            part,
+            spec,
+            PartInstance(
+                "S1",
+                "ideal_switch",
+                "jumper",
+                {"state_resistance_ohm": 0.05},
+                {"state": "open"},
+            ),
+        )
+    )
 
     assert 'data-symbol="spst_switch"' in open_fragments
     assert 'data-symbol="spst_switch_closed"' not in open_fragments
     assert 'data-symbol="spst_switch_closed"' in closed_fragments
     assert 'data-symbol="spst_switch_closed"' in closed_by_resistance_fragments
+    assert 'data-symbol="spst_switch_closed"' in closed_with_stale_metadata_fragments
 
 
 def test_symbol_mask_leaves_pin_boundary_visible() -> None:
