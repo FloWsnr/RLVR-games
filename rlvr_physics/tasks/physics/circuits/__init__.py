@@ -61,7 +61,13 @@ from rlvr_physics.tasks.physics.circuits.spice import (
     operating_point_analysis,
     transient_analysis,
 )
-from rlvr_physics.tasks.physics.circuits.svg import draw_png, draw_svg, to_png
+from rlvr_physics.tasks.physics.circuits.svg import (
+    DEFAULT_RENDER_STYLE,
+    CircuitRenderStyle,
+    draw_png,
+    draw_svg,
+    to_png,
+)
 
 __all__ = [
     "AnalysisSupport",
@@ -74,6 +80,8 @@ __all__ = [
     "CircuitTopologyError",
     "ComponentFamily",
     "Connection",
+    "CircuitRenderStyle",
+    "DEFAULT_RENDER_STYLE",
     "GeneratedCircuit",
     "GeneratorConfig",
     "IssueSeverity",

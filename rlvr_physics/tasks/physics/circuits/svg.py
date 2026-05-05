@@ -1,7 +1,9 @@
 """SVG schematic drawing from deterministic circuit layouts."""
 
 from cairosvg import svg2png
+from dataclasses import dataclass
 from html import escape
+from math import isfinite
 from typing import Mapping
 
 from rlvr_physics.tasks.physics.circuits.layout import (
@@ -22,8 +24,93 @@ from rlvr_physics.tasks.physics.circuits.symbol_assets import (
     svg_namespace_attributes,
 )
 
-_TERMINAL_DOT_RADIUS = 1.8
-_JUNCTION_DOT_RADIUS = 2.2
+
+@dataclass(frozen=True)
+class CircuitRenderStyle:
+    """Visual stroke and node sizes for schematic rendering.
+
+    Parameters
+    ----------
+    wire_stroke_width:
+        Stroke width for routed wire segments.
+    symbol_stroke_width:
+        Stroke width for component symbol outlines and normalized SVG asset
+        strokes.
+    symbol_solid_stroke_width:
+        Stroke width for solid symbol elements.
+    pin_stroke_width:
+        Stroke width for optional pin-label anchors.
+    terminal_dot_radius:
+        Radius for dots at connected component terminals.
+    junction_dot_radius:
+        Radius for dots at same-net wire junctions.
+    """
+
+    wire_stroke_width: float
+    symbol_stroke_width: float
+    symbol_solid_stroke_width: float
+    pin_stroke_width: float
+    terminal_dot_radius: float
+    junction_dot_radius: float
+
+    def __post_init__(self) -> None:
+        """Validate that render style dimensions are positive."""
+
+        for name, value in (
+            ("wire_stroke_width", self.wire_stroke_width),
+            ("symbol_stroke_width", self.symbol_stroke_width),
+            ("symbol_solid_stroke_width", self.symbol_solid_stroke_width),
+            ("pin_stroke_width", self.pin_stroke_width),
+            ("terminal_dot_radius", self.terminal_dot_radius),
+            ("junction_dot_radius", self.junction_dot_radius),
+        ):
+            if not isfinite(value) or value <= 0.0:
+                raise ValueError(f"{name} must be finite and positive")
+
+    def scaled(
+        self,
+        *,
+        stroke_scale: float,
+        dot_scale: float,
+    ) -> "CircuitRenderStyle":
+        """Return a copy with stroke widths and dot radii scaled.
+
+        Parameters
+        ----------
+        stroke_scale:
+            Positive multiplier for line and symbol stroke widths.
+        dot_scale:
+            Positive multiplier for terminal and junction dot radii.
+
+        Returns
+        -------
+        CircuitRenderStyle
+            New render style with scaled visual dimensions.
+        """
+
+        if not isfinite(stroke_scale) or stroke_scale <= 0.0:
+            raise ValueError("stroke_scale must be finite and positive")
+        if not isfinite(dot_scale) or dot_scale <= 0.0:
+            raise ValueError("dot_scale must be finite and positive")
+        return CircuitRenderStyle(
+            wire_stroke_width=self.wire_stroke_width * stroke_scale,
+            symbol_stroke_width=self.symbol_stroke_width * stroke_scale,
+            symbol_solid_stroke_width=self.symbol_solid_stroke_width * stroke_scale,
+            pin_stroke_width=self.pin_stroke_width * stroke_scale,
+            terminal_dot_radius=self.terminal_dot_radius * dot_scale,
+            junction_dot_radius=self.junction_dot_radius * dot_scale,
+        )
+
+
+BASE_RENDER_STYLE = CircuitRenderStyle(
+    wire_stroke_width=1.35,
+    symbol_stroke_width=1.25,
+    symbol_solid_stroke_width=1.0,
+    pin_stroke_width=1.25,
+    terminal_dot_radius=1.8,
+    junction_dot_radius=2.2,
+)
+DEFAULT_RENDER_STYLE = BASE_RENDER_STYLE.scaled(stroke_scale=2.0, dot_scale=2.0)
 
 
 def draw_svg(
@@ -32,6 +119,7 @@ def draw_svg(
     layout: Layout | None = None,
     *,
     show_pin_labels: bool = False,
+    style: CircuitRenderStyle = DEFAULT_RENDER_STYLE,
 ) -> str:
     """Draw a circuit layout as deterministic SVG text.
 
@@ -51,6 +139,8 @@ def draw_svg(
     show_pin_labels:
         Whether to draw external pin labels. SVG-symbol rendering hides these
         labels by default to keep schematic images readable.
+    style:
+        Visual stroke and node sizes for schematic rendering.
 
     Returns
     -------
@@ -87,17 +177,26 @@ def draw_svg(
             f'{planned_layout.size.height:.0f}">'
         ),
         "<style>",
-        ".wire{stroke:#1f2937;stroke-width:1.35;fill:none;stroke-linecap:round}",
-        ".symbol{stroke:#111827;stroke-width:1.25;fill:none;stroke-linecap:round;stroke-linejoin:round}",
+        (
+            f".wire{{stroke:#1f2937;stroke-width:{style.wire_stroke_width};"
+            "fill:none;stroke-linecap:round}"
+        ),
+        (
+            f".symbol{{stroke:#111827;stroke-width:{style.symbol_stroke_width};"
+            "fill:none;stroke-linecap:round;stroke-linejoin:round}"
+        ),
         ".symbol-fill{fill:#ffffff}",
-        ".symbol-solid{stroke:#111827;stroke-width:1.0;fill:#111827;stroke-linejoin:round}",
+        (
+            f".symbol-solid{{stroke:#111827;stroke-width:{style.symbol_solid_stroke_width};"
+            "fill:#111827;stroke-linejoin:round}"
+        ),
         ".symbol-mask{fill:#ffffff}",
         ".symbol-asset{overflow:hidden}",
         ".label{font:11px monospace;fill:#111827}",
         ".label-halo{font:11px monospace;fill:none;stroke:#ffffff;stroke-width:3;stroke-linejoin:round}",
         ".net-label{font:10px monospace;font-weight:700;fill:#374151}",
         ".net-label-halo{font:10px monospace;font-weight:700;fill:none;stroke:#ffffff;stroke-width:3;stroke-linejoin:round}",
-        ".pin{stroke:#6b7280;stroke-width:1.25;fill:none}",
+        f".pin{{stroke:#6b7280;stroke-width:{style.pin_stroke_width};fill:none}}",
         ".junction{fill:#111827}",
         "</style>",
         (
@@ -123,6 +222,7 @@ def draw_svg(
                 spec,
                 instance,
                 draw_leads=draw_corrective_leads,
+                symbol_stroke_width=style.symbol_stroke_width,
             )
         )
     for point in _terminal_points(
@@ -132,12 +232,12 @@ def draw_svg(
         use_asset_pin_positions=layout is None,
     ):
         lines.append(
-            f'<circle class="junction" cx="{point.x:.1f}" cy="{point.y:.1f}" r="{_TERMINAL_DOT_RADIUS:.1f}"/>'
+            f'<circle class="junction" cx="{point.x:.1f}" cy="{point.y:.1f}" r="{style.terminal_dot_radius:.1f}"/>'
         )
     for wire in planned_layout.wires:
         for point in _junction_points(wire.segments):
             lines.append(
-                f'<circle class="junction" cx="{point.x:.1f}" cy="{point.y:.1f}" r="{_JUNCTION_DOT_RADIUS:.1f}"/>'
+                f'<circle class="junction" cx="{point.x:.1f}" cy="{point.y:.1f}" r="{style.junction_dot_radius:.1f}"/>'
             )
     for label in planned_layout.net_labels:
         lines.extend(_draw_net_label(label))
@@ -212,6 +312,7 @@ def draw_png(
     layout: Layout | None = None,
     *,
     show_pin_labels: bool = False,
+    style: CircuitRenderStyle = DEFAULT_RENDER_STYLE,
 ) -> bytes:
     """Draw a circuit as PNG bytes.
 
@@ -226,6 +327,8 @@ def draw_png(
         layout planner runs before rendering.
     show_pin_labels:
         Whether to draw external pin labels.
+    style:
+        Visual stroke and node sizes for schematic rendering.
 
     Returns
     -------
@@ -239,6 +342,7 @@ def draw_png(
             catalog,
             layout,
             show_pin_labels=show_pin_labels,
+            style=style,
         )
     )
 

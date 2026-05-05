@@ -2,6 +2,7 @@
 
 from functools import cache
 from importlib.resources import files
+from math import inf, nan
 from pathlib import Path
 from typing import Mapping
 
@@ -13,6 +14,8 @@ from rlvr_physics.tasks.physics.circuits import (
     Bounds,
     Circuit,
     CircuitBuilder,
+    CircuitRenderStyle,
+    DEFAULT_RENDER_STYLE,
     GeneratorConfig,
     Layout,
     NetLabel,
@@ -50,6 +53,7 @@ from rlvr_physics.tasks.physics.circuits.symbol_assets import (
     asset_render_bounds_for_part,
     asset_terminals_for_part,
     draw_asset_part,
+    symbol_fragments_for_scale,
 )
 from rlvr_physics.tasks.physics.circuits.svg import (
     _asset_pin_position,
@@ -479,6 +483,14 @@ def test_svg_draws_circuit_symbols_and_labels() -> None:
     catalog = default_catalog()
     svg = draw_svg(circuit, catalog)
 
+    assert DEFAULT_RENDER_STYLE == CircuitRenderStyle(
+        wire_stroke_width=2.7,
+        symbol_stroke_width=2.5,
+        symbol_solid_stroke_width=2.0,
+        pin_stroke_width=2.5,
+        terminal_dot_radius=3.6,
+        junction_dot_radius=4.4,
+    )
     assert svg.startswith("<svg ")
     assert 'id="R1"' in svg
     assert 'class="circuit-symbol"' in svg
@@ -486,7 +498,10 @@ def test_svg_draws_circuit_symbols_and_labels() -> None:
     assert 'data-symbol="resistor"' in svg
     assert 'data-symbol="variable_resistor"' not in svg
     assert "vector-effect" not in svg
-    assert ".wire{stroke:#1f2937;stroke-width:1.35" in svg
+    assert ".wire{stroke:#1f2937;stroke-width:2.7" in svg
+    assert ".symbol{stroke:#111827;stroke-width:2.5" in svg
+    assert ".symbol-solid{stroke:#111827;stroke-width:2.0" in svg
+    assert ".pin{stroke:#6b7280;stroke-width:2.5" in svg
     assert ".label{font:11px monospace" in svg
     assert "<clipPath" not in svg
     assert "<use " not in svg
@@ -497,9 +512,77 @@ def test_svg_draws_circuit_symbols_and_labels() -> None:
     assert 'class="wire"' in svg
     assert 'class="junction"' in svg
     assert '<circle class="junction"' in svg
-    assert 'r="1.8"/>' in svg
+    assert 'r="3.6"/>' in svg
     assert 'r="1.1"/>' not in svg
     assert svg.endswith("</svg>\n")
+
+
+def test_svg_accepts_dynamic_render_style() -> None:
+    circuit = divider_circuit()
+    catalog = default_catalog()
+    style = CircuitRenderStyle(
+        wire_stroke_width=4.0,
+        symbol_stroke_width=3.0,
+        symbol_solid_stroke_width=2.0,
+        pin_stroke_width=3.5,
+        terminal_dot_radius=6.0,
+        junction_dot_radius=7.0,
+    )
+
+    svg = draw_svg(circuit, catalog, style=style)
+
+    assert ".wire{stroke:#1f2937;stroke-width:4.0" in svg
+    assert ".symbol{stroke:#111827;stroke-width:3.0" in svg
+    assert ".symbol-solid{stroke:#111827;stroke-width:2.0" in svg
+    assert ".pin{stroke:#6b7280;stroke-width:3.5" in svg
+    assert 'r="6.0"/>' in svg
+
+
+def test_render_style_rejects_non_positive_dimensions() -> None:
+    with pytest.raises(
+        ValueError, match="wire_stroke_width must be finite and positive"
+    ):
+        CircuitRenderStyle(
+            wire_stroke_width=0.0,
+            symbol_stroke_width=2.5,
+            symbol_solid_stroke_width=2.0,
+            pin_stroke_width=2.5,
+            terminal_dot_radius=3.6,
+            junction_dot_radius=4.4,
+        )
+    with pytest.raises(
+        ValueError,
+        match="terminal_dot_radius must be finite and positive",
+    ):
+        CircuitRenderStyle(
+            wire_stroke_width=2.7,
+            symbol_stroke_width=2.5,
+            symbol_solid_stroke_width=2.0,
+            pin_stroke_width=2.5,
+            terminal_dot_radius=nan,
+            junction_dot_radius=4.4,
+        )
+    with pytest.raises(
+        ValueError,
+        match="junction_dot_radius must be finite and positive",
+    ):
+        CircuitRenderStyle(
+            wire_stroke_width=2.7,
+            symbol_stroke_width=2.5,
+            symbol_solid_stroke_width=2.0,
+            pin_stroke_width=2.5,
+            terminal_dot_radius=3.6,
+            junction_dot_radius=inf,
+        )
+
+    with pytest.raises(ValueError, match="stroke_scale must be finite and positive"):
+        DEFAULT_RENDER_STYLE.scaled(stroke_scale=0.0, dot_scale=1.0)
+    with pytest.raises(ValueError, match="stroke_scale must be finite and positive"):
+        DEFAULT_RENDER_STYLE.scaled(stroke_scale=nan, dot_scale=1.0)
+    with pytest.raises(ValueError, match="dot_scale must be finite and positive"):
+        DEFAULT_RENDER_STYLE.scaled(stroke_scale=1.0, dot_scale=0.0)
+    with pytest.raises(ValueError, match="dot_scale must be finite and positive"):
+        DEFAULT_RENDER_STYLE.scaled(stroke_scale=1.0, dot_scale=inf)
 
 
 def test_logic_symbols_use_distinct_assets() -> None:
@@ -737,7 +820,7 @@ def test_svg_supplied_layout_keeps_terminal_dots_on_layout_pins() -> None:
     assert _point_key(layout_anchor) != _point_key(asset_anchor)
     assert (
         f'<circle class="junction" cx="{layout_anchor.x:.1f}" '
-        f'cy="{layout_anchor.y:.1f}" r="1.8"/>'
+        f'cy="{layout_anchor.y:.1f}" r="3.6"/>'
     ) in svg
 
 
@@ -978,8 +1061,25 @@ def test_svg_marks_same_net_interior_crossings_as_junctions() -> None:
 
     assert Point(10.0, 10.0) in junctions
     assert Point(40.0, 20.0) not in junctions
-    assert '<circle class="junction" cx="10.0" cy="10.0" r="2.2"/>' in svg
+    assert '<circle class="junction" cx="10.0" cy="10.0" r="4.4"/>' in svg
     assert 'r="1.6"/>' not in svg
+
+
+def test_svg_asset_stroke_normalization_doubles_group_inherited_lines() -> None:
+    catalog = default_catalog()
+    asset = asset_for_part("lamp", catalog["lamp"])
+
+    assert asset is not None
+
+    fragments = "\n".join(symbol_fragments_for_scale(asset, 2.0))
+    custom_fragments = "\n".join(
+        symbol_fragments_for_scale(asset, 2.0, stroke_width=3.0)
+    )
+
+    assert 'stroke-width="1.25"' in fragments
+    assert 'stroke-width="1.4"' not in fragments
+    assert 'stroke-width="1.5"' in custom_fragments
+    assert 'stroke-width="1.25"' not in custom_fragments
 
 
 def test_svg_can_draw_pin_labels_when_requested() -> None:

@@ -20,7 +20,7 @@ from rlvr_physics.tasks.physics.circuits.layout import (
 from rlvr_physics.tasks.physics.circuits.model import PartInstance, PartSpec
 
 _SVG_NS = "http://www.w3.org/2000/svg"
-_NORMALIZED_STROKE_WIDTH = "1.25"
+_DEFAULT_SYMBOL_STROKE_WIDTH = 2.5
 _SYMBOL_MASK_INSET = 1.5
 _SWITCH_CLOSED_MAX_RESISTANCE_OHM = 1.0e6
 _TRANSFORM_PATTERN = re.compile(r"([A-Za-z]+)\(([^)]*)\)")
@@ -124,6 +124,7 @@ def draw_asset_part(
     instance: PartInstance,
     *,
     draw_leads: bool = True,
+    symbol_stroke_width: float = _DEFAULT_SYMBOL_STROKE_WIDTH,
 ) -> list[str]:
     """Draw one placed part using only exported SVG assets.
 
@@ -139,6 +140,8 @@ def draw_asset_part(
         Whether to draw corrective lead lines from layout side slots to asset
         terminals. Full schematic rendering routes wires to asset terminals
         directly and disables these corrective leads.
+    symbol_stroke_width:
+        Target stroke width for normalized SVG asset artwork after placement.
 
     Returns
     -------
@@ -167,7 +170,7 @@ def draw_asset_part(
     ]
     if draw_leads:
         lines.extend(_lead_lines(part, spec, terminals))
-    lines.extend(_asset_symbol(part, asset))
+    lines.extend(_asset_symbol(part, asset, symbol_stroke_width))
     label_text = f"{part.ref} {instance.value}".strip()
     label_position = component_label_position_from_bounds(
         _component_label_bounds_for_asset(part, spec, instance, asset)
@@ -339,18 +342,25 @@ def _numeric_parameter(instance: PartInstance, name: str) -> float | None:
     return None
 
 
-def symbol_fragments_for_scale(asset: SymbolAsset, scale: float) -> tuple[str, ...]:
+def symbol_fragments_for_scale(
+    asset: SymbolAsset,
+    scale: float,
+    *,
+    stroke_width: float = _DEFAULT_SYMBOL_STROKE_WIDTH,
+) -> tuple[str, ...]:
     """Return asset fragments with scale-compensated stroke widths."""
 
     fragments: list[str] = []
     for fragment in asset.fragments:
         root = ElementTree.fromstring(fragment)
-        _normalize_asset_tree(root, scale)
+        _normalize_asset_tree(root, scale, stroke_width)
         fragments.append(ElementTree.tostring(root, encoding="unicode"))
     return tuple(fragments)
 
 
-def _asset_symbol(part: PlacedPart, asset: SymbolAsset) -> list[str]:
+def _asset_symbol(
+    part: PlacedPart, asset: SymbolAsset, symbol_stroke_width: float
+) -> list[str]:
     """Return SVG fragments placing one exported symbol asset."""
 
     view_box = asset.view_box
@@ -368,7 +378,11 @@ def _asset_symbol(part: PlacedPart, asset: SymbolAsset) -> list[str]:
             f"scale({scale:.6f}) "
             f'translate({-view_box.x:.1f} {-view_box.y:.1f})">'
         ),
-        *symbol_fragments_for_scale(asset, scale),
+        *symbol_fragments_for_scale(
+            asset,
+            scale,
+            stroke_width=symbol_stroke_width,
+        ),
         "</g>",
         "</g>",
     ]
@@ -723,11 +737,16 @@ def _parse_number(raw_value: str) -> float:
     return float(number_text)
 
 
-def _normalize_asset_tree(root: ElementTree.Element, scale: float) -> None:
+def _normalize_asset_tree(
+    root: ElementTree.Element,
+    scale: float,
+    stroke_width: float,
+) -> None:
     """Normalize exported asset strokes for scaled schematic rendering."""
 
     for element in root.iter():
         if _local_name(element.tag) in {
+            "g",
             "path",
             "line",
             "polyline",
@@ -736,10 +755,14 @@ def _normalize_asset_tree(root: ElementTree.Element, scale: float) -> None:
             "circle",
             "ellipse",
         }:
-            _normalize_stroked_element(element, scale)
+            _normalize_stroked_element(element, scale, stroke_width)
 
 
-def _normalize_stroked_element(element: ElementTree.Element, scale: float) -> None:
+def _normalize_stroked_element(
+    element: ElementTree.Element,
+    scale: float,
+    stroke_width: float,
+) -> None:
     """Keep stroke thickness constant after symbol scaling."""
 
     style = _parse_style(element.attrib.get("style", ""))
@@ -753,12 +776,12 @@ def _normalize_stroked_element(element: ElementTree.Element, scale: float) -> No
         return
     if style.get("stroke") == "none" or element.attrib.get("stroke") == "none":
         return
-    stroke_width = str(float(_NORMALIZED_STROKE_WIDTH) / scale)
+    normalized_stroke_width = str(stroke_width / scale)
     if style:
-        style["stroke-width"] = stroke_width
+        style["stroke-width"] = normalized_stroke_width
         element.set("style", _format_style(style))
     else:
-        element.set("stroke-width", stroke_width)
+        element.set("stroke-width", normalized_stroke_width)
 
 
 def _parse_style(raw_style: str) -> dict[str, str]:
