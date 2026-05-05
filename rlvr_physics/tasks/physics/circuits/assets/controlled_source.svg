@@ -9,6 +9,35 @@
   <defs
      id="defs4492" />
   <g
+     id="pin-anchors"
+     data-rlvr-role="pin-anchors"
+     display="none">
+    <circle
+       id="pin-cp"
+       data-pin="cp"
+       cx="0"
+       cy="16.7"
+       r="0" />
+    <circle
+       id="pin-cn"
+       data-pin="cn"
+       cx="0"
+       cy="33.3"
+       r="0" />
+    <circle
+       id="pin-p"
+       data-pin="p"
+       cx="64"
+       cy="16.7"
+       r="0" />
+    <circle
+       id="pin-n"
+       data-pin="n"
+       cx="64"
+       cy="33.3"
+       r="0" />
+  </g>
+  <g
      id="layer1">
     <path
        id="diamond"

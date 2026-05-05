@@ -5,6 +5,8 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Mapping
 
+import pytest
+
 from rlvr_physics.core.rendering import PNG_MIME_TYPE, validate_png_image_data
 from rlvr_physics.tasks.physics.circuits import (
     Bounds,
@@ -42,10 +44,14 @@ from rlvr_physics.tasks.physics.circuits.layout import (
 )
 from rlvr_physics.tasks.physics.circuits.symbol_assets import (
     _asset_terminals,
+    asset_component_label_bounds,
     asset_for_part,
+    asset_render_bounds_for_part,
+    asset_terminals_for_part,
     draw_asset_part,
 )
 from rlvr_physics.tasks.physics.circuits.svg import (
+    _asset_pin_position,
     _junction_points,
     _rendered_wire_segments,
 )
@@ -545,6 +551,163 @@ def test_switch_state_selects_open_or_closed_symbol() -> None:
     assert 'data-symbol="spst_switch_closed"' in closed_with_stale_metadata_fragments
 
 
+def test_svg_pin_anchors_are_declared_in_symbol_assets() -> None:
+    catalog = default_catalog()
+    led_asset = asset_for_part("led", catalog["led"])
+    switch_asset = asset_for_part("ideal_switch", catalog["ideal_switch"])
+
+    assert led_asset is not None
+    assert switch_asset is not None
+    led_anode = led_asset.anchor("a")
+    led_cathode = led_asset.anchor("k")
+    switch_pin_1 = switch_asset.anchor("1")
+    switch_pin_2 = switch_asset.anchor("2")
+
+    assert led_anode is not None
+    assert led_cathode is not None
+    assert switch_pin_1 is not None
+    assert switch_pin_2 is not None
+    assert abs(led_anode.x - 6.90927) <= 1.0e-5
+    assert abs(led_anode.y - 49.50004) <= 1.0e-5
+    assert abs(led_cathode.x - 6.90927) <= 1.0e-5
+    assert abs(led_cathode.y - 0.5) <= 1.0e-5
+    assert abs(switch_pin_1.x - 14.78612) <= 1.0e-5
+    assert abs(switch_pin_1.y - 49.50186) <= 1.0e-5
+    assert abs(switch_pin_2.x - 14.78612) <= 1.0e-5
+    assert abs(switch_pin_2.y - 0.5) <= 1.0e-5
+
+
+def test_default_part_assets_declare_every_catalog_pin() -> None:
+    catalog = default_catalog()
+
+    for kind, spec in catalog.items():
+        instances = [
+            PartInstance(f"{spec.ref_prefix}1", kind, "value", {}, {}),
+        ]
+        if kind == "ideal_switch":
+            instances.append(
+                PartInstance(
+                    "S1",
+                    kind,
+                    "closed",
+                    {"state_resistance_ohm": 0.05},
+                    {"state": "closed"},
+                )
+            )
+        for instance in instances:
+            part = PlacedPart(
+                ref=instance.ref,
+                kind=kind,
+                center=Point(100.0, 100.0),
+                size=Size(82.0, max(48.0, 16.0 * len(spec.pins))),
+            )
+            terminals = asset_terminals_for_part(part, spec, instance)
+
+            assert set(terminals) == {pin.name for pin in spec.pins}, (
+                kind,
+                instance.metadata,
+            )
+
+
+def test_asset_pin_resolver_fails_when_anchor_is_missing() -> None:
+    catalog = default_catalog()
+    spec = catalog["led"]
+
+    with pytest.raises(ValueError, match="does not declare pin"):
+        _asset_pin_position(
+            PlacedPart(
+                ref="D1",
+                kind="led",
+                center=Point(100.0, 100.0),
+                size=Size(82.0, 48.0),
+            ),
+            spec,
+            PartInstance("D1", "led", "LED", {}, {}),
+            "missing",
+        )
+
+
+def test_svg_routes_to_asset_pin_anchors_without_corrective_leads() -> None:
+    catalog = default_catalog()
+
+    for seed, element_count in GENERATED_CASES:
+        circuit, _ = _planned_generated_case(seed, element_count)
+        svg = draw_svg(circuit, catalog)
+
+        _assert_no_corrective_symbol_leads(svg, circuit)
+
+    for index, (name, motif) in enumerate(default_motifs().items()):
+        circuit, _ = _planned_motif_case(index, name, motif.element_count + 1)
+        svg = draw_svg(circuit, catalog)
+
+        _assert_no_corrective_symbol_leads(svg, circuit)
+
+
+def test_asset_aware_layout_routes_wire_endpoints_to_asset_pins() -> None:
+    catalog = default_catalog()
+
+    for index, (name, motif) in enumerate(default_motifs().items()):
+        circuit, _ = _planned_motif_case(index, name, motif.element_count + 1)
+        layout = _plan_layout(
+            circuit,
+            catalog,
+            route_pin_labels=False,
+            pin_position_resolver=_asset_pin_position,
+        )
+
+        _assert_wire_endpoints_hit_asset_pins(name, circuit, layout, catalog)
+
+
+def test_pull_resistor_assets_match_catalog_pin_sides() -> None:
+    catalog = default_catalog()
+
+    for kind, expected_rail_side in (
+        ("pullup_resistor", PinSide.TOP),
+        ("pulldown_resistor", PinSide.BOTTOM),
+    ):
+        spec = catalog[kind]
+        part = PlacedPart(
+            ref=f"{spec.ref_prefix}1",
+            kind=kind,
+            center=Point(100.0, 100.0),
+            size=Size(82.0, 48.0),
+        )
+        terminals = asset_terminals_for_part(
+            part,
+            spec,
+            PartInstance(f"{spec.ref_prefix}1", kind, "10k", {}, {}),
+        )
+
+        assert terminals["net"].x == part.bounds.x
+        assert terminals["net"].y == part.center.y
+        assert terminals["rail"].y == (
+            part.bounds.y if expected_rail_side is PinSide.TOP else part.bounds.bottom
+        )
+
+
+def test_svg_component_labels_anchor_to_drawn_asset_bounds() -> None:
+    catalog = default_catalog()
+    spec = catalog["resistor"]
+    part = PlacedPart(
+        ref="R1",
+        kind="resistor",
+        center=Point(100.0, 100.0),
+        size=Size(82.0, 48.0),
+    )
+    instance = PartInstance("R1", "resistor", "1000", {}, {})
+
+    generic_label = component_label_bounds(part, spec, instance.value)
+    asset_bounds = asset_render_bounds_for_part(part, spec, instance)
+    asset_label = asset_component_label_bounds(part, spec, instance)
+    fragments = "\n".join(draw_asset_part(part, spec, instance))
+
+    assert asset_bounds.y > part.bounds.y
+    assert asset_label.y > generic_label.y + 10.0
+    assert abs(asset_bounds.y - asset_label.bottom - 5.0) <= 1.0e-6
+    assert f'y="{asset_label.y + 10.0:.1f}"' in fragments
+    assert f'y="{generic_label.y + 10.0:.1f}"' not in fragments
+
+
 def test_symbol_mask_leaves_pin_boundary_visible() -> None:
     catalog = default_catalog()
     spec = catalog["resistor"]
@@ -617,7 +780,7 @@ def test_logic_and_op_amp_assets_draw_visible_supply_leads() -> None:
             assert lead in text
 
 
-def test_multi_pin_asset_terminals_match_layout_pins() -> None:
+def test_multi_pin_asset_terminals_are_declared_in_asset_bounds() -> None:
     catalog = default_catalog()
     multi_pin_kinds = (
         "ammeter",
@@ -643,16 +806,23 @@ def test_multi_pin_asset_terminals_match_layout_pins() -> None:
             size=Size(82.0, max(48.0, 16.0 * len(spec.pins))),
         )
         asset = asset_for_part(kind, spec)
+        instance = PartInstance(f"{spec.ref_prefix}1", kind, "value", {}, {})
         assert asset is not None
         terminals = _asset_terminals(part, spec, asset)
+        rendered_bounds = asset_render_bounds_for_part(part, spec, instance)
 
-        for pin in spec.pins:
-            anchor = pin_position(part, spec, pin.name)
-            terminal = terminals[pin.name]
-            if pin.side.name in {"LEFT", "RIGHT"}:
-                assert abs(terminal.y - anchor.y) <= 3.5, (kind, pin.name)
-            else:
-                assert abs(terminal.x - anchor.x) <= 3.5, (kind, pin.name)
+        assert set(terminals) == {pin.name for pin in spec.pins}
+        for pin_name, terminal in terminals.items():
+            assert (
+                rendered_bounds.x - GEOMETRY_EPSILON
+                <= terminal.x
+                <= (rendered_bounds.right + GEOMETRY_EPSILON)
+            ), (kind, pin_name)
+            assert (
+                rendered_bounds.y - GEOMETRY_EPSILON
+                <= terminal.y
+                <= (rendered_bounds.bottom + GEOMETRY_EPSILON)
+            ), (kind, pin_name)
 
 
 def test_svg_merges_overlapping_wire_segments_before_drawing() -> None:
@@ -742,7 +912,7 @@ def test_svg_uses_supplied_layout_when_pin_labels_are_requested() -> None:
 
     first_part = shifted_layout.parts[0]
     assert f'width="{shifted_layout.size.width:.0f}"' in svg
-    assert f'x="{first_part.bounds.x:.1f}"' in svg
+    assert f'x="{first_part.bounds.x + 1.5:.1f}"' in svg
 
 
 def test_symbol_drawer_covers_default_part_catalog() -> None:
@@ -890,6 +1060,42 @@ def _assert_wire_endpoints_hit_pins(
         }
 
         assert _point_key(anchor) in endpoints, (
+            case_id,
+            connection.ref,
+            connection.pin,
+            connection.net,
+        )
+
+
+def _assert_wire_endpoints_hit_asset_pins(
+    case_id: object,
+    circuit: Circuit,
+    layout: Layout,
+    catalog: Mapping[str, PartSpec],
+) -> None:
+    """Assert routed wire endpoints land on rendered SVG asset terminals."""
+
+    part_by_ref = circuit.part_by_ref()
+    placed_by_ref = layout.part_by_ref()
+    wire_by_net = {wire.net: wire for wire in layout.wires}
+
+    for connection in circuit.connections:
+        if len(circuit.connections_for_net(connection.net)) < 2:
+            continue
+        part = part_by_ref[connection.ref]
+        spec = catalog[part.kind]
+        terminal = asset_terminals_for_part(
+            placed_by_ref[connection.ref],
+            spec,
+            part,
+        )[connection.pin]
+        endpoints = {
+            _point_key(point)
+            for segment in wire_by_net[connection.net].segments
+            for point in (segment.start, segment.end)
+        }
+
+        assert _point_key(terminal) in endpoints, (
             case_id,
             connection.ref,
             connection.pin,
@@ -1227,6 +1433,21 @@ def _default_rendered_boxes(
     """Return default-rendered symbol and label boxes."""
 
     return (part.bounds, component_label_bounds(part, spec, value))
+
+
+def _part_lead_prefix(svg: str, ref: str) -> str:
+    """Return the circuit-symbol fragment before embedded asset artwork."""
+
+    group_start = svg.index(f'<g id="{ref}" class="circuit-symbol">')
+    asset_start = svg.index('<g class="symbol-asset"', group_start)
+    return svg[group_start:asset_start]
+
+
+def _assert_no_corrective_symbol_leads(svg: str, circuit: Circuit) -> None:
+    """Assert default SVG rendering does not add layout-to-asset lead lines."""
+
+    for part in circuit.parts:
+        assert '<line class="symbol"' not in _part_lead_prefix(svg, part.ref), part.ref
 
 
 def _point_key(point: Point) -> tuple[float, float]:

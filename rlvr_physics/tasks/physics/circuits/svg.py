@@ -8,14 +8,15 @@ from rlvr_physics.tasks.physics.circuits.layout import (
     Layout,
     NetLabel,
     Point,
+    PlacedPart,
     WireSegment,
     _plan_layout,
     pin_label_position,
     pin_position,
-    plan_layout,
 )
-from rlvr_physics.tasks.physics.circuits.model import Circuit, PartSpec
+from rlvr_physics.tasks.physics.circuits.model import Circuit, PartInstance, PartSpec
 from rlvr_physics.tasks.physics.circuits.symbol_assets import (
+    asset_terminals_for_part,
     draw_asset_part,
     svg_namespace_attributes,
 )
@@ -39,9 +40,10 @@ def draw_svg(
     layout:
         Precomputed deterministic layout. When omitted, the force-directed
         layout planner runs before rendering. If pin labels are shown and no
-        layout is supplied, routing reserves space for the pin labels. Supplied
-        layouts are rendered verbatim, so callers that pass both a layout and
-        ``show_pin_labels=True`` are responsible for label clearance.
+        layout is supplied, routing reserves space for the pin labels. When no
+        layout is supplied, routing uses SVG asset pin anchors where available.
+        Supplied layouts are rendered verbatim, so callers that pass both a
+        layout and ``show_pin_labels=True`` are responsible for label clearance.
     show_pin_labels:
         Whether to draw external pin labels. SVG-symbol rendering hides these
         labels by default to keep schematic images readable.
@@ -52,12 +54,23 @@ def draw_svg(
         SVG document text.
     """
 
+    draw_corrective_leads = layout is not None
     if layout is not None:
         planned_layout = layout
     elif show_pin_labels:
-        planned_layout = _plan_layout(circuit, catalog, route_pin_labels=True)
+        planned_layout = _plan_layout(
+            circuit,
+            catalog,
+            route_pin_labels=True,
+            pin_position_resolver=_asset_pin_position,
+        )
     else:
-        planned_layout = plan_layout(circuit, catalog)
+        planned_layout = _plan_layout(
+            circuit,
+            catalog,
+            route_pin_labels=False,
+            pin_position_resolver=_asset_pin_position,
+        )
     parts = circuit.part_by_ref()
     lines = [
         (
@@ -98,8 +111,20 @@ def draw_svg(
     for part in planned_layout.parts:
         instance = parts[part.ref]
         spec = catalog[instance.kind]
-        lines.extend(draw_asset_part(part, spec, instance))
-    for point in _terminal_points(circuit, catalog, planned_layout):
+        lines.extend(
+            draw_asset_part(
+                part,
+                spec,
+                instance,
+                draw_leads=draw_corrective_leads,
+            )
+        )
+    for point in _terminal_points(
+        circuit,
+        catalog,
+        planned_layout,
+        use_asset_pin_positions=layout is None,
+    ):
         lines.append(
             f'<circle class="junction" cx="{point.x:.1f}" cy="{point.y:.1f}" r="1.1"/>'
         )
@@ -114,7 +139,13 @@ def draw_svg(
         spec = catalog[parts[part.ref].kind]
         if show_pin_labels:
             for pin in spec.pins:
-                pt = pin_position(part, spec, pin.name)
+                pt = _pin_label_anchor(
+                    part,
+                    spec,
+                    parts[part.ref],
+                    pin.name,
+                    use_asset_pin_positions=layout is None,
+                )
                 label_position = pin_label_position(pt, pin.side, pin.name)
                 lines.append(
                     f'<text class="label" x="{label_position.x:.1f}" '
@@ -122,6 +153,39 @@ def draw_svg(
                 )
     lines.append("</svg>")
     return "\n".join(lines) + "\n"
+
+
+def _asset_pin_position(
+    placed_part: PlacedPart,
+    spec: PartSpec,
+    instance: PartInstance,
+    pin_name: str,
+) -> Point | None:
+    """Return a placed SVG asset pin coordinate when the asset declares one."""
+
+    terminal = asset_terminals_for_part(placed_part, spec, instance).get(pin_name)
+    if terminal is None:
+        raise ValueError(
+            f"SVG asset for {instance.kind!r} does not declare pin {pin_name!r}"
+        )
+    return terminal
+
+
+def _pin_label_anchor(
+    placed_part: PlacedPart,
+    spec: PartSpec,
+    instance: PartInstance,
+    pin_name: str,
+    *,
+    use_asset_pin_positions: bool,
+) -> Point:
+    """Return the pin anchor used for optional pin label placement."""
+
+    if use_asset_pin_positions:
+        asset_anchor = _asset_pin_position(placed_part, spec, instance, pin_name)
+        if asset_anchor is not None:
+            return asset_anchor
+    return pin_position(placed_part, spec, pin_name)
 
 
 def _draw_net_label(label: NetLabel) -> tuple[str, str]:
@@ -230,6 +294,8 @@ def _terminal_points(
     circuit: Circuit,
     catalog: Mapping[str, PartSpec],
     layout: Layout,
+    *,
+    use_asset_pin_positions: bool,
 ) -> tuple[Point, ...]:
     """Return rendered pin terminal points for connected pins."""
 
@@ -240,11 +306,15 @@ def _terminal_points(
         if len(circuit.connections_for_net(connection.net)) < 2:
             continue
         part = parts[connection.ref]
+        spec = catalog[part.kind]
+        placed_part = placed[connection.ref]
         points.append(
-            pin_position(
-                placed[connection.ref],
-                catalog[part.kind],
+            _pin_label_anchor(
+                placed_part,
+                spec,
+                part,
                 connection.pin,
+                use_asset_pin_positions=use_asset_pin_positions,
             )
         )
     return tuple(points)

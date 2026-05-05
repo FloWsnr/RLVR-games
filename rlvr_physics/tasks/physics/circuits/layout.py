@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from heapq import heappop, heappush
 from itertools import combinations
 from math import hypot
-from typing import Mapping
+from typing import Callable, Mapping
 
 from rlvr_physics.tasks.physics.circuits.model import (
     Circuit,
@@ -145,6 +145,9 @@ class PlacedPart:
         )
 
 
+PinPositionResolver = Callable[[PlacedPart, PartSpec, PartInstance, str], Point | None]
+
+
 @dataclass(frozen=True)
 class WireSegment:
     """One orthogonal wire segment."""
@@ -237,7 +240,11 @@ def plan_layout(circuit: Circuit, catalog: Mapping[str, PartSpec]) -> Layout:
 
 
 def _plan_layout(
-    circuit: Circuit, catalog: Mapping[str, PartSpec], *, route_pin_labels: bool
+    circuit: Circuit,
+    catalog: Mapping[str, PartSpec],
+    *,
+    route_pin_labels: bool,
+    pin_position_resolver: PinPositionResolver | None = None,
 ) -> Layout:
     """Plan deterministic component placement with renderer-specific routing."""
 
@@ -250,6 +257,7 @@ def _plan_layout(
         catalog,
         {part.ref: part for part in placed},
         route_pin_labels=route_pin_labels,
+        pin_position_resolver=pin_position_resolver,
     )
     placed, wires, net_labels, size = _normalize_layout(
         circuit,
@@ -345,6 +353,22 @@ def pin_position(placed_part: PlacedPart, spec: PartSpec, pin_name: str) -> Poin
     )
 
 
+def _resolved_pin_position(
+    placed_part: PlacedPart,
+    spec: PartSpec,
+    part: PartInstance,
+    pin_name: str,
+    pin_position_resolver: PinPositionResolver | None,
+) -> Point:
+    """Return renderer-specific pin position or the default side-slot anchor."""
+
+    if pin_position_resolver is not None:
+        resolved = pin_position_resolver(placed_part, spec, part, pin_name)
+        if resolved is not None:
+            return resolved
+    return pin_position(placed_part, spec, pin_name)
+
+
 def pin_label_position(anchor: Point, side: PinSide, label: str) -> Point:
     """Return the SVG baseline point for a pin label.
 
@@ -380,9 +404,42 @@ def component_label_bounds(
 ) -> Bounds:
     """Return the label bounds for one placed component."""
 
+    return component_label_bounds_for_symbol_bounds(
+        placed_part,
+        spec,
+        value,
+        placed_part.bounds,
+    )
+
+
+def component_label_bounds_for_symbol_bounds(
+    placed_part: PlacedPart,
+    spec: PartSpec,
+    value: str,
+    symbol_bounds: Bounds,
+) -> Bounds:
+    """Return component-label bounds around rendered symbol bounds.
+
+    Parameters
+    ----------
+    placed_part:
+        Placed part whose pin escapes constrain candidate labels.
+    spec:
+        Static component specification.
+    value:
+        Rendered part value text.
+    symbol_bounds:
+        Bounds of the visible symbol body used as the label anchor.
+
+    Returns
+    -------
+    Bounds
+        Approximate rendered bounds for the component label.
+    """
+
     label_text = f"{placed_part.ref} {value}".strip()
-    label_width = max(_text_width(label_text), placed_part.bounds.width)
-    candidates = _component_label_candidates(placed_part, label_width)
+    label_width = max(_text_width(label_text), symbol_bounds.width)
+    candidates = _component_label_candidates(symbol_bounds, label_width)
     for candidate in _ranked_component_label_candidates(candidates, spec):
         if not _label_conflicts_with_pin_escapes(candidate, placed_part, spec):
             return candidate
@@ -394,16 +451,34 @@ def component_label_position(
 ) -> Point:
     """Return the SVG baseline point for one component label."""
 
-    bounds = component_label_bounds(placed_part, spec, value)
+    return component_label_position_from_bounds(
+        component_label_bounds(placed_part, spec, value)
+    )
+
+
+def component_label_position_from_bounds(bounds: Bounds) -> Point:
+    """Return the SVG baseline point for component-label bounds.
+
+    Parameters
+    ----------
+    bounds:
+        Approximate rendered label bounds.
+
+    Returns
+    -------
+    Point
+        SVG text baseline point.
+    """
+
     return Point(bounds.x, bounds.y + LABEL_ASCENT)
 
 
 def _component_label_candidates(
-    placed_part: PlacedPart, label_width: float
+    symbol_bounds: Bounds, label_width: float
 ) -> dict[str, Bounds]:
     """Return candidate external component-label bounds."""
 
-    bounds = placed_part.bounds
+    bounds = symbol_bounds
     center_y = bounds.y + (bounds.height - LABEL_HEIGHT) / 2.0
     return {
         "above": Bounds(
@@ -774,17 +849,19 @@ def _route_wires(
     placed_parts: Mapping[str, PlacedPart],
     *,
     route_pin_labels: bool,
+    pin_position_resolver: PinPositionResolver | None,
 ) -> tuple[tuple[WirePath, ...], tuple[NetLabel, ...]]:
     """Build deterministic Manhattan paths through open routing channels."""
 
     paths: list[WirePath] = []
     net_labels: list[NetLabel] = []
+    part_by_ref = circuit.part_by_ref()
     symbol_label_bounds = tuple(placed.bounds for placed in placed_parts.values())
     component_label_bounds_by_part = tuple(
         component_label_bounds(
             placed,
-            catalog[circuit.part_by_ref()[ref].kind],
-            circuit.part_by_ref()[ref].value,
+            catalog[part_by_ref[ref].kind],
+            part_by_ref[ref].value,
         )
         for ref, placed in placed_parts.items()
     )
@@ -801,7 +878,13 @@ def _route_wires(
     if route_pin_labels:
         pin_label_blocks = tuple(
             _pin_label_bounds(
-                pin_position(placed, spec, pin.name),
+                _resolved_pin_position(
+                    placed,
+                    spec,
+                    circuit.part_by_ref()[ref],
+                    pin.name,
+                    pin_position_resolver,
+                ),
                 pin.side,
                 pin.name,
             )
@@ -813,17 +896,29 @@ def _route_wires(
             bounds.expanded(ROUTING_CLEARANCE, ROUTING_CLEARANCE)
             for bounds in pin_label_blocks
         )
-    pin_approach_bounds = _pin_approach_bounds_by_pin(circuit, catalog, placed_parts)
+    pin_approach_bounds = _pin_approach_bounds_by_pin(
+        circuit,
+        catalog,
+        placed_parts,
+        pin_position_resolver,
+    )
     base_routing_bounds = symbol_bounds + label_bounds + pin_label_bounds
     labeled_stub_bounds_by_net = _labeled_stub_bounds_by_net(
         circuit,
         catalog,
         placed_parts,
+        pin_position_resolver,
     )
     routed_wire_bounds: tuple[Bounds, ...] = ()
     for net_index, net in enumerate(circuit.nets):
         connections = circuit.connections_for_net(net)
-        anchors = _net_anchors(circuit, catalog, placed_parts, connections)
+        anchors = _net_anchors(
+            circuit,
+            catalog,
+            placed_parts,
+            connections,
+            pin_position_resolver,
+        )
         if len(anchors) < 2:
             continue
         net_uses_labels = _uses_local_net_labels(net, connections)
@@ -885,6 +980,7 @@ def _labeled_stub_bounds_by_net(
     circuit: Circuit,
     catalog: Mapping[str, PartSpec],
     placed_parts: Mapping[str, PlacedPart],
+    pin_position_resolver: PinPositionResolver | None,
 ) -> dict[str, tuple[Bounds, ...]]:
     """Return blocked bounds for local labeled-net stubs."""
 
@@ -893,7 +989,13 @@ def _labeled_stub_bounds_by_net(
         connections = circuit.connections_for_net(net)
         if not _uses_local_net_labels(net, connections):
             continue
-        anchors = _net_anchors(circuit, catalog, placed_parts, connections)
+        anchors = _net_anchors(
+            circuit,
+            catalog,
+            placed_parts,
+            connections,
+            pin_position_resolver,
+        )
         bounds_by_net[net] = tuple(
             _segment_bounds(segment).expanded(ROUTING_CLEARANCE, ROUTING_CLEARANCE)
             for segment in _pin_stub_segments(anchors)
@@ -905,22 +1007,31 @@ def _pin_approach_bounds_by_pin(
     circuit: Circuit,
     catalog: Mapping[str, PartSpec],
     placed_parts: Mapping[str, PlacedPart],
+    pin_position_resolver: PinPositionResolver | None,
 ) -> tuple[_PinApproachBound, ...]:
     """Return reserved pin-approach lanes keyed by component pin."""
 
     entries: list[_PinApproachBound] = []
     part_by_ref = circuit.part_by_ref()
     for ref, placed in placed_parts.items():
-        spec = catalog[part_by_ref[ref].kind]
+        part = part_by_ref[ref]
+        spec = catalog[part.kind]
         if not _needs_pin_approach_keepout(spec):
             continue
         for pin in spec.pins:
+            anchor = _resolved_pin_position(
+                placed,
+                spec,
+                part,
+                pin.name,
+                pin_position_resolver,
+            )
             entries.append(
                 _PinApproachBound(
                     ref=ref,
                     pin=pin.name,
                     side=pin.side,
-                    bounds=_pin_approach_bounds_for_pin(placed, spec, pin.name),
+                    bounds=_pin_approach_bounds_for_anchor(placed, pin.side, anchor),
                 )
             )
     return tuple(entries)
@@ -991,15 +1102,23 @@ def _net_anchors(
     catalog: Mapping[str, PartSpec],
     placed_parts: Mapping[str, PlacedPart],
     connections: tuple[Connection, ...],
+    pin_position_resolver: PinPositionResolver | None,
 ) -> list[tuple[Connection, Point, Point, PinSide]]:
     """Return routed pin anchors for a net's connections."""
 
     anchors: list[tuple[Connection, Point, Point, PinSide]] = []
     for connection in connections:
         placed = placed_parts[connection.ref]
-        spec = catalog[circuit.part_by_ref()[connection.ref].kind]
+        part = circuit.part_by_ref()[connection.ref]
+        spec = catalog[part.kind]
         pin_side = spec.pin(connection.pin).side
-        anchor = pin_position(placed, spec, connection.pin)
+        anchor = _resolved_pin_position(
+            placed,
+            spec,
+            part,
+            connection.pin,
+            pin_position_resolver,
+        )
         anchors.append(
             (
                 connection,
@@ -1426,29 +1545,37 @@ def _pin_approach_bounds_for_pin(
 
     pin = spec.pin(pin_name)
     anchor = pin_position(placed, spec, pin_name)
+    return _pin_approach_bounds_for_anchor(placed, pin.side, anchor)
+
+
+def _pin_approach_bounds_for_anchor(
+    placed: PlacedPart, side: PinSide, anchor: Point
+) -> Bounds:
+    """Return the reserved outside lane leading into one resolved pin anchor."""
+
     bounds = placed.bounds
-    if pin.side is PinSide.LEFT:
+    if side is PinSide.LEFT:
         return Bounds(
             x=bounds.x - PIN_ESCAPE,
             y=anchor.y - PIN_APPROACH_CLEARANCE,
             width=PIN_ESCAPE,
             height=2.0 * PIN_APPROACH_CLEARANCE,
         )
-    if pin.side is PinSide.RIGHT:
+    if side is PinSide.RIGHT:
         return Bounds(
             x=bounds.right,
             y=anchor.y - PIN_APPROACH_CLEARANCE,
             width=PIN_ESCAPE,
             height=2.0 * PIN_APPROACH_CLEARANCE,
         )
-    if pin.side is PinSide.TOP:
+    if side is PinSide.TOP:
         return Bounds(
             x=anchor.x - PIN_APPROACH_CLEARANCE,
             y=bounds.y - PIN_ESCAPE,
             width=2.0 * PIN_APPROACH_CLEARANCE,
             height=PIN_ESCAPE,
         )
-    if pin.side is PinSide.BOTTOM:
+    if side is PinSide.BOTTOM:
         return Bounds(
             x=anchor.x - PIN_APPROACH_CLEARANCE,
             y=bounds.bottom,

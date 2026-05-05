@@ -9,6 +9,23 @@
   <defs
      id="defs4492" />
   <g
+     id="pin-anchors"
+     data-rlvr-role="pin-anchors"
+     display="none">
+    <circle
+       id="pin-1"
+       data-pin="1"
+       cx="0"
+       cy="16"
+       r="0" />
+    <circle
+       id="pin-2"
+       data-pin="2"
+       cx="0"
+       cy="34"
+       r="0" />
+  </g>
+  <g
      id="layer1">
     <path
        id="pin1"

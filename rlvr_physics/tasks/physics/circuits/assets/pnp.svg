@@ -26,6 +26,29 @@
     </rdf:RDF>
   </metadata>
   <g
+     id="pin-anchors"
+     data-rlvr-role="pin-anchors"
+     display="none">
+    <circle
+       id="pin-b"
+       data-pin="b"
+       cx="0.5"
+       cy="24.992567"
+       r="0" />
+    <circle
+       id="pin-e"
+       data-pin="e"
+       cx="27.474328"
+       cy="0.5"
+       r="0" />
+    <circle
+       id="pin-c"
+       data-pin="c"
+       cx="27.474328"
+       cy="49.485129"
+       r="0" />
+  </g>
+  <g
      id="layer1"
      transform="translate(-67.188502,116.24982)">
     <g

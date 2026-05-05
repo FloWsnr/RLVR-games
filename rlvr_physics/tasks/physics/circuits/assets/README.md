@@ -11,3 +11,14 @@ renderer loads the exported files directly and keeps placement metadata in
 
 Small supplemental symbols that were missing from the sheet are drawn directly
 as plain SVG files in the same normalized style.
+
+Pin anchors may be declared in the SVG itself with hidden coordinate elements:
+
+```xml
+<g data-rlvr-role="pin-anchors" display="none">
+  <circle id="pin-1" data-pin="1" cx="0" cy="24" r="0" />
+</g>
+```
+
+The renderer uses these `data-pin` coordinates as the source of truth for
+asset terminal locations.

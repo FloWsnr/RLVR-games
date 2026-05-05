@@ -5,22 +5,25 @@ from functools import cache
 from html import escape
 from importlib.resources import files
 from math import cos, radians, sin
-from typing import Mapping, Optional
+import re
+from typing import Mapping
 from xml.etree import ElementTree
 
 from rlvr_physics.tasks.physics.circuits.layout import (
     Bounds,
     PlacedPart,
     Point,
-    component_label_position,
+    component_label_bounds_for_symbol_bounds,
+    component_label_position_from_bounds,
     pin_position,
 )
-from rlvr_physics.tasks.physics.circuits.model import PartInstance, PartSpec, PinSide
+from rlvr_physics.tasks.physics.circuits.model import PartInstance, PartSpec
 
 _SVG_NS = "http://www.w3.org/2000/svg"
 _NORMALIZED_STROKE_WIDTH = "1.25"
 _SYMBOL_MASK_INSET = 1.5
 _SWITCH_CLOSED_MAX_RESISTANCE_OHM = 1.0e6
+_TRANSFORM_PATTERN = re.compile(r"([A-Za-z]+)\(([^)]*)\)")
 
 ElementTree.register_namespace("", _SVG_NS)
 
@@ -44,6 +47,44 @@ class SourceViewBox:
 
 
 @dataclass(frozen=True)
+class _SvgTransform:
+    """Two-dimensional SVG affine transform matrix."""
+
+    a: float
+    b: float
+    c: float
+    d: float
+    e: float
+    f: float
+
+    @classmethod
+    def identity(cls) -> "_SvgTransform":
+        """Return an identity affine transform."""
+
+        return cls(a=1.0, b=0.0, c=0.0, d=1.0, e=0.0, f=0.0)
+
+    def compose(self, other: "_SvgTransform") -> "_SvgTransform":
+        """Return this transform followed by ``other`` in child coordinates."""
+
+        return _SvgTransform(
+            a=self.a * other.a + self.c * other.b,
+            b=self.b * other.a + self.d * other.b,
+            c=self.a * other.c + self.c * other.d,
+            d=self.b * other.c + self.d * other.d,
+            e=self.a * other.e + self.c * other.f + self.e,
+            f=self.b * other.e + self.d * other.f + self.f,
+        )
+
+    def apply(self, point: SourcePoint) -> SourcePoint:
+        """Return ``point`` transformed by this matrix."""
+
+        return SourcePoint(
+            x=self.a * point.x + self.c * point.y + self.e,
+            y=self.b * point.x + self.d * point.y + self.f,
+        )
+
+
+@dataclass(frozen=True)
 class SymbolAsset:
     """Loaded editable exported SVG symbol asset.
 
@@ -54,8 +95,8 @@ class SymbolAsset:
     view_box:
         Asset source coordinate bounds.
     anchors:
-        Named terminal anchors in asset coordinates. Pin names are used first,
-        then side names such as ``left`` and ``top``.
+        Named terminal anchors in asset coordinates. Names must match catalog
+        pin names.
     fragments:
         Serialized SVG child fragments from the asset file.
     rotation_degrees:
@@ -81,6 +122,8 @@ def draw_asset_part(
     part: PlacedPart,
     spec: PartSpec,
     instance: PartInstance,
+    *,
+    draw_leads: bool = True,
 ) -> list[str]:
     """Draw one placed part using only exported SVG assets.
 
@@ -92,6 +135,10 @@ def draw_asset_part(
         Static component specification.
     instance:
         Canonical component instance to render.
+    draw_leads:
+        Whether to draw corrective lead lines from layout side slots to asset
+        terminals. Full schematic rendering routes wires to asset terminals
+        directly and disables these corrective leads.
 
     Returns
     -------
@@ -118,10 +165,13 @@ def draw_asset_part(
             f'height="{part.bounds.height - 2.0 * _SYMBOL_MASK_INSET:.1f}"/>'
         ),
     ]
-    lines.extend(_lead_lines(part, spec, terminals))
+    if draw_leads:
+        lines.extend(_lead_lines(part, spec, terminals))
     lines.extend(_asset_symbol(part, asset))
     label_text = f"{part.ref} {instance.value}".strip()
-    label_position = component_label_position(part, spec, instance.value)
+    label_position = component_label_position_from_bounds(
+        _component_label_bounds_for_asset(part, spec, instance, asset)
+    )
     lines.append(
         f'<text class="label-halo" x="{label_position.x:.1f}" '
         f'y="{label_position.y:.1f}">{escape(label_text)}</text>'
@@ -150,6 +200,91 @@ def asset_for_part(part_kind: str, spec: PartSpec) -> SymbolAsset | None:
     return _load_asset(asset_spec)
 
 
+def asset_render_bounds_for_part(
+    part: PlacedPart,
+    spec: PartSpec,
+    instance: PartInstance,
+) -> Bounds:
+    """Return bounds of the rendered SVG asset frame for one placed part.
+
+    Parameters
+    ----------
+    part:
+        Placed part to inspect.
+    spec:
+        Static component specification.
+    instance:
+        Canonical component instance to render.
+
+    Returns
+    -------
+    Bounds
+        Axis-aligned bounds of the drawn asset frame after scaling and
+        rotation.
+    """
+
+    asset = _asset_for_rendered_part(part.kind, spec, instance)
+    if asset is None:
+        return part.bounds
+    return _asset_render_bounds(part, asset)
+
+
+def asset_component_label_bounds(
+    part: PlacedPart,
+    spec: PartSpec,
+    instance: PartInstance,
+) -> Bounds:
+    """Return component-label bounds anchored to the rendered SVG asset.
+
+    Parameters
+    ----------
+    part:
+        Placed part whose label is being rendered.
+    spec:
+        Static component specification.
+    instance:
+        Canonical component instance to render.
+
+    Returns
+    -------
+    Bounds
+        Approximate rendered bounds for the component label.
+    """
+
+    asset = _asset_for_rendered_part(part.kind, spec, instance)
+    if asset is None:
+        return component_label_bounds_for_symbol_bounds(
+            part,
+            spec,
+            instance.value,
+            part.bounds,
+        )
+    return _component_label_bounds_for_asset(part, spec, instance, asset)
+
+
+def asset_terminals_for_part(
+    part: PlacedPart,
+    spec: PartSpec,
+    instance: PartInstance,
+) -> Mapping[str, Point]:
+    """Return rendered SVG terminal coordinates keyed by pin name.
+
+    Parameters
+    ----------
+    part:
+        Placed part to inspect.
+    spec:
+        Static component specification.
+    instance:
+        Canonical component instance to render.
+    """
+
+    asset = _asset_for_rendered_part(part.kind, spec, instance)
+    if asset is None:
+        return {}
+    return _asset_terminals(part, spec, asset)
+
+
 def _asset_for_rendered_part(
     part_kind: str, spec: PartSpec, instance: PartInstance
 ) -> SymbolAsset | None:
@@ -163,7 +298,7 @@ def _asset_for_rendered_part(
 
 def _asset_spec_for_part(
     part_kind: str, spec: PartSpec, instance: PartInstance | None
-) -> Optional["_AssetSpec"]:
+) -> "_AssetSpec | None":
     """Return static asset metadata for one part and display value."""
 
     if (
@@ -202,18 +337,6 @@ def _numeric_parameter(instance: PartInstance, name: str) -> float | None:
         except ValueError:
             return None
     return None
-
-
-def anchor_name_for_side(side: PinSide) -> str:
-    """Return the fallback asset anchor name for a visual pin side."""
-
-    if side is PinSide.LEFT:
-        return "left"
-    if side is PinSide.RIGHT:
-        return "right"
-    if side is PinSide.TOP:
-        return "top"
-    return "bottom"
 
 
 def symbol_fragments_for_scale(asset: SymbolAsset, scale: float) -> tuple[str, ...]:
@@ -261,8 +384,6 @@ def _asset_terminals(
     terminals: dict[str, Point] = {}
     for pin in spec.pins:
         source = asset.anchor(pin.name)
-        if source is None:
-            source = asset.anchor(anchor_name_for_side(pin.side))
         if source is not None:
             terminals[pin.name] = _asset_point(part, asset, source)
     return terminals
@@ -283,13 +404,7 @@ def _asset_point(
     )
     if not asset.rotation_degrees:
         return point
-    angle = radians(asset.rotation_degrees)
-    dx = point.x - part.center.x
-    dy = point.y - part.center.y
-    return Point(
-        part.center.x + dx * cos(angle) - dy * sin(angle),
-        part.center.y + dx * sin(angle) + dy * cos(angle),
-    )
+    return _rotate_point(point, part.center, radians(asset.rotation_degrees))
 
 
 def _asset_frame(part: PlacedPart, asset: SymbolAsset) -> tuple[Bounds, float]:
@@ -314,6 +429,55 @@ def _asset_frame(part: PlacedPart, asset: SymbolAsset) -> tuple[Bounds, float]:
             height=drawn_height,
         ),
         scale,
+    )
+
+
+def _asset_render_bounds(part: PlacedPart, asset: SymbolAsset) -> Bounds:
+    """Return the axis-aligned bounds of one transformed asset frame."""
+
+    frame, _ = _asset_frame(part, asset)
+    if not asset.rotation_degrees:
+        return frame
+
+    angle = radians(asset.rotation_degrees)
+    corners = (
+        Point(frame.x, frame.y),
+        Point(frame.right, frame.y),
+        Point(frame.right, frame.bottom),
+        Point(frame.x, frame.bottom),
+    )
+    rotated = tuple(_rotate_point(point, part.center, angle) for point in corners)
+    min_x = min(point.x for point in rotated)
+    min_y = min(point.y for point in rotated)
+    max_x = max(point.x for point in rotated)
+    max_y = max(point.y for point in rotated)
+    return Bounds(x=min_x, y=min_y, width=max_x - min_x, height=max_y - min_y)
+
+
+def _rotate_point(point: Point, center: Point, angle: float) -> Point:
+    """Return ``point`` rotated around ``center`` by ``angle`` radians."""
+
+    dx = point.x - center.x
+    dy = point.y - center.y
+    return Point(
+        center.x + dx * cos(angle) - dy * sin(angle),
+        center.y + dx * sin(angle) + dy * cos(angle),
+    )
+
+
+def _component_label_bounds_for_asset(
+    part: PlacedPart,
+    spec: PartSpec,
+    instance: PartInstance,
+    asset: SymbolAsset,
+) -> Bounds:
+    """Return component-label bounds anchored to a loaded SVG asset."""
+
+    return component_label_bounds_for_symbol_bounds(
+        part,
+        spec,
+        instance.value,
+        _asset_render_bounds(part, asset),
     )
 
 
@@ -359,11 +523,11 @@ def _load_asset(asset_spec: "_AssetSpec") -> SymbolAsset:
     )
     root = ElementTree.fromstring(asset_path.read_text(encoding="utf-8"))
     view_box = _parse_view_box(root)
-    anchors = tuple(_asset_anchors(asset_spec, view_box))
+    anchors = tuple(_explicit_asset_anchors(root))
     fragments = tuple(
         ElementTree.tostring(child, encoding="unicode")
         for child in list(root)
-        if _local_name(child.tag) in {"defs", "g"}
+        if _is_asset_fragment(child)
     )
     return SymbolAsset(
         key=asset_spec.key,
@@ -393,53 +557,159 @@ def _parse_view_box(root: ElementTree.Element) -> SourceViewBox:
     )
 
 
-def _asset_anchors(
-    asset_spec: "_AssetSpec", view_box: SourceViewBox
-) -> tuple[tuple[str, SourcePoint], ...]:
-    """Return named source anchors for an exported asset."""
+def _is_asset_fragment(element: ElementTree.Element) -> bool:
+    """Return whether a root child should be emitted as symbol artwork."""
 
+    if _local_name(element.tag) not in {"defs", "g"}:
+        return False
+    return element.attrib.get("data-rlvr-role") != "pin-anchors"
+
+
+def _explicit_asset_anchors(
+    root: ElementTree.Element,
+) -> tuple[tuple[str, SourcePoint], ...]:
+    """Return SVG-declared pin anchors in root source coordinates."""
+
+    anchors = tuple(_iter_explicit_asset_anchors(root, _SvgTransform.identity()))
+    seen_names: set[str] = set()
+    unique_anchors: list[tuple[str, SourcePoint]] = []
+    for name, point in anchors:
+        if name in seen_names:
+            raise ValueError(f"duplicate symbol pin anchor: {name}")
+        seen_names.add(name)
+        unique_anchors.append((name, point))
+    return tuple(unique_anchors)
+
+
+def _iter_explicit_asset_anchors(
+    element: ElementTree.Element, transform: _SvgTransform
+) -> tuple[tuple[str, SourcePoint], ...]:
+    """Return explicit anchors declared on ``element`` and its descendants."""
+
+    current_transform = transform.compose(
+        _parse_transform(element.attrib.get("transform", ""))
+    )
+    anchor = _explicit_anchor(element)
     anchors: list[tuple[str, SourcePoint]] = []
-    for anchor_name, point_name in asset_spec.anchor_names:
-        anchors.append((anchor_name, _anchor_point(view_box, point_name)))
+    if anchor is not None:
+        name, point = anchor
+        anchors.append((name, current_transform.apply(point)))
+    for child in list(element):
+        anchors.extend(_iter_explicit_asset_anchors(child, current_transform))
     return tuple(anchors)
 
 
-def _anchor_point(view_box: SourceViewBox, point_name: str) -> SourcePoint:
-    """Return a source anchor point from side or side-slot metadata."""
+def _explicit_anchor(
+    element: ElementTree.Element,
+) -> tuple[str, SourcePoint] | None:
+    """Return the SVG-declared anchor on one element if present."""
 
-    if ":" not in point_name:
-        if point_name == "left":
-            return SourcePoint(view_box.x, view_box.y + view_box.height / 2.0)
-        if point_name == "right":
-            return SourcePoint(
-                view_box.x + view_box.width, view_box.y + view_box.height / 2.0
-            )
-        if point_name == "top":
-            return SourcePoint(view_box.x + view_box.width / 2.0, view_box.y)
-        if point_name == "bottom":
-            return SourcePoint(
-                view_box.x + view_box.width / 2.0, view_box.y + view_box.height
-            )
-        raise ValueError(f"unknown symbol anchor point: {point_name!r}")
+    name = _explicit_anchor_name(element)
+    if name is None:
+        return None
+    return (name, _explicit_anchor_point(element))
 
-    side, slot_text = point_name.split(":", maxsplit=1)
-    index_text, count_text = slot_text.split("/", maxsplit=1)
-    index = int(index_text)
-    count = int(count_text)
-    slot = float(index) / float(count + 1)
-    if side == "left":
-        return SourcePoint(view_box.x, view_box.y + view_box.height * slot)
-    if side == "right":
+
+def _explicit_anchor_name(element: ElementTree.Element) -> str | None:
+    """Return a pin name encoded on an SVG anchor element."""
+
+    for attribute_name in ("data-pin", "data-rlvr-pin"):
+        raw_name = element.attrib.get(attribute_name)
+        if raw_name:
+            return raw_name
+    element_id = element.attrib.get("id")
+    if (
+        element_id is not None
+        and element_id.startswith("pin-")
+        and _local_name(element.tag) not in {"defs", "g"}
+    ):
+        return element_id.removeprefix("pin-")
+    return None
+
+
+def _explicit_anchor_point(element: ElementTree.Element) -> SourcePoint:
+    """Return the local coordinate for an SVG anchor element."""
+
+    if _local_name(element.tag) in {"circle", "ellipse"}:
         return SourcePoint(
-            view_box.x + view_box.width, view_box.y + view_box.height * slot
+            x=_parse_number(element.attrib["cx"]),
+            y=_parse_number(element.attrib["cy"]),
         )
-    if side == "top":
-        return SourcePoint(view_box.x + view_box.width * slot, view_box.y)
-    if side == "bottom":
+    if "x" in element.attrib and "y" in element.attrib:
         return SourcePoint(
-            view_box.x + view_box.width * slot, view_box.y + view_box.height
+            x=_parse_number(element.attrib["x"]),
+            y=_parse_number(element.attrib["y"]),
         )
-    raise ValueError(f"unknown symbol anchor side: {side!r}")
+    raise ValueError(
+        f"unsupported symbol pin anchor element: {_local_name(element.tag)!r}"
+    )
+
+
+def _parse_transform(raw_transform: str) -> _SvgTransform:
+    """Parse an SVG transform attribute into an affine matrix."""
+
+    transform = _SvgTransform.identity()
+    for match in _TRANSFORM_PATTERN.finditer(raw_transform):
+        transform = transform.compose(
+            _transform_function(match.group(1), _parse_number_list(match.group(2)))
+        )
+    return transform
+
+
+def _transform_function(name: str, values: tuple[float, ...]) -> _SvgTransform:
+    """Return the affine matrix for one SVG transform function."""
+
+    if name == "translate":
+        if len(values) == 1:
+            return _SvgTransform(a=1.0, b=0.0, c=0.0, d=1.0, e=values[0], f=0.0)
+        if len(values) == 2:
+            return _SvgTransform(a=1.0, b=0.0, c=0.0, d=1.0, e=values[0], f=values[1])
+    if name == "scale":
+        if len(values) == 1:
+            return _SvgTransform(a=values[0], b=0.0, c=0.0, d=values[0], e=0.0, f=0.0)
+        if len(values) == 2:
+            return _SvgTransform(a=values[0], b=0.0, c=0.0, d=values[1], e=0.0, f=0.0)
+    if name == "matrix" and len(values) == 6:
+        return _SvgTransform(
+            a=values[0],
+            b=values[1],
+            c=values[2],
+            d=values[3],
+            e=values[4],
+            f=values[5],
+        )
+    if name == "rotate" and len(values) in {1, 3}:
+        return _rotation_transform(values)
+    raise ValueError(f"unsupported SVG transform: {name}({values})")
+
+
+def _rotation_transform(values: tuple[float, ...]) -> _SvgTransform:
+    """Return the affine matrix for an SVG rotate transform."""
+
+    angle = radians(values[0])
+    rotation = _SvgTransform(
+        a=cos(angle),
+        b=sin(angle),
+        c=-sin(angle),
+        d=cos(angle),
+        e=0.0,
+        f=0.0,
+    )
+    if len(values) == 1:
+        return rotation
+    move_to_center = _SvgTransform(a=1.0, b=0.0, c=0.0, d=1.0, e=values[1], f=values[2])
+    move_from_center = _SvgTransform(
+        a=1.0, b=0.0, c=0.0, d=1.0, e=-values[1], f=-values[2]
+    )
+    return move_to_center.compose(rotation).compose(move_from_center)
+
+
+def _parse_number_list(raw_value: str) -> tuple[float, ...]:
+    """Parse an SVG comma-or-space separated numeric list."""
+
+    return tuple(
+        float(part) for part in re.split(r"[,\s]+", raw_value.strip()) if part.strip()
+    )
 
 
 def _parse_number(raw_value: str) -> float:
@@ -523,294 +793,181 @@ class _AssetSpec:
 
     key: str
     filename: str
-    anchor_names: tuple[tuple[str, str], ...]
     rotation_degrees: float = 0.0
 
-
-_HORIZONTAL_TWO_PIN = (
-    ("left", "bottom"),
-    ("right", "top"),
-    ("1", "bottom"),
-    ("2", "top"),
-    ("net", "bottom"),
-    ("rail", "top"),
-    ("a", "bottom"),
-    ("k", "top"),
-)
-
-_VERTICAL_TWO_PIN = (
-    ("top", "top"),
-    ("bottom", "bottom"),
-    ("p", "top"),
-    ("n", "bottom"),
-)
-
-_DIRECT_HORIZONTAL_TWO_PIN = (
-    ("left", "left"),
-    ("right", "right"),
-    ("1", "left"),
-    ("2", "right"),
-    ("net", "left"),
-    ("rail", "right"),
-    ("a", "left"),
-    ("k", "right"),
-)
 
 _VARIABLE_RESISTOR = _AssetSpec(
     key="variable_resistor",
     filename="variable_resistor.svg",
-    anchor_names=_HORIZONTAL_TWO_PIN,
     rotation_degrees=90.0,
 )
 
 _RESISTOR = _AssetSpec(
     key="resistor",
     filename="resistor.svg",
-    anchor_names=_HORIZONTAL_TWO_PIN,
     rotation_degrees=90.0,
+)
+
+_PULLUP_RESISTOR = _AssetSpec(
+    key="pullup_resistor",
+    filename="pullup_resistor.svg",
+)
+
+_PULLDOWN_RESISTOR = _AssetSpec(
+    key="pulldown_resistor",
+    filename="pulldown_resistor.svg",
 )
 
 _CAPACITOR = _AssetSpec(
     key="capacitor",
     filename="capacitor.svg",
-    anchor_names=_HORIZONTAL_TWO_PIN,
     rotation_degrees=90.0,
 )
 
 _INDUCTOR = _AssetSpec(
     key="inductor",
     filename="inductor.svg",
-    anchor_names=_HORIZONTAL_TWO_PIN,
     rotation_degrees=90.0,
 )
 
 _LED = _AssetSpec(
     key="led",
     filename="led.svg",
-    anchor_names=_HORIZONTAL_TWO_PIN,
     rotation_degrees=90.0,
 )
 
 _DIODE = _AssetSpec(
     key="diode",
     filename="diode.svg",
-    anchor_names=_HORIZONTAL_TWO_PIN,
     rotation_degrees=90.0,
 )
 
 _ZENER = _AssetSpec(
     key="zener",
     filename="zener.svg",
-    anchor_names=_HORIZONTAL_TWO_PIN,
     rotation_degrees=90.0,
 )
 
 _SPST_SWITCH = _AssetSpec(
     key="spst_switch",
     filename="spst_switch.svg",
-    anchor_names=_HORIZONTAL_TWO_PIN,
     rotation_degrees=90.0,
 )
 
 _SPST_SWITCH_CLOSED = _AssetSpec(
     key="spst_switch_closed",
     filename="spst_switch_closed.svg",
-    anchor_names=_HORIZONTAL_TWO_PIN,
     rotation_degrees=90.0,
 )
 
 _DC_SOURCE = _AssetSpec(
     key="dc_voltage_source",
     filename="dc_voltage_source.svg",
-    anchor_names=_VERTICAL_TWO_PIN,
 )
 
 _AC_SOURCE = _AssetSpec(
     key="ac_voltage_source",
     filename="ac_voltage_source.svg",
-    anchor_names=_VERTICAL_TWO_PIN,
 )
 
 _CURRENT_SOURCE = _AssetSpec(
     key="current_source_dc",
     filename="current_source_dc.svg",
-    anchor_names=_VERTICAL_TWO_PIN,
 )
 
 _GROUND = _AssetSpec(
     key="ground",
     filename="ground.svg",
-    anchor_names=(("0", "top"), ("top", "top")),
 )
 
 _NPN = _AssetSpec(
     key="npn",
     filename="npn.svg",
-    anchor_names=(("b", "left"), ("c", "top"), ("e", "bottom")),
 )
 
 _PNP = _AssetSpec(
     key="pnp",
     filename="pnp.svg",
-    anchor_names=(("b", "left"), ("e", "top"), ("c", "bottom")),
 )
 
 _NMOS = _AssetSpec(
     key="nmos",
     filename="nmos.svg",
-    anchor_names=(("g", "left"), ("d", "top"), ("s", "bottom")),
 )
 
 _PMOS = _AssetSpec(
     key="pmos",
     filename="pmos.svg",
-    anchor_names=(("g", "left"), ("s", "top"), ("d", "bottom")),
 )
 
 _OPAMP = _AssetSpec(
     key="op_amp",
     filename="op_amp.svg",
-    anchor_names=(
-        ("noninv", "left:1/2"),
-        ("inv", "left:2/2"),
-        ("out", "right"),
-        ("vpos", "top"),
-        ("vneg", "bottom"),
-    ),
 )
 
 _TRANSFORMER = _AssetSpec(
     key="transformer",
     filename="transformer.svg",
-    anchor_names=(
-        ("p1", "left:1/2"),
-        ("p2", "left:2/2"),
-        ("s1", "right:1/2"),
-        ("s2", "right:2/2"),
-    ),
 )
 
 _CONTROLLED_SOURCE = _AssetSpec(
     key="controlled_source",
     filename="controlled_source.svg",
-    anchor_names=(
-        ("p", "right:1/2"),
-        ("n", "right:2/2"),
-        ("cp", "left:1/2"),
-        ("cn", "left:2/2"),
-    ),
 )
 
 _CONTROLLED_CURRENT_SOURCE = _AssetSpec(
     key="controlled_current_source",
     filename="controlled_current_source.svg",
-    anchor_names=(
-        ("p", "right:1/2"),
-        ("n", "right:2/2"),
-        ("cp", "left:1/2"),
-        ("cn", "left:2/2"),
-    ),
 )
 
 _RELAY = _AssetSpec(
     key="relay",
     filename="relay.svg",
-    anchor_names=(
-        ("coil_p", "left:1/2"),
-        ("coil_n", "left:2/2"),
-        ("com", "bottom"),
-        ("no", "right:1/2"),
-        ("nc", "right:2/2"),
-    ),
 )
 
 _GENERIC_IC = _AssetSpec(
     key="generic_ic",
     filename="generic_ic.svg",
-    anchor_names=(
-        ("in1", "left:1/2"),
-        ("in2", "left:2/2"),
-        ("out1", "right"),
-        ("vcc", "top"),
-        ("gnd", "bottom"),
-    ),
 )
 
 _CONNECTOR = _AssetSpec(
     key="connector",
     filename="connector.svg",
-    anchor_names=(("1", "left:1/2"), ("2", "left:2/2")),
 )
 
 _VOLTMETER = _AssetSpec(
     key="meter",
     filename="meter.svg",
-    anchor_names=(
-        ("p", "top"),
-        ("n", "bottom"),
-        ("left", "left"),
-        ("right", "right"),
-    ),
 )
 
 _AMMETER = _AssetSpec(
-    key="meter",
-    filename="meter.svg",
-    anchor_names=(
-        ("p", "left"),
-        ("n", "right"),
-        ("left", "left"),
-        ("right", "right"),
-        ("top", "top"),
-        ("bottom", "bottom"),
-    ),
+    key="ammeter",
+    filename="ammeter.svg",
 )
 
 _LAMP = _AssetSpec(
     key="lamp",
     filename="lamp.svg",
-    anchor_names=_DIRECT_HORIZONTAL_TWO_PIN,
 )
 
 _MOTOR = _AssetSpec(
     key="motor",
     filename="motor.svg",
-    anchor_names=_DIRECT_HORIZONTAL_TWO_PIN,
 )
 
 _LOGIC = _AssetSpec(
     key="and_gate",
     filename="logic.svg",
-    anchor_names=(
-        ("in1", "left:1/2"),
-        ("in2", "left:2/2"),
-        ("out", "right"),
-        ("vcc", "top"),
-        ("gnd", "bottom"),
-    ),
 )
 
 _OR_GATE = _AssetSpec(
     key="or_gate",
     filename="or_gate.svg",
-    anchor_names=(
-        ("in1", "left:1/2"),
-        ("in2", "left:2/2"),
-        ("out", "right"),
-        ("vcc", "top"),
-        ("gnd", "bottom"),
-    ),
 )
 
 _NOT_GATE = _AssetSpec(
     key="not_gate",
     filename="not_gate.svg",
-    anchor_names=(
-        ("in1", "left"),
-        ("out", "right"),
-        ("vcc", "top"),
-        ("gnd", "bottom"),
-    ),
 )
 
 _ASSETS_BY_KIND = {
@@ -826,6 +983,8 @@ _ASSETS_BY_KIND = {
     "mosfet_p": _PMOS,
     "not_gate": _NOT_GATE,
     "or_gate": _OR_GATE,
+    "pulldown_resistor": _PULLDOWN_RESISTOR,
+    "pullup_resistor": _PULLUP_RESISTOR,
     "vccs": _CONTROLLED_CURRENT_SOURCE,
     "voltage_source_dc": _DC_SOURCE,
     "voltmeter": _VOLTMETER,
