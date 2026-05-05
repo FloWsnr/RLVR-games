@@ -7,6 +7,7 @@ from typing import Mapping
 
 import pytest
 
+import rlvr_physics.tasks.physics.circuits.svg as svg_module
 from rlvr_physics.core.rendering import PNG_MIME_TYPE, validate_png_image_data
 from rlvr_physics.tasks.physics.circuits import (
     Bounds,
@@ -225,6 +226,68 @@ def test_layout_routes_wires_around_all_component_labels() -> None:
                     )
 
 
+def test_asset_aware_layout_routes_wires_around_drawn_component_labels() -> None:
+    catalog = default_catalog()
+
+    seed, element_count = GENERATED_CASES[0]
+    circuit, _ = _planned_generated_case(seed, element_count)
+    layout = _plan_layout(
+        circuit,
+        catalog,
+        route_pin_labels=False,
+        pin_position_resolver=_asset_pin_position,
+        component_label_bounds_resolver=asset_component_label_bounds,
+    )
+    part_by_ref = circuit.part_by_ref()
+    label_bounds = [
+        asset_component_label_bounds(
+            part,
+            catalog[part_by_ref[part.ref].kind],
+            part_by_ref[part.ref],
+        )
+        for part in layout.parts
+    ]
+
+    for wire in layout.wires:
+        for segment in wire.segments:
+            for bounds in label_bounds:
+                assert not _segment_crosses_bounds(
+                    segment,
+                    bounds.expanded(WIRE_CLEARANCE, WIRE_CLEARANCE),
+                ), (
+                    seed,
+                    element_count,
+                    wire.net,
+                    bounds,
+                )
+
+
+def test_draw_svg_planning_uses_drawn_component_label_bounds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog = default_catalog()
+    calls: list[str] = []
+    original_resolver = svg_module.asset_component_label_bounds
+
+    def recording_resolver(
+        part: PlacedPart,
+        spec: PartSpec,
+        instance: PartInstance,
+    ) -> Bounds:
+        calls.append(part.ref)
+        return original_resolver(part, spec, instance)
+
+    monkeypatch.setattr(
+        svg_module,
+        "asset_component_label_bounds",
+        recording_resolver,
+    )
+
+    draw_svg(divider_circuit(), catalog)
+
+    assert {"GND1", "R1", "R2", "V1"}.issubset(calls)
+
+
 def test_layout_routes_shared_spines_around_component_labels() -> None:
     catalog = default_catalog()
     seed = 21
@@ -432,6 +495,10 @@ def test_svg_draws_circuit_symbols_and_labels() -> None:
     assert 'class="background"' in svg
     assert 'fill="#ffffff"' in svg
     assert 'class="wire"' in svg
+    assert 'class="junction"' in svg
+    assert '<circle class="junction"' in svg
+    assert 'r="1.8"/>' in svg
+    assert 'r="1.1"/>' not in svg
     assert svg.endswith("</svg>\n")
 
 
@@ -641,6 +708,37 @@ def test_svg_routes_to_asset_pin_anchors_without_corrective_leads() -> None:
         svg = draw_svg(circuit, catalog)
 
         _assert_no_corrective_symbol_leads(svg, circuit)
+
+
+def test_svg_supplied_layout_keeps_terminal_dots_on_layout_pins() -> None:
+    catalog = default_catalog()
+    motif = default_motifs()["led_indicator"]
+    generated = generate_circuit(
+        GeneratorConfig(
+            seed=1004,
+            element_count=motif.element_count + 1,
+            motif_weights={"led_indicator": 1.0},
+        ),
+        catalog,
+    )
+    layout = plan_layout(generated.circuit, catalog)
+    placed_led = layout.part_by_ref()["D1"]
+    led_instance = generated.circuit.part_by_ref()["D1"]
+    led_spec = catalog[led_instance.kind]
+    layout_anchor = pin_position(placed_led, led_spec, "a")
+    asset_anchor = asset_terminals_for_part(
+        placed_led,
+        led_spec,
+        led_instance,
+    )["a"]
+
+    svg = draw_svg(generated.circuit, catalog, layout)
+
+    assert _point_key(layout_anchor) != _point_key(asset_anchor)
+    assert (
+        f'<circle class="junction" cx="{layout_anchor.x:.1f}" '
+        f'cy="{layout_anchor.y:.1f}" r="1.8"/>'
+    ) in svg
 
 
 def test_asset_aware_layout_routes_wire_endpoints_to_asset_pins() -> None:
@@ -862,17 +960,26 @@ def test_svg_does_not_merge_adjacent_cross_net_segments() -> None:
 
 
 def test_svg_marks_same_net_interior_crossings_as_junctions() -> None:
-    junctions = _junction_points(
-        (
-            WireSegment(Point(10.0, 0.0), Point(10.0, 20.0)),
-            WireSegment(Point(0.0, 10.0), Point(20.0, 10.0)),
-            WireSegment(Point(40.0, 0.0), Point(40.0, 20.0)),
-            WireSegment(Point(40.0, 20.0), Point(60.0, 20.0)),
-        )
+    crossing_segments = (
+        WireSegment(Point(10.0, 0.0), Point(10.0, 20.0)),
+        WireSegment(Point(0.0, 10.0), Point(20.0, 10.0)),
+        WireSegment(Point(40.0, 0.0), Point(40.0, 20.0)),
+        WireSegment(Point(40.0, 20.0), Point(60.0, 20.0)),
     )
+    junctions = _junction_points(crossing_segments)
+    base_layout = plan_layout(divider_circuit(), default_catalog())
+    layout = Layout(
+        parts=base_layout.parts,
+        wires=(WirePath("VCC", crossing_segments),),
+        size=Size(100.0, 100.0),
+    )
+
+    svg = draw_svg(divider_circuit(), default_catalog(), layout)
 
     assert Point(10.0, 10.0) in junctions
     assert Point(40.0, 20.0) not in junctions
+    assert '<circle class="junction" cx="10.0" cy="10.0" r="2.2"/>' in svg
+    assert 'r="1.6"/>' not in svg
 
 
 def test_svg_can_draw_pin_labels_when_requested() -> None:

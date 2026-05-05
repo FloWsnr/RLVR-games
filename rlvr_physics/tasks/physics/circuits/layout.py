@@ -146,6 +146,7 @@ class PlacedPart:
 
 
 PinPositionResolver = Callable[[PlacedPart, PartSpec, PartInstance, str], Point | None]
+ComponentLabelBoundsResolver = Callable[[PlacedPart, PartSpec, PartInstance], Bounds]
 
 
 @dataclass(frozen=True)
@@ -245,19 +246,26 @@ def _plan_layout(
     *,
     route_pin_labels: bool,
     pin_position_resolver: PinPositionResolver | None = None,
+    component_label_bounds_resolver: ComponentLabelBoundsResolver | None = None,
 ) -> Layout:
     """Plan deterministic component placement with renderer-specific routing."""
 
     initial_parts = _initial_placement(circuit, catalog)
-    placed = _force_directed_parts(circuit, catalog, initial_parts)
+    placed = _force_directed_parts(
+        circuit,
+        catalog,
+        initial_parts,
+        component_label_bounds_resolver,
+    )
     placed = _snap_parts(placed)
-    placed = _clear_overlaps(circuit, catalog, placed)
+    placed = _clear_overlaps(circuit, catalog, placed, component_label_bounds_resolver)
     wires, net_labels = _route_wires(
         circuit,
         catalog,
         {part.ref: part for part in placed},
         route_pin_labels=route_pin_labels,
         pin_position_resolver=pin_position_resolver,
+        component_label_bounds_resolver=component_label_bounds_resolver,
     )
     placed, wires, net_labels, size = _normalize_layout(
         circuit,
@@ -265,6 +273,7 @@ def _plan_layout(
         placed,
         wires,
         net_labels,
+        component_label_bounds_resolver,
     )
     return Layout(
         parts=tuple(sorted(placed, key=lambda part: part.ref)),
@@ -635,6 +644,7 @@ def _force_directed_parts(
     circuit: Circuit,
     catalog: Mapping[str, PartSpec],
     placed_parts: tuple[PlacedPart, ...],
+    component_label_bounds_resolver: ComponentLabelBoundsResolver | None,
 ) -> tuple[PlacedPart, ...]:
     """Refine part positions with attractive nets and overlap repulsion."""
 
@@ -647,7 +657,13 @@ def _force_directed_parts(
 
     for iteration in range(FORCE_ITERATIONS):
         forces = {ref: Point(0.0, 0.0) for ref in refs}
-        bounds = _placement_bounds_by_ref(circuit, catalog, positions, sizes)
+        bounds = _placement_bounds_by_ref(
+            circuit,
+            catalog,
+            positions,
+            sizes,
+            component_label_bounds_resolver,
+        )
         alpha = 1.0 - float(iteration) / float(FORCE_ITERATIONS)
         max_step = max(5.0, MAX_FORCE_STEP * alpha)
 
@@ -711,6 +727,7 @@ def _clear_overlaps(
     circuit: Circuit,
     catalog: Mapping[str, PartSpec],
     placed_parts: tuple[PlacedPart, ...],
+    component_label_bounds_resolver: ComponentLabelBoundsResolver | None,
 ) -> tuple[PlacedPart, ...]:
     """Run a deterministic hard-separation pass over placement bounds."""
 
@@ -721,7 +738,13 @@ def _clear_overlaps(
 
     for _ in range(120):
         changed = False
-        bounds = _placement_bounds_by_ref(circuit, catalog, positions, sizes)
+        bounds = _placement_bounds_by_ref(
+            circuit,
+            catalog,
+            positions,
+            sizes,
+            component_label_bounds_resolver,
+        )
         for ref_a, ref_b in combinations(refs, 2):
             correction = _overlap_correction(bounds[ref_a], bounds[ref_b])
             if correction is None:
@@ -779,17 +802,19 @@ def _placement_bounds_by_ref(
     catalog: Mapping[str, PartSpec],
     positions: Mapping[str, Point],
     sizes: Mapping[str, Size],
+    component_label_bounds_resolver: ComponentLabelBoundsResolver | None,
 ) -> dict[str, Bounds]:
     """Return placement bounds for mutable force-directed positions."""
 
     part_by_ref = circuit.part_by_ref()
     return {
-        ref: placement_bounds(
+        ref: _resolved_placement_bounds(
             PlacedPart(
                 ref=ref, kind=part_by_ref[ref].kind, center=position, size=sizes[ref]
             ),
             catalog[part_by_ref[ref].kind],
-            part_by_ref[ref].value,
+            part_by_ref[ref],
+            component_label_bounds_resolver,
         )
         for ref, position in positions.items()
     }
@@ -850,6 +875,7 @@ def _route_wires(
     *,
     route_pin_labels: bool,
     pin_position_resolver: PinPositionResolver | None,
+    component_label_bounds_resolver: ComponentLabelBoundsResolver | None,
 ) -> tuple[tuple[WirePath, ...], tuple[NetLabel, ...]]:
     """Build deterministic Manhattan paths through open routing channels."""
 
@@ -858,10 +884,11 @@ def _route_wires(
     part_by_ref = circuit.part_by_ref()
     symbol_label_bounds = tuple(placed.bounds for placed in placed_parts.values())
     component_label_bounds_by_part = tuple(
-        component_label_bounds(
+        _resolved_component_label_bounds(
             placed,
             catalog[part_by_ref[ref].kind],
-            part_by_ref[ref].value,
+            part_by_ref[ref],
+            component_label_bounds_resolver,
         )
         for ref, placed in placed_parts.items()
     )
@@ -1001,6 +1028,65 @@ def _labeled_stub_bounds_by_net(
             for segment in _pin_stub_segments(anchors)
         )
     return bounds_by_net
+
+
+def _resolved_component_label_bounds(
+    placed_part: PlacedPart,
+    spec: PartSpec,
+    part: PartInstance,
+    component_label_bounds_resolver: ComponentLabelBoundsResolver | None,
+) -> Bounds:
+    """Return renderer-specific component-label bounds or default bounds."""
+
+    if component_label_bounds_resolver is not None:
+        return component_label_bounds_resolver(placed_part, spec, part)
+    return component_label_bounds(placed_part, spec, part.value)
+
+
+def _resolved_visual_bounds(
+    placed_part: PlacedPart,
+    spec: PartSpec,
+    part: PartInstance,
+    component_label_bounds_resolver: ComponentLabelBoundsResolver | None,
+) -> Bounds:
+    """Return rendered bounds with renderer-specific component labels."""
+
+    boxes = [placed_part.bounds]
+    boxes.append(
+        _resolved_component_label_bounds(
+            placed_part,
+            spec,
+            part,
+            component_label_bounds_resolver,
+        )
+    )
+    for pin in spec.pins:
+        anchor = pin_position(placed_part, spec, pin.name)
+        boxes.append(_pin_label_bounds(anchor, pin.side, pin.name))
+    return _union_bounds(boxes)
+
+
+def _resolved_placement_bounds(
+    placed_part: PlacedPart,
+    spec: PartSpec,
+    part: PartInstance,
+    component_label_bounds_resolver: ComponentLabelBoundsResolver | None,
+) -> Bounds:
+    """Return placement bounds with renderer-specific component labels."""
+
+    boxes = [
+        _resolved_visual_bounds(
+            placed_part,
+            spec,
+            part,
+            component_label_bounds_resolver,
+        ).expanded(ROUTING_PADDING, ROUTING_PADDING)
+    ]
+    boxes.extend(
+        bounds.expanded(ROUTING_CLEARANCE, ROUTING_CLEARANCE)
+        for bounds in _pin_approach_bounds(placed_part, spec)
+    )
+    return _union_bounds(boxes)
 
 
 def _pin_approach_bounds_by_pin(
@@ -1862,6 +1948,7 @@ def _normalize_layout(
     placed_parts: tuple[PlacedPart, ...],
     wires: tuple[WirePath, ...],
     net_labels: tuple[NetLabel, ...],
+    component_label_bounds_resolver: ComponentLabelBoundsResolver | None,
 ) -> tuple[tuple[PlacedPart, ...], tuple[WirePath, ...], tuple[NetLabel, ...], Size]:
     """Shift layout to a positive canvas and return final size."""
 
@@ -1871,6 +1958,7 @@ def _normalize_layout(
         placed_parts,
         wires,
         net_labels,
+        component_label_bounds_resolver,
     )
     dx = CANVAS_MARGIN - min_x
     dy = CANVAS_MARGIN - min_y
@@ -1883,6 +1971,7 @@ def _normalize_layout(
         shifted_parts,
         shifted_wires,
         shifted_net_labels,
+        component_label_bounds_resolver,
     )
     return (
         shifted_parts,
@@ -1898,13 +1987,17 @@ def _layout_extents(
     placed_parts: tuple[PlacedPart, ...],
     wires: tuple[WirePath, ...],
     net_labels: tuple[NetLabel, ...],
+    component_label_bounds_resolver: ComponentLabelBoundsResolver | None,
 ) -> tuple[float, float, float, float]:
     """Return visual and wire extents for a layout."""
 
     part_by_ref = circuit.part_by_ref()
     boxes = [
-        visual_bounds(
-            part, catalog[part_by_ref[part.ref].kind], part_by_ref[part.ref].value
+        _resolved_visual_bounds(
+            part,
+            catalog[part_by_ref[part.ref].kind],
+            part_by_ref[part.ref],
+            component_label_bounds_resolver,
         )
         for part in placed_parts
     ]

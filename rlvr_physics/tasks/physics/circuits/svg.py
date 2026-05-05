@@ -16,10 +16,14 @@ from rlvr_physics.tasks.physics.circuits.layout import (
 )
 from rlvr_physics.tasks.physics.circuits.model import Circuit, PartInstance, PartSpec
 from rlvr_physics.tasks.physics.circuits.symbol_assets import (
+    asset_component_label_bounds,
     asset_terminals_for_part,
     draw_asset_part,
     svg_namespace_attributes,
 )
+
+_TERMINAL_DOT_RADIUS = 1.8
+_JUNCTION_DOT_RADIUS = 2.2
 
 
 def draw_svg(
@@ -63,6 +67,7 @@ def draw_svg(
             catalog,
             route_pin_labels=True,
             pin_position_resolver=_asset_pin_position,
+            component_label_bounds_resolver=asset_component_label_bounds,
         )
     else:
         planned_layout = _plan_layout(
@@ -70,6 +75,7 @@ def draw_svg(
             catalog,
             route_pin_labels=False,
             pin_position_resolver=_asset_pin_position,
+            component_label_bounds_resolver=asset_component_label_bounds,
         )
     parts = circuit.part_by_ref()
     lines = [
@@ -126,12 +132,12 @@ def draw_svg(
         use_asset_pin_positions=layout is None,
     ):
         lines.append(
-            f'<circle class="junction" cx="{point.x:.1f}" cy="{point.y:.1f}" r="1.1"/>'
+            f'<circle class="junction" cx="{point.x:.1f}" cy="{point.y:.1f}" r="{_TERMINAL_DOT_RADIUS:.1f}"/>'
         )
     for wire in planned_layout.wires:
         for point in _junction_points(wire.segments):
             lines.append(
-                f'<circle class="junction" cx="{point.x:.1f}" cy="{point.y:.1f}" r="1.6"/>'
+                f'<circle class="junction" cx="{point.x:.1f}" cy="{point.y:.1f}" r="{_JUNCTION_DOT_RADIUS:.1f}"/>'
             )
     for label in planned_layout.net_labels:
         lines.extend(_draw_net_label(label))
