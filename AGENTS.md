@@ -28,6 +28,8 @@ renderer peripherals, and deferred trainer integration surfaces.
 - Keep scalar reward assignment in task-local rewards modules. Invalid
   submission policies should describe control effects such as budget
   consumption, terminal state, and truncation.
+- For procedural circuit generation, compose full motifs through declared port
+  contracts. Do not add loose generator-level parts or fallback loads.
 - Public play and adapter surfaces should preserve `RewardResult.public_info`
   and omit `RewardResult.debug_info`.
 - Do not expose procedural replay seeds through public task metadata. Use

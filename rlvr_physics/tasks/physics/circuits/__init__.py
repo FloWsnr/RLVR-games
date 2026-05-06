@@ -12,12 +12,17 @@ from rlvr_physics.tasks.physics.circuits.erc import (
     check_circuit,
 )
 from rlvr_physics.tasks.physics.circuits.generation import (
+    CircuitGenerationError,
     GeneratedCircuit,
     GeneratorConfig,
     generate_circuit,
 )
 from rlvr_physics.tasks.physics.circuits.motifs import (
     CircuitMotif,
+    InstantiatedMotif,
+    MotifPort,
+    MotifPortRole,
+    MotifSignalKind,
     default_motif_weights,
     default_motifs,
 )
@@ -69,6 +74,7 @@ __all__ = [
     "Bounds",
     "CheckIssue",
     "CheckReport",
+    "CircuitGenerationError",
     "CircuitMotif",
     "Circuit",
     "CircuitBuilder",
@@ -80,7 +86,11 @@ __all__ = [
     "GeneratedCircuit",
     "GeneratorConfig",
     "IssueSeverity",
+    "InstantiatedMotif",
     "Layout",
+    "MotifPort",
+    "MotifPortRole",
+    "MotifSignalKind",
     "NetLabel",
     "PartInstance",
     "PartSpec",

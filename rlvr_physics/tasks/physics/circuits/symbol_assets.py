@@ -27,7 +27,6 @@ _DYNAMIC_PACKAGE_KINDS = frozenset(
     (
         "controlled_switch",
         "counter_4bit",
-        "dip_20_ic",
         "instrumentation_amplifier",
         "timer_555",
     )
@@ -1052,11 +1051,6 @@ _NPN = _AssetSpec(
     filename="npn.svg",
 )
 
-_PNP = _AssetSpec(
-    key="pnp",
-    filename="pnp.svg",
-)
-
 _NMOS = _AssetSpec(
     key="nmos",
     filename="nmos.svg",
@@ -1151,7 +1145,6 @@ _ASSETS_BY_KIND = {
     "ammeter": _AMMETER,
     "battery": _BATTERY,
     "bjt_npn": _NPN,
-    "bjt_pnp": _PNP,
     "crystal": _CRYSTAL,
     "current_source_dc": _CURRENT_SOURCE,
     "diode": _DIODE,

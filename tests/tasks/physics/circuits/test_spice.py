@@ -95,11 +95,8 @@ def test_export_spice_handles_new_asset_backed_parts() -> None:
     assert "RS1 VIN SW 1e+12" in netlist_text
     assert "XPWR1 VIN RLVR_POWER_RAIL" in netlist_text
     assert "XTP1 MID RLVR_TEST_POINT" in netlist_text
-    assert "XU1 DIP_1 DIP_2" in netlist_text
     assert ".subckt RLVR_POWER_RAIL net\n.ends RLVR_POWER_RAIL" in netlist_text
     assert ".subckt RLVR_TEST_POINT net\n.ends RLVR_TEST_POINT" in netlist_text
-    assert ".subckt RLVR_DIP_20_IC 1 2 3" in netlist_text
-    assert ".ends RLVR_DIP_20_IC" in netlist_text
     assert "RLEAK" not in netlist_text
 
 
@@ -146,7 +143,6 @@ def _asset_backed_parts_netlist_text() -> str:
     )
     builder.add_part("PWR1", "power_rail", "VCC", {}, {})
     builder.add_part("TP1", "test_point", "", {}, {})
-    builder.add_part("U1", "dip_20_ic", "DIP", {}, {})
     builder.connect("GND1", "0", "0")
     builder.connect("BT1", "p", "VIN")
     builder.connect("BT1", "n", "0")
@@ -160,8 +156,6 @@ def _asset_backed_parts_netlist_text() -> str:
     builder.connect("S1", "2", "SW")
     builder.connect("PWR1", "net", "VIN")
     builder.connect("TP1", "net", "MID")
-    for pin in catalog["dip_20_ic"].pins:
-        builder.connect("U1", pin.name, f"DIP_{pin.name}")
 
     return export_spice(builder.freeze(), catalog, operating_point_analysis()).text
 

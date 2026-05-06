@@ -143,6 +143,12 @@ should require behavior, not inheritance from a single base class.
 Task families may depend on shared domain backends when a domain has reusable
 authoritative state and executable rules.
 
+For reusable circuit backends, procedural generation should compose declared
+motifs through typed port contracts over the canonical part/pin/net/connection
+graph. Motifs, not loose generator-added parts, are the unit of diversity.
+Generated circuits should contain a connected source-to-load or source-to-probe
+path with structural validation before they become task instances.
+
 ### Task Session
 
 A task session is the scalar runtime wrapper around one task instance and one

@@ -71,37 +71,37 @@ GENERATED_IMAGE_ROOT = Path(__file__).with_name("images")
 GENERATED_MOTIF_IMAGE_DIR = GENERATED_IMAGE_ROOT / "motif"
 GENERATED_CIRCUIT_IMAGE_DIR = GENERATED_IMAGE_ROOT / "circuit"
 GENERATED_CASES = (
-    (0, 6),
-    (1, 8),
-    (4, 10),
-    (2, 10),
-    (3, 12),
-    (4, 16),
-    (5, 20),
-    (9, 15),
-    (36, 20),
+    (0, 3),
+    (1, 3),
+    (7, 4),
+    (2, 4),
+    (4, 5),
+    (6, 5),
+    (9, 3),
+    (36, 4),
+    (40, 5),
 )
 GENERATED_LAYOUT_FINGERPRINTS = {
-    (0, 6): "fbde2c1a84334ccc1b4d985d0b3d8f2791224ca2e26f378eeb1d446b4b2496fe",
-    (1, 8): "6ffbe32666d7e64a270b35631baae79311b96008a175f9c12009f1d1c6339b38",
-    (4, 10): "77c8586d61ab5e3f0863e921c039bec7f7b503e8e85406bbe10d12d0c10e7700",
-    (2, 10): "3f95e6022383af49f00a98e0b1942745829be1149ca538bb9731d5908473c6ba",
-    (3, 12): "985fb9067cc62cfbd32205f8bdc64dc1884551add19910995061badc5dbd68b5",
-    (4, 16): "77f79bfcb730d722e8a842ab6c0367d4337ea734f46cbed602f109d7fb1e7b28",
-    (5, 20): "b08b0207b80069ba29f271642e289eb58186b5ffa089c9d8e1ce6981e1525369",
-    (9, 15): "69db1533893fc000f5bb1aba0d7362c5f0d3bce04ff0af4bb5a6ab8463109213",
-    (36, 20): "19bc879788cbf5729ded80143b31382f33e21bbb6e7b468b8d3e8aec5f5a18f9",
+    (0, 3): "7113aab8c49450c872b2955ea6cc9c91bfc10cdb1215febe15eee58e7d5b34dc",
+    (1, 3): "d640ebf1c21a92635f64f1629647d86b7989a3a77d35a08ee2e0a923a084f827",
+    (7, 4): "ffb238ae8c13f725beecfbe8f11317357fa9e07b2e9b15337df02d928ecc80de",
+    (2, 4): "d307e3eb03c7dc09e2f367716170d4688ca5e338bf10378afe00efed26e896e0",
+    (4, 5): "773ab232acfeb4e526af828cf9485ba35064c32f5d3c288a634ee4f9de3d2e2c",
+    (6, 5): "e9941783afa9f26f9cc5ec244e1cbc1748fc395f54d67eb6f3e3dd725829de05",
+    (9, 3): "7a500804c7e882186241c2a3090b425c082594048db86096cda2310670471195",
+    (36, 4): "7f19fabe15433c47cd91fbb96470f797faf0dfbce7eae88cf0d82f16aced1f3f",
+    (40, 5): "4af835a10566d023a91dcd8d2cbf75d7118412eb30c070be96aa1685396be9f7",
 }
 GENERATED_ASSET_LAYOUT_FINGERPRINTS = {
-    (0, 6): "4d0ccb6ab20b54d4f2bad36c8b74624a55ac845d83b5a3f51aeb5baae5342758",
-    (1, 8): "0689c1bb6448a63a46aeaed31ca52681c80ac09c651f22e0319e46fc2105bbf8",
-    (4, 10): "12a289a5a87069f6c71a995101996de4ba590b25c8383fa440f06cbc2963abd5",
-    (2, 10): "8b5bc4aad90296329202e5144918977d5141aa0a43f5aca544f71798a7fa05a1",
-    (3, 12): "0a04ac6d6682ccfe9a47d10110f387985aad4be9c5c876f658f11774e7e90888",
-    (4, 16): "5f37101f5599682df71da07f3747196c708126f501153408818502767cfc04ea",
-    (5, 20): "b414a381d52539714d1728acc670844ef0cead1fe09740dbd8769deb64c013c1",
-    (9, 15): "a9518004a06029fbf5f356c65f7eeb4e31bed61b909f8e490a2bbe79ba253d4f",
-    (36, 20): "a110eea958b58cbb8f32fde839dd3656cc9a07d963c0b1b2c873b05ee2742fd2",
+    (0, 3): "d6db662f89125548364831804d5889ec104894418a2ca191b56b87d5c5b493e6",
+    (1, 3): "059e61d903b86f19e17c922b81fb448a5a65247ae8a3378afaf157782c8e70cd",
+    (7, 4): "fa5b8734c2b7ff19b5ee228cb0606805af2fb7cd91c1961993071adfde61c582",
+    (2, 4): "696ea4d6489f2baa6b958b02129158823257c611eb9622c254f51deaae05be25",
+    (4, 5): "e7c850dc1f31a52f4d002d8d9c3c326f7ed82893b61b2b909e56cdb1b8a6f2df",
+    (6, 5): "5fb81902bd80c757216a5feac842a0f8a2efb0704d149dc8e5bd5a2bd8d099a5",
+    (9, 3): "e9f84e1d33cc3364715097296598ad10cc60c05f58d470bd570a10d7e41b45f0",
+    (36, 4): "46a677c385753709d235790c0146bce6c20d41d3c63e627470c7677dbf4f0efe",
+    (40, 5): "6223a28a15871313bbfcef9f6612cf102b735d4b238ed03dad2486c40072400b",
 }
 GEOMETRY_EPSILON = 1.0e-6
 WIRE_CLEARANCE = 1.0
@@ -109,7 +109,6 @@ DYNAMIC_PACKAGE_PIN_LEAD = 14.0
 DYNAMIC_PACKAGE_KINDS = (
     "controlled_switch",
     "counter_4bit",
-    "dip_20_ic",
     "instrumentation_amplifier",
     "timer_555",
 )
@@ -356,7 +355,7 @@ def test_draw_svg_planning_uses_drawn_component_label_bounds(
 def test_layout_routes_shared_spines_around_component_labels() -> None:
     catalog = default_catalog()
     seed = 21
-    element_count = 13
+    element_count = 4
     circuit, layout = _planned_generated_case(seed, element_count)
     part_by_ref = circuit.part_by_ref()
     label_bounds = [
@@ -384,7 +383,7 @@ def test_layout_routes_shared_spines_around_component_labels() -> None:
 
 def test_layout_routes_pin_label_mode_around_pin_labels() -> None:
     catalog = default_catalog()
-    pin_label_cases = ((0, 6),)
+    pin_label_cases = ((0, 3),)
 
     for seed, element_count in pin_label_cases:
         circuit, _ = _planned_generated_case(seed, element_count)
@@ -432,7 +431,7 @@ def test_layout_reserves_component_pin_approach_lanes() -> None:
 
 
 def test_layout_uses_local_labels_for_shared_global_nets() -> None:
-    circuit, layout = _planned_generated_case(2, 10)
+    circuit, layout = _planned_generated_case(2, 5)
     labeled_nets = {label.net for label in layout.net_labels}
 
     assert "0" in labeled_nets
@@ -445,7 +444,7 @@ def test_layout_uses_local_labels_for_shared_global_nets() -> None:
 def test_layout_places_local_net_labels_clear_of_rendered_geometry() -> None:
     catalog = default_catalog()
 
-    for seed, element_count in (*GENERATED_CASES, (2, 6), (12, 6), (3, 24)):
+    for seed, element_count in (*GENERATED_CASES, (12, 3), (21, 4), (33, 5)):
         circuit, layout = _planned_generated_case(seed, element_count)
         _assert_net_labels_are_clear((seed, element_count), circuit, layout, catalog)
     for index, (name, motif) in enumerate(default_motifs().items()):
@@ -454,7 +453,7 @@ def test_layout_places_local_net_labels_clear_of_rendered_geometry() -> None:
 
 
 def test_layout_routes_signals_around_labeled_net_stubs() -> None:
-    for seed, element_count in (*GENERATED_CASES, (2, 6), (12, 6)):
+    for seed, element_count in (*GENERATED_CASES, (12, 3), (21, 4)):
         _, layout = _planned_generated_case(seed, element_count)
         _assert_cross_net_labeled_stubs_are_clear((seed, element_count), layout)
     for index, (name, motif) in enumerate(default_motifs().items()):
@@ -463,7 +462,7 @@ def test_layout_routes_signals_around_labeled_net_stubs() -> None:
 
 
 def test_layout_avoids_collinear_cross_net_wire_overlaps() -> None:
-    for seed, element_count in (*GENERATED_CASES, (1, 6)):
+    for seed, element_count in (*GENERATED_CASES, (11, 3)):
         _, layout = _planned_generated_case(seed, element_count)
         _assert_no_collinear_cross_net_wire_overlaps((seed, element_count), layout)
     for index, (name, motif) in enumerate(default_motifs().items()):
@@ -1040,9 +1039,9 @@ def test_symbol_mask_leaves_asset_pin_boundary_visible() -> None:
     assert f'x="{part.bounds.x - 2.0:.1f}"' not in fragments
 
 
-@pytest.mark.parametrize("kind", ("bjt_npn", "bjt_pnp"))
-def test_transistor_symbol_mask_does_not_hide_base_pin_lead(kind: str) -> None:
+def test_transistor_symbol_mask_does_not_hide_base_pin_lead() -> None:
     catalog = default_catalog()
+    kind = "bjt_npn"
     spec = catalog[kind]
     part = PlacedPart(
         ref="Q1",
@@ -1065,16 +1064,11 @@ def test_transistor_symbol_mask_does_not_hide_base_pin_lead(kind: str) -> None:
 def test_transistor_asset_anchors_match_visible_terminal_leads() -> None:
     catalog = default_catalog()
     npn_asset = asset_for_part("bjt_npn", catalog["bjt_npn"])
-    pnp_asset = asset_for_part("bjt_pnp", catalog["bjt_pnp"])
 
     assert npn_asset is not None
-    assert pnp_asset is not None
     _assert_asset_anchor(npn_asset, "b", 0.5, 24.992567)
     _assert_asset_anchor(npn_asset, "c", 27.474328, 0.5)
     _assert_asset_anchor(npn_asset, "e", 27.474328, 49.485129)
-    _assert_asset_anchor(pnp_asset, "b", 0.5, 24.992567)
-    _assert_asset_anchor(pnp_asset, "e", 27.474328, 0.5)
-    _assert_asset_anchor(pnp_asset, "c", 27.474328, 49.485129)
 
 
 def test_net_label_is_exported_with_public_layout_type() -> None:
@@ -1153,27 +1147,6 @@ def test_dynamic_package_symbols_do_not_expose_static_assets() -> None:
         assert asset_for_part(kind, catalog[kind]) is None
 
 
-def test_dip_20_ic_uses_dynamic_package_without_placeholder_labels() -> None:
-    catalog = default_catalog()
-    spec = catalog["dip_20_ic"]
-    part = PlacedPart(
-        ref="U1",
-        kind="dip_20_ic",
-        center=Point(100.0, 100.0),
-        size=Size(82.0, 320.0),
-    )
-    instance = PartInstance("U1", "dip_20_ic", "DIP", {}, {})
-
-    fragments = "\n".join(draw_asset_part(part, spec, instance))
-
-    assert asset_render_bounds_for_part(part, spec, instance) == part.bounds
-    assert 'class="symbol-asset"' not in fragments
-    assert fragments.count('class="symbol-pin"') == len(spec.pins)
-    assert "Chip Num" not in fragments
-    assert "Align" not in fragments
-    assert "Show pin" not in fragments
-
-
 def test_op_amp_asset_anchors_match_visible_triangle_terminal_leads() -> None:
     catalog = default_catalog()
     asset = asset_for_part("op_amp", catalog["op_amp"])
@@ -1218,7 +1191,6 @@ def test_multi_pin_asset_terminals_are_declared_in_asset_bounds() -> None:
         "or_gate",
         "op_amp",
         "comparator",
-        "dip_20_ic",
         "generic_ic",
         "instrumentation_amplifier",
         "inductor_looped",
@@ -1282,25 +1254,6 @@ def test_polarized_capacitor_positive_pin_renders_on_left() -> None:
     terminals = asset_terminals_for_part(part, spec, instance)
 
     assert terminals["p"].x < terminals["n"].x
-
-
-def test_dip_20_dynamic_pin_order_matches_catalog_sides() -> None:
-    catalog = default_catalog()
-    spec = catalog["dip_20_ic"]
-    part = PlacedPart(
-        ref="U1",
-        kind="dip_20_ic",
-        center=Point(100.0, 100.0),
-        size=Size(82.0, 320.0),
-    )
-    instance = PartInstance("U1", "dip_20_ic", "DIP", {}, {})
-
-    asset_terminals = asset_terminals_for_part(part, spec, instance)
-
-    assert asset_terminals["1"].x == part.bounds.x
-    assert asset_terminals["20"].x == part.bounds.right
-    assert asset_terminals["1"].y < asset_terminals["10"].y
-    assert asset_terminals["20"].y < asset_terminals["11"].y
 
 
 def test_test_point_uses_dot_scaled_layout_size() -> None:
@@ -1536,7 +1489,7 @@ def test_generated_circuit_png_artifacts_are_written() -> None:
     image_paths: list[Path] = []
     expected_paths = {
         GENERATED_CIRCUIT_IMAGE_DIR
-        / f"circuit_seed_{seed:03d}_parts_{element_count:02d}.png"
+        / f"circuit_seed_{seed:03d}_motifs_{element_count:02d}.png"
         for seed, element_count in GENERATED_CASES
     }
 
@@ -1544,7 +1497,8 @@ def test_generated_circuit_png_artifacts_are_written() -> None:
         generated = generate_circuit(
             GeneratorConfig(
                 seed=seed,
-                element_count=element_count,
+                motif_count_min=element_count,
+                motif_count_max=element_count,
                 motif_weights=default_motif_weights(),
             ),
             catalog,
@@ -1552,7 +1506,7 @@ def test_generated_circuit_png_artifacts_are_written() -> None:
         png = draw_png(generated.circuit, catalog)
         image_path = (
             GENERATED_CIRCUIT_IMAGE_DIR
-            / f"circuit_seed_{seed:03d}_parts_{element_count:02d}.png"
+            / f"circuit_seed_{seed:03d}_motifs_{element_count:02d}.png"
         )
 
         validate_png_image_data(png, PNG_MIME_TYPE)
@@ -2050,7 +2004,8 @@ def _planned_generated_case(seed: int, element_count: int) -> tuple[Circuit, Lay
     generated = generate_circuit(
         GeneratorConfig(
             seed=seed,
-            element_count=element_count,
+            motif_count_min=element_count,
+            motif_count_max=element_count,
             motif_weights=default_motif_weights(),
         ),
         catalog,
@@ -2065,15 +2020,8 @@ def _planned_motif_case(
     """Return the generated circuit and layout for one motif case."""
 
     catalog = default_catalog()
-    generated = generate_circuit(
-        GeneratorConfig(
-            seed=1000 + index,
-            element_count=element_count,
-            motif_weights={motif_name: 1.0},
-        ),
-        catalog,
-    )
-    return generated.circuit, plan_layout(generated.circuit, catalog)
+    circuit = _motif_rendering_circuit(motif_name)
+    return circuit, plan_layout(circuit, catalog)
 
 
 def _motif_rendering_circuit(motif_name: str) -> Circuit:
@@ -2082,7 +2030,7 @@ def _motif_rendering_circuit(motif_name: str) -> Circuit:
     catalog = default_catalog()
     motif = default_motifs()[motif_name]
     ctx = _MotifRenderingContext(CircuitBuilder(f"motif-{motif_name}", catalog))
-    assert motif.build(ctx, motif.element_count)
+    motif.build(ctx, {})
     nets = ctx.builder._nets
     if "VCC" in nets:
         source = ctx.add_part("V", "voltage_source_dc", "5V", {"voltage_v": 5.0}, {})
@@ -2104,6 +2052,8 @@ class _MotifRenderingContext:
         self.rng = Random(123)
         self.counters: dict[str, int] = {}
         self.node_counter = 0
+        self.motif_counters: dict[str, int] = {}
+        self.negative_supply_nets: set[str] = set()
 
     def add_part(
         self,
@@ -2126,6 +2076,36 @@ class _MotifRenderingContext:
 
         self.node_counter += 1
         return f"N{self.node_counter}"
+
+    def motif_instance_id(self, motif_name: str) -> str:
+        """Return a fresh deterministic motif instance id."""
+
+        number = self.motif_counters.get(motif_name, 0) + 1
+        self.motif_counters[motif_name] = number
+        return f"{motif_name}#{number}"
+
+    def add_negative_supply(
+        self, net: str, motif_name: str, instance_id: str
+    ) -> tuple[str, ...]:
+        """Add one negative supply source per generated net."""
+
+        if net in self.negative_supply_nets:
+            return ()
+        self.negative_supply_nets.add(net)
+        negative = self.add_part(
+            "VEE",
+            "voltage_source_dc",
+            "-5V",
+            {"voltage_v": -5.0},
+            {
+                "role": "negative_supply",
+                "motif": motif_name,
+                "motif_instance": instance_id,
+            },
+        )
+        self.builder.connect(negative, "p", net)
+        self.builder.connect(negative, "n", "0")
+        return (negative,)
 
 
 def _default_rendered_boxes(

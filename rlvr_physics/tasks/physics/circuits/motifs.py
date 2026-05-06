@@ -1,11 +1,15 @@
 """Reusable procedural circuit motif catalog."""
 
 from dataclasses import dataclass
+from enum import Enum
 from random import Random
+import re
 from types import MappingProxyType
 from typing import Callable, Mapping, Protocol
 
+from rlvr_physics.tasks.physics.circuits.parts import default_part_catalog
 from rlvr_physics.tasks.physics.circuits.model import CircuitBuilder
+from rlvr_physics.tasks.physics.circuits.model import ComponentFamily, PinKind
 
 
 class MotifContext(Protocol):
@@ -62,8 +66,116 @@ class MotifContext(Protocol):
         """
         ...
 
+    def motif_instance_id(self, motif_name: str) -> str:
+        """Return a fresh deterministic motif instance id.
 
-MotifBuilder = Callable[[MotifContext, int], bool]
+        Parameters
+        ----------
+        motif_name:
+            Stable motif name.
+
+        Returns
+        -------
+        str
+            Unique motif instance id within the generated circuit.
+        """
+        ...
+
+    def add_negative_supply(
+        self, net: str, motif_name: str, instance_id: str
+    ) -> tuple[str, ...]:
+        """Add or reuse a negative supply source for ``net``.
+
+        Parameters
+        ----------
+        net:
+            Generated negative supply net.
+        motif_name:
+            Motif requesting the supply.
+        instance_id:
+            Motif instance requesting the supply.
+
+        Returns
+        -------
+        tuple[str, ...]
+            Newly added part references, or an empty tuple when the supply
+            already exists.
+        """
+        ...
+
+
+class MotifPortRole(Enum):
+    """Role a motif port plays during procedural composition."""
+
+    SOURCE = "source"
+    SINK = "sink"
+    SUPPLY = "supply"
+    GROUND = "ground"
+    PROBE = "probe"
+
+
+class MotifSignalKind(Enum):
+    """Signal class used to decide whether two motif ports can be bound."""
+
+    ANALOG = "analog"
+    DIGITAL = "digital"
+    POWER = "power"
+    REFERENCE = "reference"
+
+
+@dataclass(frozen=True)
+class MotifPort:
+    """One declared boundary port on a reusable motif.
+
+    Parameters
+    ----------
+    name:
+        Stable port name within the motif.
+    net:
+        Local motif net represented by the port.
+    role:
+        Composition role for the port.
+    signal:
+        Signal kind expected or produced by the port.
+    required:
+        Whether generation must bind this port to an external net.
+    """
+
+    name: str
+    net: str
+    role: MotifPortRole
+    signal: MotifSignalKind
+    required: bool
+
+
+@dataclass(frozen=True)
+class InstantiatedMotif:
+    """Result of building one motif instance into a circuit.
+
+    Parameters
+    ----------
+    motif_name:
+        Name of the motif catalog entry.
+    instance_id:
+        Deterministic identifier for this motif instance within the circuit.
+    port_nets:
+        Mapping from motif port name to actual generated circuit net.
+    part_refs:
+        Generated part references owned by this motif instance.
+    """
+
+    motif_name: str
+    instance_id: str
+    port_nets: Mapping[str, str]
+    part_refs: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        """Freeze mutable mapping inputs after construction."""
+
+        object.__setattr__(self, "port_nets", MappingProxyType(dict(self.port_nets)))
+
+
+MotifBuilder = Callable[[MotifContext, Mapping[str, str]], InstantiatedMotif]
 _EMPTY_PARAMETERS: Mapping[str, object] = MappingProxyType({})
 
 
@@ -79,6 +191,8 @@ class CircuitMotif:
         Number of non-ground parts added by the motif.
     default_weight:
         Default relative selection weight.
+    ports:
+        Boundary contract used by procedural composition.
     build:
         Motif builder function.
     """
@@ -86,6 +200,7 @@ class CircuitMotif:
     name: str
     element_count: int
     default_weight: float
+    ports: tuple[MotifPort, ...]
     build: MotifBuilder
 
 
@@ -141,9 +256,8 @@ def choose_motif(
     rng: Random,
     motif_catalog: Mapping[str, CircuitMotif],
     weights: Mapping[str, float],
-    remaining: int,
 ) -> CircuitMotif | None:
-    """Choose a motif that fits within an element budget.
+    """Choose one weighted motif.
 
     Parameters
     ----------
@@ -153,20 +267,17 @@ def choose_motif(
         Available motif definitions.
     weights:
         Relative motif weights keyed by motif name.
-    remaining:
-        Remaining non-ground element budget.
-
     Returns
     -------
     CircuitMotif | None
-        Chosen motif, or ``None`` when no weighted motif fits.
+        Chosen motif, or ``None`` when no weighted motif is enabled.
     """
 
     viable = [
         (motif, weight)
         for name, motif in motif_catalog.items()
         for weight in (weights.get(name, 0.0),)
-        if weight > 0.0 and motif.element_count <= remaining
+        if weight > 0.0
     ]
     if not viable:
         return None
@@ -178,26 +289,6 @@ def choose_motif(
         if pick <= running:
             return motif
     return viable[-1][0]
-
-
-def add_load_resistor(ctx: MotifContext) -> None:
-    """Add one fallback load resistor.
-
-    Parameters
-    ----------
-    ctx:
-        Mutable generation context.
-    """
-
-    resistor = ctx.add_part(
-        "R",
-        "resistor",
-        "1k",
-        {"resistance_ohm": 1000.0},
-        {},
-    )
-    ctx.builder.connect(resistor, "1", "VCC")
-    ctx.builder.connect(resistor, "2", "0")
 
 
 def _part(
@@ -322,6 +413,7 @@ def _build_default_motifs() -> Mapping[str, CircuitMotif]:
             spec.name,
             _element_count(spec),
             spec.default_weight,
+            _motif_ports(spec),
             _build_netlist_motif(spec),
         )
         for spec in _DEFAULT_MOTIF_SPECS
@@ -332,35 +424,46 @@ def _build_default_motifs() -> Mapping[str, CircuitMotif]:
 def _build_netlist_motif(spec: _MotifSpec) -> MotifBuilder:
     """Return a builder for one declarative motif specification."""
 
-    def build(ctx: MotifContext, remaining: int) -> bool:
+    def build(ctx: MotifContext, port_bindings: Mapping[str, str]) -> InstantiatedMotif:
         """Build one declarative motif into ``ctx``."""
 
-        if remaining < _element_count(spec):
-            return False
+        net_bindings = _net_bindings_for_ports(spec, port_bindings)
         ref_map: dict[str, str] = {}
         net_map: dict[str, str] = {}
+        part_refs: list[str] = []
+        instance_id = ctx.motif_instance_id(spec.name)
         if _uses_net(spec, "VEE"):
-            negative_rail = _local_net(ctx, "VEE", net_map)
-            negative = ctx.add_part(
-                "VEE",
-                "voltage_source_dc",
-                "-5V",
-                {"voltage_v": -5.0},
-                {"role": "negative_supply", "motif": spec.name},
+            negative_rail = _local_net(ctx, "VEE", net_map, net_bindings)
+            part_refs.extend(
+                ctx.add_negative_supply(negative_rail, spec.name, instance_id)
             )
-            ctx.builder.connect(negative, "p", negative_rail)
-            ctx.builder.connect(negative, "n", "0")
         for part in spec.parts:
-            ref_map[part.ref] = ctx.add_part(
+            generated_ref = ctx.add_part(
                 _reference_prefix(part.ref),
                 part.kind,
                 part.value,
                 part.parameters,
-                {"motif": spec.name, "source_ref": part.ref},
+                {
+                    "motif": spec.name,
+                    "motif_instance": instance_id,
+                    "source_ref": part.ref,
+                },
             )
+            ref_map[part.ref] = generated_ref
+            part_refs.append(generated_ref)
         for ref, pin, net in spec.connections:
-            ctx.builder.connect(ref_map[ref], pin, _local_net(ctx, net, net_map))
-        return True
+            ctx.builder.connect(
+                ref_map[ref], pin, _local_net(ctx, net, net_map, net_bindings)
+            )
+        return InstantiatedMotif(
+            motif_name=spec.name,
+            instance_id=instance_id,
+            port_nets={
+                port.name: _local_net(ctx, port.net, net_map, net_bindings)
+                for port in _motif_ports(spec)
+            },
+            part_refs=tuple(part_refs),
+        )
 
     return build
 
@@ -371,6 +474,253 @@ def _element_count(spec: _MotifSpec) -> int:
     return sum(1 for part in spec.parts if part.kind != "ground") + (
         1 if _uses_net(spec, "VEE") else 0
     )
+
+
+def _motif_ports(spec: _MotifSpec) -> tuple[MotifPort, ...]:
+    """Return the inferred boundary contract for one motif."""
+
+    catalog = default_part_catalog()
+    parts = {part.ref: part for part in spec.parts}
+    connected_by_net: dict[str, list[tuple[str, str]]] = {}
+    for ref, pin, net in spec.connections:
+        connected_by_net.setdefault(net, []).append((ref, pin))
+
+    source_nets: set[str] = set()
+    sink_nets: set[str] = set()
+    probe_nets: set[str] = set()
+    digital_nets: set[str] = set()
+    for net, connections in connected_by_net.items():
+        for ref, pin_name in connections:
+            part = parts.get(ref)
+            if part is None:
+                continue
+            spec_for_part = catalog[part.kind]
+            pin = spec_for_part.pin(pin_name)
+            if spec_for_part.family is ComponentFamily.LOGIC:
+                digital_nets.add(net)
+            if (
+                spec_for_part.family is ComponentFamily.LOGIC
+                and pin.kind is PinKind.OUTPUT
+            ):
+                source_nets.add(net)
+            if pin.kind is PinKind.POWER_OUT and _looks_like_power_output_net(net):
+                source_nets.add(net)
+            if spec_for_part.kind in {"test_point", "voltmeter", "ammeter"}:
+                probe_nets.add(net)
+
+    for net in connected_by_net:
+        normalized = _normalize_net(net)
+        if normalized in {"0", "VCC", "VEE"}:
+            continue
+        if (
+            _looks_like_sink_net(net)
+            and net not in source_nets
+            and not _has_local_bias_or_switch(connected_by_net[net], parts)
+        ):
+            sink_nets.add(net)
+        if _looks_like_source_net(net):
+            source_nets.add(net)
+        if _looks_like_power_output_net(net):
+            source_nets.add(net)
+        if _looks_like_probe_net(net):
+            probe_nets.add(net)
+        if _looks_like_digital_net(net):
+            digital_nets.add(net)
+
+    ports: dict[tuple[MotifPortRole, str], MotifPort] = {}
+    for net in connected_by_net:
+        normalized = _normalize_net(net)
+        if normalized == "0":
+            _add_port(
+                ports,
+                net,
+                MotifPortRole.GROUND,
+                MotifSignalKind.REFERENCE,
+                required=True,
+            )
+        elif normalized in {"VCC", "VEE"}:
+            _add_port(
+                ports,
+                net,
+                MotifPortRole.SUPPLY,
+                MotifSignalKind.POWER,
+                required=True,
+            )
+
+    if _uses_net(spec, "VEE"):
+        _add_port(
+            ports,
+            "0",
+            MotifPortRole.GROUND,
+            MotifSignalKind.REFERENCE,
+            required=True,
+        )
+
+    for net in sorted(source_nets, key=_net_sort_key):
+        _add_port(
+            ports,
+            net,
+            MotifPortRole.SOURCE,
+            _signal_kind_for_net(net, digital_nets, source_nets),
+            required=False,
+        )
+    for net in sorted(sink_nets - source_nets, key=_net_sort_key):
+        _add_port(
+            ports,
+            net,
+            MotifPortRole.SINK,
+            _signal_kind_for_net(net, digital_nets, source_nets),
+            required=True,
+        )
+    for net in sorted(probe_nets - source_nets, key=_net_sort_key):
+        _add_port(
+            ports,
+            net,
+            MotifPortRole.PROBE,
+            _signal_kind_for_net(net, digital_nets, source_nets),
+            required=False,
+        )
+    return tuple(ports[key] for key in sorted(ports, key=lambda item: item[0].value))
+
+
+def _add_port(
+    ports: dict[tuple[MotifPortRole, str], MotifPort],
+    net: str,
+    role: MotifPortRole,
+    signal: MotifSignalKind,
+    *,
+    required: bool,
+) -> None:
+    """Add one unique motif port."""
+
+    name = f"{role.value}_{_safe_port_suffix(net)}"
+    ports.setdefault(
+        (role, net),
+        MotifPort(
+            name=name,
+            net=net,
+            role=role,
+            signal=signal,
+            required=required,
+        ),
+    )
+
+
+def _safe_port_suffix(net: str) -> str:
+    """Return a stable identifier suffix for a local net."""
+
+    suffix = re.sub(r"[^a-z0-9]+", "_", net.lower()).strip("_")
+    if not suffix:
+        return "net"
+    if suffix[0].isdigit():
+        return f"n_{suffix}"
+    return suffix
+
+
+def _signal_kind_for_net(
+    net: str, digital_nets: set[str], source_nets: set[str]
+) -> MotifSignalKind:
+    """Infer a composition signal kind for one local motif net."""
+
+    normalized = _normalize_net(net)
+    if normalized == "0":
+        return MotifSignalKind.REFERENCE
+    if normalized in {"VCC", "VEE"}:
+        return MotifSignalKind.POWER
+    if net in source_nets and _looks_like_power_source_net(net):
+        return MotifSignalKind.POWER
+    if net in digital_nets or _looks_like_digital_net(net):
+        return MotifSignalKind.DIGITAL
+    return MotifSignalKind.ANALOG
+
+
+def _looks_like_sink_net(net: str) -> bool:
+    """Return whether a net name usually represents an external input."""
+
+    upper = net.upper()
+    if upper in {"IN", "INA", "INB", "INP", "INN", "EXT_IN", "CTRL", "PWM"}:
+        return True
+    if upper in {"TRIG_IN", "CLK", "SAMPLE", "RESET_N", "S_N", "R_N"}:
+        return True
+    return upper in {"A", "B"}
+
+
+def _looks_like_source_net(net: str) -> bool:
+    """Return whether a net name usually represents an observable output."""
+
+    upper = net.upper()
+    if upper in {
+        "OUT",
+        "VOUT",
+        "OUTP",
+        "OUTN",
+        "Y",
+        "SUM",
+        "CARRY",
+        "SENSE",
+        "SIG",
+        "VMID",
+        "VSW",
+        "NLOAD",
+    }:
+        return True
+    return bool(re.fullmatch(r"Q[A-D0-9]?", upper))
+
+
+def _looks_like_probe_net(net: str) -> bool:
+    """Return whether a net name usually represents an observable probe."""
+
+    return net.upper() in {"OUT", "VOUT", "SENSE", "VMID", "SIG"}
+
+
+def _looks_like_digital_net(net: str) -> bool:
+    """Return whether a net name usually carries a digital signal."""
+
+    upper = net.upper()
+    if upper in {"A", "B", "Y", "SUM", "CARRY", "CLK", "RESET_N", "S_N", "R_N"}:
+        return True
+    if upper in {"CTRL", "PWM", "SAMPLE", "SIG"}:
+        return True
+    return bool(re.fullmatch(r"Q[A-D0-9]?", upper))
+
+
+def _looks_like_power_source_net(net: str) -> bool:
+    """Return whether a source-like net is better treated as power."""
+
+    upper = net.upper()
+    return upper in {"VCC", "VDD", "VEE", "VIN", "VBAT", "VRAW", "VRECT", "VSW"}
+
+
+def _looks_like_power_output_net(net: str) -> bool:
+    """Return whether a powered net is a motif output rather than excitation."""
+
+    return net.upper() in {"VBAT", "VRAW", "VRECT"}
+
+
+def _has_local_bias_or_switch(
+    connections: list[tuple[str, str]],
+    parts: Mapping[str, _MotifPart],
+) -> bool:
+    """Return whether a net is locally driven by an input-bias subcircuit."""
+
+    biased_kinds = {
+        "ideal_switch",
+        "pullup_resistor",
+        "pulldown_resistor",
+        "pushbutton_switch",
+    }
+    return any(
+        (part := parts.get(ref)) is not None and part.kind in biased_kinds
+        for ref, _ in connections
+    )
+
+
+def _net_sort_key(net: str) -> tuple[int, str]:
+    """Sort common boundary names before internal-looking names."""
+
+    upper = net.upper()
+    priority = 0 if _looks_like_sink_net(upper) or _looks_like_source_net(upper) else 1
+    return priority, upper
 
 
 def _uses_net(spec: _MotifSpec, net: str) -> bool:
@@ -399,10 +749,43 @@ def _normalize_net(net: str) -> str:
     return supply_aliases.get(net, net)
 
 
-def _local_net(ctx: MotifContext, net: str, net_map: dict[str, str]) -> str:
+def _net_bindings_for_ports(
+    spec: _MotifSpec, port_bindings: Mapping[str, str]
+) -> Mapping[str, str]:
+    """Return a local-net binding map from external port bindings."""
+
+    ports = {port.name: port for port in _motif_ports(spec)}
+    bindings: dict[str, str] = {}
+    for port_name, external_net in port_bindings.items():
+        if port_name not in ports:
+            raise ValueError(f"unknown port for {spec.name}: {port_name}")
+        if not external_net:
+            raise ValueError(f"empty binding for {spec.name}.{port_name}")
+        port = ports[port_name]
+        for local_net in {port.net, _normalize_net(port.net)}:
+            previous = bindings.get(local_net)
+            if previous is not None and previous != external_net:
+                raise ValueError(
+                    f"conflicting bindings for {spec.name} net {port.net}: "
+                    f"{previous} and {external_net}"
+                )
+            bindings[local_net] = external_net
+    return MappingProxyType(bindings)
+
+
+def _local_net(
+    ctx: MotifContext,
+    net: str,
+    net_map: dict[str, str],
+    net_bindings: Mapping[str, str],
+) -> str:
     """Return a build-local net name, preserving only global rails."""
 
     normalized = _normalize_net(net)
+    if net in net_bindings:
+        return net_bindings[net]
+    if normalized in net_bindings:
+        return net_bindings[normalized]
     if normalized in {"0", "VCC"}:
         return normalized
     if normalized not in net_map:
@@ -484,33 +867,6 @@ _DEFAULT_MOTIF_SPECS = (
             ("DZ1", "a", "0"),
             ("C1", "1", "OUT"),
             ("C1", "2", "0"),
-            ("RLOAD", "1", "OUT"),
-            ("RLOAD", "2", "0"),
-        ),
-    ),
-    _MotifSpec(
-        "series_pass_transistor_regulator",
-        0.8,
-        (
-            _dc_source("VIN", "12V", 12.0),
-            _res("RZ", "1k", 1000.0),
-            _plain_part("DZ1", "zener", "5V1"),
-            _plain_part("Q1", "bjt_npn", "NPN"),
-            _cap("COUT", "10u", 1e-5),
-            _res("RLOAD", "1k", 1000.0),
-        ),
-        (
-            ("VIN", "p", "VIN"),
-            ("VIN", "n", "0"),
-            ("RZ", "1", "VIN"),
-            ("RZ", "2", "NZ"),
-            ("DZ1", "k", "NZ"),
-            ("DZ1", "a", "0"),
-            ("Q1", "c", "VIN"),
-            ("Q1", "b", "NZ"),
-            ("Q1", "e", "OUT"),
-            ("COUT", "1", "OUT"),
-            ("COUT", "2", "0"),
             ("RLOAD", "1", "OUT"),
             ("RLOAD", "2", "0"),
         ),
@@ -1028,40 +1384,6 @@ _DEFAULT_MOTIF_SPECS = (
         ),
     ),
     _MotifSpec(
-        "class_ab_push_pull_power_amplifier",
-        0.6,
-        (
-            _cap("CIN", "1u", 1e-6),
-            _res("RBIAS1", "10k", 10000.0),
-            _plain_part("D1", "diode", "D"),
-            _plain_part("D2", "diode", "D"),
-            _res("RBIAS2", "10k", 10000.0),
-            _plain_part("QN", "bjt_npn", "NPN"),
-            _plain_part("QP", "bjt_pnp", "PNP"),
-            _res("RLOAD", "8", 8.0),
-        ),
-        (
-            ("CIN", "1", "IN"),
-            ("CIN", "2", "NDRV"),
-            ("RBIAS1", "1", "VCC"),
-            ("RBIAS1", "2", "NBH"),
-            ("D1", "a", "NBH"),
-            ("D1", "k", "NDRV"),
-            ("D2", "a", "NDRV"),
-            ("D2", "k", "NBL"),
-            ("RBIAS2", "1", "NBL"),
-            ("RBIAS2", "2", "VEE"),
-            ("QN", "b", "NBH"),
-            ("QN", "c", "VCC"),
-            ("QN", "e", "OUT"),
-            ("QP", "b", "NBL"),
-            ("QP", "c", "VEE"),
-            ("QP", "e", "OUT"),
-            ("RLOAD", "1", "OUT"),
-            ("RLOAD", "2", "0"),
-        ),
-    ),
-    _MotifSpec(
         "photodiode_transimpedance_amplifier",
         0.7,
         (
@@ -1410,6 +1732,8 @@ _DEFAULT_MOTIF_SPECS = (
         (
             _plain_part("XOR1", "xor_gate", "XOR"),
             _plain_part("AND1", "and_gate", "AND"),
+            _plain_part("TPSUM", "test_point", "SUM"),
+            _plain_part("TPCARRY", "test_point", "CARRY"),
         ),
         (
             ("XOR1", "vcc", "VCC"),
@@ -1422,12 +1746,21 @@ _DEFAULT_MOTIF_SPECS = (
             ("AND1", "in1", "A"),
             ("AND1", "in2", "B"),
             ("AND1", "out", "CARRY"),
+            ("TPSUM", "net", "SUM"),
+            ("TPCARRY", "net", "CARRY"),
         ),
     ),
     _MotifSpec(
         "four_bit_synchronous_binary_counter",
         0.5,
-        (_plain_part("U1", "counter_4bit", "74HC161"),),
+        (
+            _plain_part("U1", "counter_4bit", "74HC161"),
+            _plain_part("TPQ0", "test_point", "Q0"),
+            _plain_part("TPQ1", "test_point", "Q1"),
+            _plain_part("TPQ2", "test_point", "Q2"),
+            _plain_part("TPQ3", "test_point", "Q3"),
+            _plain_part("TPCARRY", "test_point", "CARRY"),
+        ),
         (
             ("U1", "vcc", "VCC"),
             ("U1", "gnd", "0"),
@@ -1445,6 +1778,11 @@ _DEFAULT_MOTIF_SPECS = (
             ("U1", "qc", "Q2"),
             ("U1", "qd", "Q3"),
             ("U1", "rco", "CARRY"),
+            ("TPQ0", "net", "Q0"),
+            ("TPQ1", "net", "Q1"),
+            ("TPQ2", "net", "Q2"),
+            ("TPQ3", "net", "Q3"),
+            ("TPCARRY", "net", "CARRY"),
         ),
     ),
     _MotifSpec(
@@ -1492,59 +1830,6 @@ _DEFAULT_MOTIF_SPECS = (
             ("R1", "2", "OUT"),
             ("C1", "1", "OUT"),
             ("C1", "2", "0"),
-        ),
-    ),
-    _MotifSpec(
-        "dip20_ic_minimum_system",
-        0.6,
-        (
-            _plain_part("U1", "dip_20_ic", "DIP20"),
-            _cap("CDEC", "100n", 1e-7),
-            _pullup("RRESET", "10k", 10000.0),
-            _pushbutton("SWRESET", 1e12),
-            _plain_part("XTAL1", "crystal", "XTAL"),
-            _cap("CXTAL1", "22p", 2.2e-11),
-            _cap("CXTAL2", "22p", 2.2e-11),
-            _res("RLED", "1k", 1000.0),
-            _plain_part("LED1", "led", "LED"),
-        ),
-        (
-            ("U1", "20", "VCC"),
-            ("U1", "10", "0"),
-            ("CDEC", "1", "VCC"),
-            ("CDEC", "2", "0"),
-            ("RRESET", "net", "RESET_N"),
-            ("RRESET", "rail", "VCC"),
-            ("SWRESET", "1", "RESET_N"),
-            ("SWRESET", "2", "0"),
-            ("U1", "1", "RESET_N"),
-            ("U1", "2", "XTAL_A"),
-            ("U1", "3", "XTAL_B"),
-            ("XTAL1", "1", "XTAL_A"),
-            ("XTAL1", "2", "XTAL_B"),
-            ("CXTAL1", "1", "XTAL_A"),
-            ("CXTAL1", "2", "0"),
-            ("CXTAL2", "1", "XTAL_B"),
-            ("CXTAL2", "2", "0"),
-            ("U1", "5", "NLED"),
-            ("RLED", "1", "NLED"),
-            ("RLED", "2", "LED_A"),
-            ("LED1", "a", "LED_A"),
-            ("LED1", "k", "0"),
-            ("U1", "4", "NC4"),
-            ("U1", "6", "NC6"),
-            ("U1", "7", "NC7"),
-            ("U1", "8", "NC8"),
-            ("U1", "9", "NC9"),
-            ("U1", "11", "NC11"),
-            ("U1", "12", "NC12"),
-            ("U1", "13", "NC13"),
-            ("U1", "14", "NC14"),
-            ("U1", "15", "NC15"),
-            ("U1", "16", "NC16"),
-            ("U1", "17", "NC17"),
-            ("U1", "18", "NC18"),
-            ("U1", "19", "NC19"),
         ),
     ),
     _MotifSpec(

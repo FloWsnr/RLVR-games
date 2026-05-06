@@ -466,18 +466,6 @@ def _empty_subcircuit_model(model_name: str, pins: tuple[PinSpec, ...]) -> str:
     return f".subckt {model_name} {pin_names}\n.ends {model_name}"
 
 
-def _dip_20_pins() -> tuple[PinSpec, ...]:
-    """Return pin metadata for a generic twenty-pin DIP package."""
-
-    return tuple(
-        PinSpec(str(index), PinKind.BIDIRECTIONAL, PinSide.LEFT)
-        for index in range(1, 11)
-    ) + tuple(
-        PinSpec(str(index), PinKind.BIDIRECTIONAL, PinSide.RIGHT)
-        for index in range(20, 10, -1)
-    )
-
-
 def _build_default_part_catalog() -> Mapping[str, PartSpec]:
     """Build the immutable built-in part catalog."""
 
@@ -796,16 +784,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ".model Q_NPN_RLVR NPN(Is=1e-15 Bf=120)",
             ("semiconductor", "switch", "amplifier"),
             False,
-        )
-    )
-    add(
-        _transistor(
-            "bjt_pnp",
-            "PNP BJT",
-            "Q_PNP_RLVR",
-            ".model Q_PNP_RLVR PNP(Is=1e-15 Bf=80)",
-            ("semiconductor", "switch", "amplifier"),
-            True,
         )
     )
     add(
@@ -1171,30 +1149,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
                 ),
             ),
             generation_tags=("integrated", "block", "generic"),
-            analysis_support=(AnalysisSupport.SPICE_EXPORT,),
-        )
-    )
-    dip_20_pins = _dip_20_pins()
-    add(
-        PartSpec(
-            kind="dip_20_ic",
-            display_name="20-pin DIP IC",
-            ref_prefix="U",
-            family=ComponentFamily.INTEGRATED,
-            pins=dip_20_pins,
-            icon="ic",
-            spice=SpiceSpec(
-                prefix="X",
-                pin_order=tuple(pin.name for pin in dip_20_pins),
-                value_parameter=None,
-                default_value="",
-                model_name="RLVR_DIP_20_IC",
-                model_definition=_empty_subcircuit_model(
-                    "RLVR_DIP_20_IC",
-                    dip_20_pins,
-                ),
-            ),
-            generation_tags=("integrated", "block", "dip"),
             analysis_support=(AnalysisSupport.SPICE_EXPORT,),
         )
     )

@@ -36,7 +36,6 @@ def test_part_catalog_covers_planned_common_component_classes() -> None:
         "zener",
         "photodiode",
         "bjt_npn",
-        "bjt_pnp",
         "mosfet_n",
         "mosfet_p",
         "jfet_n",
@@ -62,7 +61,6 @@ def test_part_catalog_covers_planned_common_component_classes() -> None:
         "xor_gate",
         "not_gate",
         "generic_ic",
-        "dip_20_ic",
     }
 
     assert required_kinds <= set(catalog)
@@ -73,19 +71,6 @@ def test_part_catalog_covers_planned_common_component_classes() -> None:
     assert catalog["mosfet_n"].ref_prefix == "Q"
     assert catalog["jfet_n"].ref_prefix == "J"
     assert AnalysisSupport.SPICE_EXPORT in catalog["connector_2"].analysis_support
-    assert catalog["dip_20_ic"].pin("20").side == PinSide.RIGHT
-    assert tuple(pin.name for pin in catalog["dip_20_ic"].pins[-10:]) == (
-        "20",
-        "19",
-        "18",
-        "17",
-        "16",
-        "15",
-        "14",
-        "13",
-        "12",
-        "11",
-    )
 
 
 def test_linear_dc_solver_public_surface_is_removed() -> None:
@@ -116,8 +101,6 @@ def test_spice_export_support_requires_spice_semantics() -> None:
 def test_polarity_specific_device_pins_face_supply_rails() -> None:
     catalog = default_part_catalog()
 
-    assert catalog["bjt_pnp"].pin("e").side == PinSide.TOP
-    assert catalog["bjt_pnp"].pin("c").side == PinSide.BOTTOM
     assert catalog["mosfet_p"].pin("s").side == PinSide.TOP
     assert catalog["mosfet_p"].pin("d").side == PinSide.BOTTOM
     assert catalog["jfet_p"].pin("s").side == PinSide.TOP
