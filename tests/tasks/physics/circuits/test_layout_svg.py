@@ -1,6 +1,7 @@
 """Tests for schematic layout and SVG drawing."""
 
 from functools import cache
+from hashlib import sha256
 from importlib.resources import files
 from math import inf, nan
 from pathlib import Path
@@ -38,6 +39,8 @@ from rlvr_physics.tasks.physics.circuits import (
     WireSegment,
 )
 from rlvr_physics.tasks.physics.circuits.layout import (
+    _RoutingObstacleIndex,
+    _segment_crosses_bounds as _layout_segment_crosses_bounds,
     _net_label_bounds,
     _plan_layout,
     _pin_approach_bounds,
@@ -78,6 +81,28 @@ GENERATED_CASES = (
     (9, 15),
     (36, 20),
 )
+GENERATED_LAYOUT_FINGERPRINTS = {
+    (0, 6): "6f135fffa535c2752dfbe91989ce9d5b58b5f5634b3a6d34e20c51d7f34568b9",
+    (1, 8): "935d37646de62b6ec14dff7f5b8bc3a9ed401b9c5fb09be359b773d71de8e2f6",
+    (4, 10): "cb3c2cce0b4c52d855fbebee4b64ac293c828ea271022bf6652c62641dba59d3",
+    (2, 10): "3336f97b1e7ab17d699bace1033d84c6fded0a5334c1b99ed48e281248248c86",
+    (3, 12): "848a32b31d38f388435d281bd234b0ef68f6d4d3cd2334ac9865042771a77fe4",
+    (4, 16): "9c84035d8284cf1c2214ac3204b4daa4445fa22afe48cbcc2e64679ff1a689b7",
+    (5, 20): "15e492aa3b5457e003b78254fdb7e15bb85aaffd116b749d12fba9fa36af96ed",
+    (9, 15): "124379f8f1522b977f34a03a86e7389f05eb05c49f96254bd7f738225427af35",
+    (36, 20): "7bc88e2fac7a53a98143fda20c33922a6687101f742851a4dabb41c55f5cfd45",
+}
+GENERATED_ASSET_LAYOUT_FINGERPRINTS = {
+    (0, 6): "d4929321bb0410b588f1b1e689c1464aa605b87ad769fd8fafc0df8ad36d3275",
+    (1, 8): "b5a03eb3014f1191aa90631f20433fdd537ae9be0fbe48e24bcff664a502d590",
+    (4, 10): "fffdbebc7768977d672a543b12d9e3a01ea11b86d31b45e3f4fc4a08b46c11dc",
+    (2, 10): "3caf831906b7c05bc6d8a42e070e710ffa22a80549eaaad328d6449b535e53a9",
+    (3, 12): "1a2e83f9e6d1a4ce2b94b765e8afd01f9da211978c3435ae441d96bb89da7b79",
+    (4, 16): "85674f9260208d9eee3c999cde6ee8b90e3bb96a103bb96cbcaba91d036b83ec",
+    (5, 20): "4e0e11bc28116ac3d3b03c8f9b800a99a2eb97cd49a46e72bf0643f9c5cc2e69",
+    (9, 15): "dd74a83e760b85ddda01f67c6d32221df26a7d34a14ebe14c7ad0141037fd0d8",
+    (36, 20): "03c1c1f222a4da70b5537a41dc02ae628ca01c09ace4ac53341d9b2d2916b1dc",
+}
 GEOMETRY_EPSILON = 1.0e-6
 WIRE_CLEARANCE = 1.0
 DYNAMIC_PACKAGE_PIN_LEAD = 14.0
@@ -97,6 +122,31 @@ def test_layout_places_parts_without_overlap() -> None:
     for index, current in enumerate(bounds):
         for other in bounds[index + 1 :]:
             assert not current.overlaps(other)
+
+
+def test_routing_obstacle_index_matches_naive_bounds_scan() -> None:
+    bounds = (
+        Bounds(10.0, 10.0, 40.0, 30.0),
+        Bounds(-20.0, -10.0, 15.0, 50.0),
+        Bounds(70.0, 20.0, 0.0, 30.0),
+        Bounds(80.0, -30.0, 25.0, 25.0),
+    )
+    segments = (
+        WireSegment(Point(20.0, 0.0), Point(20.0, 60.0)),
+        WireSegment(Point(10.0, 0.0), Point(10.0, 60.0)),
+        WireSegment(Point(30.0, 40.0), Point(30.0, 60.0)),
+        WireSegment(Point(-10.0, -20.0), Point(-10.0, 20.0)),
+        WireSegment(Point(0.0, 20.0), Point(60.0, 20.0)),
+        WireSegment(Point(0.0, 10.0), Point(60.0, 10.0)),
+        WireSegment(Point(70.0, 25.0), Point(95.0, 25.0)),
+        WireSegment(Point(60.0, -20.0), Point(120.0, -20.0)),
+    )
+    index = _RoutingObstacleIndex(bounds)
+
+    for segment in segments:
+        assert index.segment_crosses_any(segment) is any(
+            _layout_segment_crosses_bounds(segment, bound) for bound in bounds
+        )
 
 
 def test_layout_places_rendered_bounds_without_overlap() -> None:
@@ -487,6 +537,29 @@ def test_layout_routes_every_default_motif_cleanly() -> None:
                         wire.net,
                         bounds,
                     )
+
+
+def test_generated_layout_fingerprints_preserve_representative_cases() -> None:
+    for case, expected in GENERATED_LAYOUT_FINGERPRINTS.items():
+        _, layout = _planned_generated_case(*case)
+
+        assert _layout_fingerprint(layout) == expected
+
+
+def test_generated_asset_layout_fingerprints_preserve_representative_cases() -> None:
+    catalog = default_catalog()
+
+    for case, expected in GENERATED_ASSET_LAYOUT_FINGERPRINTS.items():
+        circuit, _ = _planned_generated_case(*case)
+        layout = _plan_layout(
+            circuit,
+            catalog,
+            route_pin_labels=False,
+            pin_position_resolver=_asset_pin_position,
+            component_label_bounds_resolver=asset_component_label_bounds,
+        )
+
+        assert _layout_fingerprint(layout) == expected
 
 
 def test_svg_draws_circuit_symbols_and_labels() -> None:
@@ -1920,6 +1993,53 @@ def _union_roots(
     second_root = _find_root(graph, second)
     if first_root != second_root:
         graph[second_root] = first_root
+
+
+def _layout_fingerprint(layout: Layout) -> str:
+    """Return a stable digest for layout geometry regression checks."""
+
+    data = (
+        (round(layout.size.width, 6), round(layout.size.height, 6)),
+        tuple(
+            (
+                part.ref,
+                part.kind,
+                round(part.center.x, 6),
+                round(part.center.y, 6),
+                round(part.size.width, 6),
+                round(part.size.height, 6),
+            )
+            for part in layout.parts
+        ),
+        tuple(
+            (
+                wire.net,
+                tuple(
+                    (
+                        round(segment.start.x, 6),
+                        round(segment.start.y, 6),
+                        round(segment.end.x, 6),
+                        round(segment.end.y, 6),
+                    )
+                    for segment in wire.segments
+                ),
+            )
+            for wire in layout.wires
+        ),
+        tuple(
+            (
+                label.net,
+                label.text,
+                label.side.value,
+                round(label.anchor.x, 6),
+                round(label.anchor.y, 6),
+                round(label.position.x, 6),
+                round(label.position.y, 6),
+            )
+            for label in layout.net_labels
+        ),
+    )
+    return sha256(repr(data).encode()).hexdigest()
 
 
 @cache

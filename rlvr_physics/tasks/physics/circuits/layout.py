@@ -220,6 +220,70 @@ class _PinApproachBound:
     bounds: Bounds
 
 
+class _RoutingObstacleIndex:
+    """Cached lookup for repeated axis-aligned routing obstacle checks."""
+
+    def __init__(self, bounds: tuple[Bounds, ...]) -> None:
+        """Initialize the index from routing obstacle bounds."""
+
+        self._entries = tuple(
+            (bound.x, bound.right, bound.y, bound.bottom) for bound in bounds
+        )
+        self._vertical_candidates: dict[
+            float, tuple[tuple[float, float, float, float], ...]
+        ] = {}
+        self._horizontal_candidates: dict[
+            float, tuple[tuple[float, float, float, float], ...]
+        ] = {}
+
+    def segment_crosses_any(self, segment: WireSegment) -> bool:
+        """Return whether an orthogonal segment crosses any indexed obstacle."""
+
+        if segment.start.x == segment.end.x:
+            x = segment.start.x
+            min_y = min(segment.start.y, segment.end.y)
+            max_y = max(segment.start.y, segment.end.y)
+            return any(
+                min_y < bottom - GEOMETRY_EPSILON and max_y > y + GEOMETRY_EPSILON
+                for _, _, y, bottom in self._vertical_candidates_for_x(x)
+            )
+        if segment.start.y == segment.end.y:
+            y = segment.start.y
+            min_x = min(segment.start.x, segment.end.x)
+            max_x = max(segment.start.x, segment.end.x)
+            return any(
+                min_x < right - GEOMETRY_EPSILON and max_x > x + GEOMETRY_EPSILON
+                for x, right, _, _ in self._horizontal_candidates_for_y(y)
+            )
+        return False
+
+    def _vertical_candidates_for_x(
+        self, x: float
+    ) -> tuple[tuple[float, float, float, float], ...]:
+        """Return obstacles whose horizontal span can intersect ``x``."""
+
+        if x not in self._vertical_candidates:
+            self._vertical_candidates[x] = tuple(
+                entry
+                for entry in self._entries
+                if entry[0] + GEOMETRY_EPSILON < x < entry[1] - GEOMETRY_EPSILON
+            )
+        return self._vertical_candidates[x]
+
+    def _horizontal_candidates_for_y(
+        self, y: float
+    ) -> tuple[tuple[float, float, float, float], ...]:
+        """Return obstacles whose vertical span can intersect ``y``."""
+
+        if y not in self._horizontal_candidates:
+            self._horizontal_candidates[y] = tuple(
+                entry
+                for entry in self._entries
+                if entry[2] + GEOMETRY_EPSILON < y < entry[3] - GEOMETRY_EPSILON
+            )
+        return self._horizontal_candidates[y]
+
+
 def plan_layout(circuit: Circuit, catalog: Mapping[str, PartSpec]) -> Layout:
     """Plan deterministic force-directed component placement.
 
@@ -596,11 +660,12 @@ def _initial_placement(
     """Return a deterministic seed placement for force-directed refinement."""
 
     layers = _assign_layers(circuit, catalog)
+    part_by_ref = circuit.part_by_ref()
     placed: list[PlacedPart] = []
     for layer in sorted(set(layers.values())):
         refs = sorted(ref for ref, ref_layer in layers.items() if ref_layer == layer)
         for row, ref in enumerate(refs):
-            part = circuit.part_by_ref()[ref]
+            part = part_by_ref[ref]
             spec = catalog[part.kind]
             placed.append(
                 PlacedPart(
@@ -658,7 +723,7 @@ def _force_directed_parts(
     for iteration in range(FORCE_ITERATIONS):
         forces = {ref: Point(0.0, 0.0) for ref in refs}
         bounds = _placement_bounds_by_ref(
-            circuit,
+            part_by_ref,
             catalog,
             positions,
             sizes,
@@ -739,7 +804,7 @@ def _clear_overlaps(
     for _ in range(120):
         changed = False
         bounds = _placement_bounds_by_ref(
-            circuit,
+            part_by_ref,
             catalog,
             positions,
             sizes,
@@ -797,8 +862,17 @@ def _net_links(circuit: Circuit) -> tuple[tuple[str, str, float], ...]:
     return tuple(links)
 
 
+def _connections_by_net(circuit: Circuit) -> dict[str, tuple[Connection, ...]]:
+    """Return circuit connections grouped by net in canonical order."""
+
+    grouped: dict[str, list[Connection]] = {net: [] for net in circuit.nets}
+    for connection in circuit.connections:
+        grouped[connection.net].append(connection)
+    return {net: tuple(connections) for net, connections in grouped.items()}
+
+
 def _placement_bounds_by_ref(
-    circuit: Circuit,
+    part_by_ref: Mapping[str, PartInstance],
     catalog: Mapping[str, PartSpec],
     positions: Mapping[str, Point],
     sizes: Mapping[str, Size],
@@ -806,7 +880,6 @@ def _placement_bounds_by_ref(
 ) -> dict[str, Bounds]:
     """Return placement bounds for mutable force-directed positions."""
 
-    part_by_ref = circuit.part_by_ref()
     return {
         ref: _resolved_placement_bounds(
             PlacedPart(
@@ -882,6 +955,7 @@ def _route_wires(
     paths: list[WirePath] = []
     net_labels: list[NetLabel] = []
     part_by_ref = circuit.part_by_ref()
+    connections_by_net = _connections_by_net(circuit)
     symbol_label_bounds = tuple(placed.bounds for placed in placed_parts.values())
     component_label_bounds_by_part = tuple(
         _resolved_component_label_bounds(
@@ -908,7 +982,7 @@ def _route_wires(
                 _resolved_pin_position(
                     placed,
                     spec,
-                    circuit.part_by_ref()[ref],
+                    part_by_ref[ref],
                     pin.name,
                     pin_position_resolver,
                 ),
@@ -916,7 +990,7 @@ def _route_wires(
                 pin.name,
             )
             for ref, placed in placed_parts.items()
-            for spec in (catalog[circuit.part_by_ref()[ref].kind],)
+            for spec in (catalog[part_by_ref[ref].kind],)
             for pin in spec.pins
         )
         pin_label_bounds = tuple(
@@ -924,9 +998,9 @@ def _route_wires(
             for bounds in pin_label_blocks
         )
     pin_approach_bounds = _pin_approach_bounds_by_pin(
-        circuit,
         catalog,
         placed_parts,
+        part_by_ref,
         pin_position_resolver,
     )
     base_routing_bounds = symbol_bounds + label_bounds + pin_label_bounds
@@ -934,15 +1008,17 @@ def _route_wires(
         circuit,
         catalog,
         placed_parts,
+        connections_by_net,
+        part_by_ref,
         pin_position_resolver,
     )
     routed_wire_bounds: tuple[Bounds, ...] = ()
     for net_index, net in enumerate(circuit.nets):
-        connections = circuit.connections_for_net(net)
+        connections = connections_by_net[net]
         anchors = _net_anchors(
-            circuit,
             catalog,
             placed_parts,
+            part_by_ref,
             connections,
             pin_position_resolver,
         )
@@ -972,11 +1048,17 @@ def _route_wires(
                 )
                 + routed_wire_bounds
             )
-            segments = _route_net_tree(anchors, net_routing_bounds, net_index)
+            routing_index = _RoutingObstacleIndex(net_routing_bounds)
+            segments = _route_net_tree(
+                anchors,
+                net_routing_bounds,
+                routing_index,
+                net_index,
+            )
             if _route_has_blocked_segment(
                 segments,
                 _pin_stub_segments(anchors),
-                net_routing_bounds,
+                routing_index,
             ):
                 segments, labels = _route_labeled_net(net, anchors)
                 net_labels.extend(labels)
@@ -1007,19 +1089,21 @@ def _labeled_stub_bounds_by_net(
     circuit: Circuit,
     catalog: Mapping[str, PartSpec],
     placed_parts: Mapping[str, PlacedPart],
+    connections_by_net: Mapping[str, tuple[Connection, ...]],
+    part_by_ref: Mapping[str, PartInstance],
     pin_position_resolver: PinPositionResolver | None,
 ) -> dict[str, tuple[Bounds, ...]]:
     """Return blocked bounds for local labeled-net stubs."""
 
     bounds_by_net: dict[str, tuple[Bounds, ...]] = {}
     for net in circuit.nets:
-        connections = circuit.connections_for_net(net)
+        connections = connections_by_net[net]
         if not _uses_local_net_labels(net, connections):
             continue
         anchors = _net_anchors(
-            circuit,
             catalog,
             placed_parts,
+            part_by_ref,
             connections,
             pin_position_resolver,
         )
@@ -1090,15 +1174,14 @@ def _resolved_placement_bounds(
 
 
 def _pin_approach_bounds_by_pin(
-    circuit: Circuit,
     catalog: Mapping[str, PartSpec],
     placed_parts: Mapping[str, PlacedPart],
+    part_by_ref: Mapping[str, PartInstance],
     pin_position_resolver: PinPositionResolver | None,
 ) -> tuple[_PinApproachBound, ...]:
     """Return reserved pin-approach lanes keyed by component pin."""
 
     entries: list[_PinApproachBound] = []
-    part_by_ref = circuit.part_by_ref()
     for ref, placed in placed_parts.items():
         part = part_by_ref[ref]
         spec = catalog[part.kind]
@@ -1126,14 +1209,14 @@ def _pin_approach_bounds_by_pin(
 def _route_has_blocked_segment(
     segments: list[WireSegment],
     allowed_stubs: list[WireSegment],
-    bounds: tuple[Bounds, ...],
+    routing_index: _RoutingObstacleIndex,
 ) -> bool:
     """Return whether a non-stub route segment crosses blocked geometry."""
 
     allowed_stub_keys = {_wire_segment_key(segment) for segment in allowed_stubs}
     return any(
         _wire_segment_key(segment) not in allowed_stub_keys
-        and _segment_crosses_any_bounds(segment, bounds)
+        and routing_index.segment_crosses_any(segment)
         for segment in segments
     )
 
@@ -1184,9 +1267,9 @@ def _expanded_noncurrent_pin_approach(entry: _PinApproachBound) -> Bounds:
 
 
 def _net_anchors(
-    circuit: Circuit,
     catalog: Mapping[str, PartSpec],
     placed_parts: Mapping[str, PlacedPart],
+    part_by_ref: Mapping[str, PartInstance],
     connections: tuple[Connection, ...],
     pin_position_resolver: PinPositionResolver | None,
 ) -> list[tuple[Connection, Point, Point, PinSide]]:
@@ -1195,7 +1278,7 @@ def _net_anchors(
     anchors: list[tuple[Connection, Point, Point, PinSide]] = []
     for connection in connections:
         placed = placed_parts[connection.ref]
-        part = circuit.part_by_ref()[connection.ref]
+        part = part_by_ref[connection.ref]
         spec = catalog[part.kind]
         pin_side = spec.pin(connection.pin).side
         anchor = _resolved_pin_position(
@@ -1419,6 +1502,7 @@ def _overlap_area(first: Bounds, second: Bounds) -> float:
 def _route_net_tree(
     anchors: list[tuple[Connection, Point, Point, PinSide]],
     routing_bounds: tuple[Bounds, ...],
+    routing_index: _RoutingObstacleIndex,
     net_index: int,
 ) -> list[WireSegment]:
     """Route one net as a local tree over pin escape points."""
@@ -1432,10 +1516,17 @@ def _route_net_tree(
             start,
             end,
             routing_bounds,
+            routing_index,
             channel_offset=_net_channel_offset(net_index),
         )
         if path is None:
-            path = _fallback_tree_path(start, end, routing_bounds, net_index)
+            path = _fallback_tree_path(
+                start,
+                end,
+                routing_bounds,
+                routing_index,
+                net_index,
+            )
         segments.extend(_path_segments(path))
     return segments
 
@@ -1477,6 +1568,7 @@ def _fallback_tree_path(
     start: Point,
     end: Point,
     routing_bounds: tuple[Bounds, ...],
+    routing_index: _RoutingObstacleIndex,
     net_index: int,
 ) -> tuple[Point, ...]:
     """Return a deterministic fallback path for rare disconnected grids."""
@@ -1511,7 +1603,7 @@ def _fallback_tree_path(
     ]
     for path in paths:
         if any(
-            _segment_crosses_any_bounds(segment, routing_bounds)
+            routing_index.segment_crosses_any(segment)
             for segment in _path_segments(path)
         ):
             continue
@@ -1681,19 +1773,22 @@ def _orthogonal_path_between(
     start: Point,
     end: Point,
     bounds: tuple[Bounds, ...],
+    bounds_index: _RoutingObstacleIndex,
     *,
     channel_offset: float = 0.0,
 ) -> tuple[Point, ...] | None:
     """Find a deterministic Manhattan path between two points."""
 
     for search_bounds in _routing_bound_scopes(start, end, bounds):
+        search_index = _RoutingObstacleIndex(search_bounds)
         path = _search_orthogonal_path(
             start,
             end,
             search_bounds,
+            search_index,
             channel_offset=channel_offset,
         )
-        if path is not None and _path_avoids_bounds(path, bounds):
+        if path is not None and _path_avoids_bounds(path, bounds_index):
             return path
     return None
 
@@ -1727,11 +1822,13 @@ def _route_envelope(start: Point, end: Point, margin: float) -> Bounds:
     )
 
 
-def _path_avoids_bounds(path: tuple[Point, ...], bounds: tuple[Bounds, ...]) -> bool:
+def _path_avoids_bounds(
+    path: tuple[Point, ...], routing_index: _RoutingObstacleIndex
+) -> bool:
     """Return whether a complete path avoids all blocked bounds."""
 
     return not any(
-        _segment_crosses_any_bounds(segment, bounds) for segment in _path_segments(path)
+        routing_index.segment_crosses_any(segment) for segment in _path_segments(path)
     )
 
 
@@ -1739,6 +1836,7 @@ def _search_orthogonal_path(
     start: Point,
     end: Point,
     bounds: tuple[Bounds, ...],
+    routing_index: _RoutingObstacleIndex,
     *,
     channel_offset: float,
 ) -> tuple[Point, ...] | None:
@@ -1783,7 +1881,7 @@ def _search_orthogonal_path(
                 start=Point(node[0], node[1]),
                 end=Point(neighbor[0], neighbor[1]),
             )
-            if _segment_crosses_any_bounds(segment, bounds):
+            if routing_index.segment_crosses_any(segment):
                 continue
             next_cost = cost + abs(neighbor[0] - node[0]) + abs(neighbor[1] - node[1])
             if next_cost >= distances.get(neighbor, float("inf")):
@@ -1831,7 +1929,7 @@ def _segment_crosses_any_bounds(
 ) -> bool:
     """Return whether a segment crosses any blocked bounds."""
 
-    return any(_segment_crosses_bounds(segment, bound) for bound in bounds)
+    return _RoutingObstacleIndex(bounds).segment_crosses_any(segment)
 
 
 def _segment_bounds(segment: WireSegment) -> Bounds:
