@@ -7,6 +7,7 @@ from typing import Mapping
 from rlvr_physics.tasks.physics.circuits.model import (
     AnalysisSupport,
     Circuit,
+    Connection,
     PartSpec,
     PinKind,
     is_ground_net,
@@ -373,14 +374,14 @@ class _CircuitChecker:
                 )
 
     def _pin_kinds(
-        self, connections: tuple[object, ...]
+        self, connections: tuple[Connection, ...]
     ) -> tuple[tuple[str, str, PinKind], ...]:
         """Return pin kinds for a set of connections."""
 
         result: list[tuple[str, str, PinKind]] = []
         for item in connections:
-            ref = getattr(item, "ref")
-            pin_name = getattr(item, "pin")
+            ref = item.ref
+            pin_name = item.pin
             part = self.parts.get(ref)
             if part is None:
                 continue
@@ -419,8 +420,12 @@ class _CircuitChecker:
 
         if is_ground_net(net):
             return
-        drives = [PIN_INFO[kind].drive for _, _, kind in pin_kinds]
-        net_drive = max(drives) if drives else DriveStrength.NONE
+        pin_drives = tuple(
+            (ref, pin_name, PIN_INFO[kind].drive) for ref, pin_name, kind in pin_kinds
+        )
+        net_drive = max(
+            (drive for _, _, drive in pin_drives), default=DriveStrength.NONE
+        )
         for ref, pin_name, kind in pin_kinds:
             info = PIN_INFO[kind]
             if info.min_receive > net_drive:
@@ -428,6 +433,23 @@ class _CircuitChecker:
                     IssueSeverity.WARNING,
                     "insufficient_drive",
                     f"insufficient drive on net {net} for {ref}.{pin_name}",
+                    refs=(ref,),
+                    pins=(f"{ref}.{pin_name}",),
+                    nets=(net,),
+                )
+            other_drive = max(
+                (
+                    drive
+                    for other_ref, other_pin, drive in pin_drives
+                    if (other_ref, other_pin) != (ref, pin_name)
+                ),
+                default=DriveStrength.NONE,
+            )
+            if other_drive > info.max_receive:
+                self._add(
+                    IssueSeverity.WARNING,
+                    "excessive_drive",
+                    f"excessive drive on net {net} for {ref}.{pin_name}",
                     refs=(ref,),
                     pins=(f"{ref}.{pin_name}",),
                     nets=(net,),

@@ -98,6 +98,64 @@ def test_erc_reports_output_conflict() -> None:
     assert any(issue.severity is IssueSeverity.ERROR for issue in report.issues)
 
 
+def test_erc_does_not_report_output_self_drive_as_excessive() -> None:
+    catalog = default_catalog()
+    builder = CircuitBuilder("logic-chain", catalog)
+    builder.add_part("V1", "voltage_source_dc", "5V", {"voltage_v": 5.0}, {})
+    builder.add_part("GND1", "ground", "0", {}, {})
+    builder.add_part("U1", "not_gate", "NOT", {}, {})
+    builder.add_part("U2", "not_gate", "NOT", {}, {})
+    builder.add_part("R1", "resistor", "1k", {"resistance_ohm": 1000.0}, {})
+    builder.connect("V1", "p", "VCC")
+    builder.connect("V1", "n", "0")
+    builder.connect("GND1", "0", "0")
+    builder.connect("U1", "in1", "VCC")
+    builder.connect("U1", "out", "N1")
+    builder.connect("U1", "vcc", "VCC")
+    builder.connect("U1", "gnd", "0")
+    builder.connect("U2", "in1", "N1")
+    builder.connect("U2", "out", "N2")
+    builder.connect("U2", "vcc", "VCC")
+    builder.connect("U2", "gnd", "0")
+    builder.connect("R1", "1", "N2")
+    builder.connect("R1", "2", "0")
+
+    report = check_circuit(builder.freeze(), catalog, AnalysisSupport.SPICE_EXPORT)
+
+    assert report.is_valid
+    assert not any(issue.code == "excessive_drive" for issue in report.warnings)
+
+
+def test_erc_warns_when_open_collector_is_directly_power_driven() -> None:
+    catalog = default_catalog()
+    builder = CircuitBuilder("open-collector-overdrive", catalog)
+    builder.add_part("V1", "voltage_source_dc", "5V", {"voltage_v": 5.0}, {})
+    builder.add_part("GND1", "ground", "0", {}, {})
+    builder.add_part("U555", "timer_555", "555", {}, {})
+    builder.add_part("R1", "resistor", "1k", {"resistance_ohm": 1000.0}, {})
+    builder.connect("V1", "p", "VCC")
+    builder.connect("V1", "n", "0")
+    builder.connect("GND1", "0", "0")
+    builder.connect("U555", "gnd", "0")
+    builder.connect("U555", "vcc", "VCC")
+    builder.connect("U555", "reset", "VCC")
+    builder.connect("U555", "ctrl", "0")
+    builder.connect("U555", "disch", "VCC")
+    builder.connect("U555", "thresh", "0")
+    builder.connect("U555", "trig", "0")
+    builder.connect("U555", "out", "OUT")
+    builder.connect("R1", "1", "OUT")
+    builder.connect("R1", "2", "0")
+
+    report = check_circuit(builder.freeze(), catalog, AnalysisSupport.SPICE_EXPORT)
+
+    assert report.is_valid
+    assert any(
+        issue.code == "excessive_drive" and issue.pins == ("U555.disch",)
+        for issue in report.warnings
+    )
+
+
 def test_erc_warns_about_unsupported_linear_analysis() -> None:
     builder = CircuitBuilder("diode", default_catalog())
     builder.add_part("V1", "voltage_source_dc", "5V", {"voltage_v": 5.0}, {})
