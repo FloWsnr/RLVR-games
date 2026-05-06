@@ -64,7 +64,9 @@ from rlvr_physics.tasks.physics.circuits.svg import (
 from tests.tasks.physics.circuits.test_model import divider_circuit
 
 
-GENERATED_IMAGE_DIR = Path(__file__).with_name("images")
+GENERATED_IMAGE_ROOT = Path(__file__).with_name("images")
+GENERATED_MOTIF_IMAGE_DIR = GENERATED_IMAGE_ROOT / "motif"
+GENERATED_CIRCUIT_IMAGE_DIR = GENERATED_IMAGE_ROOT / "circuit"
 GENERATED_CASES = (
     (0, 6),
     (1, 8),
@@ -1206,7 +1208,7 @@ def test_png_drawer_plans_layout_before_rasterizing() -> None:
 
 def test_generated_circuit_png_artifacts_are_written() -> None:
     catalog = default_catalog()
-    GENERATED_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+    _prepare_generated_image_dir(GENERATED_CIRCUIT_IMAGE_DIR)
 
     for seed, element_count in GENERATED_CASES:
         generated = generate_circuit(
@@ -1219,27 +1221,45 @@ def test_generated_circuit_png_artifacts_are_written() -> None:
         )
         png = draw_png(generated.circuit, catalog)
         image_path = (
-            GENERATED_IMAGE_DIR
-            / f"generated_seed_{seed:03d}_count_{element_count:02d}.png"
+            GENERATED_CIRCUIT_IMAGE_DIR
+            / f"circuit_seed_{seed:03d}_parts_{element_count:02d}.png"
         )
 
         validate_png_image_data(png, PNG_MIME_TYPE)
         image_path.write_bytes(png)
         assert image_path.stat().st_size > 0
 
+    assert len(tuple(GENERATED_CIRCUIT_IMAGE_DIR.glob("*.png"))) == len(GENERATED_CASES)
+
 
 def test_default_motif_png_artifacts_are_written() -> None:
     catalog = default_catalog()
-    GENERATED_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+    _prepare_generated_image_dir(GENERATED_MOTIF_IMAGE_DIR)
 
     for index, (name, motif) in enumerate(default_motifs().items(), start=1):
         circuit = _motif_rendering_circuit(name)
         png = draw_png(circuit, catalog)
-        image_path = GENERATED_IMAGE_DIR / f"motif_{index:02d}_{name}.png"
+        image_path = GENERATED_MOTIF_IMAGE_DIR / f"motif_{index:02d}_{name}.png"
 
         validate_png_image_data(png, PNG_MIME_TYPE)
         image_path.write_bytes(png)
         assert image_path.stat().st_size > 0
+
+    assert len(tuple(GENERATED_MOTIF_IMAGE_DIR.glob("*.png"))) == len(default_motifs())
+
+
+def _prepare_generated_image_dir(path: Path) -> None:
+    """Create one generated image directory and remove stale PNG artifacts.
+
+    Parameters
+    ----------
+    path:
+        Directory that receives deterministic PNG renders for one artifact group.
+    """
+
+    path.mkdir(parents=True, exist_ok=True)
+    for image_path in path.glob("*.png"):
+        image_path.unlink()
 
 
 def _segment_crosses_bounds(segment: WireSegment, bounds: Bounds) -> bool:
