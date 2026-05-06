@@ -47,11 +47,6 @@ from rlvr_physics.tasks.physics.circuits.model import (
     SpiceSpec,
     is_ground_net,
 )
-from rlvr_physics.tasks.physics.circuits.solver import (
-    LinearDcResult,
-    UnsupportedCircuitError,
-    solve_dc_linear,
-)
 from rlvr_physics.tasks.physics.circuits.spice import (
     SpiceAnalysis,
     SpiceAnalysisKind,
@@ -86,7 +81,6 @@ __all__ = [
     "GeneratorConfig",
     "IssueSeverity",
     "Layout",
-    "LinearDcResult",
     "NetLabel",
     "PartInstance",
     "PartSpec",
@@ -100,7 +94,6 @@ __all__ = [
     "SpiceAnalysisKind",
     "SpiceNetlist",
     "SpiceSpec",
-    "UnsupportedCircuitError",
     "WirePath",
     "WireSegment",
     "check_circuit",
@@ -117,7 +110,6 @@ __all__ = [
     "operating_point_analysis",
     "plan_layout",
     "require_part_spec",
-    "solve_dc_linear",
     "to_png",
     "transient_analysis",
 ]

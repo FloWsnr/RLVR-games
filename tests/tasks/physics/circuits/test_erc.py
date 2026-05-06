@@ -12,7 +12,7 @@ from tests.tasks.physics.circuits.test_model import divider_circuit
 
 def test_erc_accepts_divider_without_errors() -> None:
     report = check_circuit(
-        divider_circuit(), default_catalog(), AnalysisSupport.LINEAR_DC
+        divider_circuit(), default_catalog(), AnalysisSupport.SPICE_EXPORT
     )
 
     assert report.is_valid
@@ -33,7 +33,7 @@ def test_erc_accepts_parallel_current_sources() -> None:
     builder.connect("R1", "1", "LOAD")
     builder.connect("R1", "2", "0")
 
-    report = check_circuit(builder.freeze(), catalog, AnalysisSupport.LINEAR_DC)
+    report = check_circuit(builder.freeze(), catalog, AnalysisSupport.SPICE_EXPORT)
 
     assert report.is_valid
     assert not any(issue.code == "pin_conflict" for issue in report.errors)
@@ -53,7 +53,7 @@ def test_erc_accepts_multiple_ground_symbols_on_ground_net() -> None:
     builder.connect("R1", "1", "VIN")
     builder.connect("R1", "2", "0")
 
-    report = check_circuit(builder.freeze(), catalog, AnalysisSupport.LINEAR_DC)
+    report = check_circuit(builder.freeze(), catalog, AnalysisSupport.SPICE_EXPORT)
 
     assert report.is_valid
     assert not any(issue.code == "pin_conflict" for issue in report.errors)
@@ -69,7 +69,7 @@ def test_erc_reports_missing_reference_node() -> None:
     builder.connect("R2", "2", "A")
 
     report = check_circuit(
-        builder.freeze(), default_catalog(), AnalysisSupport.LINEAR_DC
+        builder.freeze(), default_catalog(), AnalysisSupport.SPICE_EXPORT
     )
 
     assert any(issue.code == "missing_reference_node" for issue in report.errors)
@@ -156,19 +156,19 @@ def test_erc_warns_when_open_collector_is_directly_power_driven() -> None:
     )
 
 
-def test_erc_warns_about_unsupported_linear_analysis() -> None:
-    builder = CircuitBuilder("diode", default_catalog())
+def test_erc_warns_about_unsupported_transient_analysis() -> None:
+    builder = CircuitBuilder("crystal", default_catalog())
     builder.add_part("V1", "voltage_source_dc", "5V", {"voltage_v": 5.0}, {})
     builder.add_part("GND1", "ground", "0", {}, {})
-    builder.add_part("D1", "diode", "D", {}, {})
+    builder.add_part("XTAL1", "crystal", "XTAL", {}, {})
     builder.connect("V1", "p", "VIN")
     builder.connect("V1", "n", "0")
     builder.connect("GND1", "0", "0")
-    builder.connect("D1", "a", "VIN")
-    builder.connect("D1", "k", "0")
+    builder.connect("XTAL1", "1", "VIN")
+    builder.connect("XTAL1", "2", "0")
 
     report = check_circuit(
-        builder.freeze(), default_catalog(), AnalysisSupport.LINEAR_DC
+        builder.freeze(), default_catalog(), AnalysisSupport.TRANSIENT_EXPORT
     )
 
     assert report.is_valid

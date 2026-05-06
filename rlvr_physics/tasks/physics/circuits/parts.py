@@ -74,13 +74,9 @@ def _two_pin_passive(
     value_parameter: str,
     default_value: str,
     tags: tuple[str, ...],
-    linear_dc: bool,
 ) -> PartSpec:
     """Build a common two-pin passive specification."""
 
-    support = [AnalysisSupport.SPICE_EXPORT, AnalysisSupport.TRANSIENT_EXPORT]
-    if linear_dc:
-        support.append(AnalysisSupport.LINEAR_DC)
     return PartSpec(
         kind=kind,
         display_name=display_name,
@@ -97,7 +93,10 @@ def _two_pin_passive(
             model_definition=None,
         ),
         generation_tags=tags,
-        analysis_support=tuple(support),
+        analysis_support=(
+            AnalysisSupport.SPICE_EXPORT,
+            AnalysisSupport.TRANSIENT_EXPORT,
+        ),
     )
 
 
@@ -152,7 +151,6 @@ def _power_source(
         generation_tags=tags,
         analysis_support=(
             AnalysisSupport.SPICE_EXPORT,
-            AnalysisSupport.LINEAR_DC,
             AnalysisSupport.TRANSIENT_EXPORT,
         ),
     )
@@ -336,13 +334,9 @@ def _controlled_source(
     display_name: str,
     ref_prefix: str,
     tags: tuple[str, ...],
-    linear_dc: bool,
 ) -> PartSpec:
     """Build a voltage-controlled source specification."""
 
-    support = [AnalysisSupport.SPICE_EXPORT, AnalysisSupport.TRANSIENT_EXPORT]
-    if linear_dc:
-        support.append(AnalysisSupport.LINEAR_DC)
     return PartSpec(
         kind=kind,
         display_name=display_name,
@@ -364,7 +358,10 @@ def _controlled_source(
             model_definition=None,
         ),
         generation_tags=tags,
-        analysis_support=tuple(support),
+        analysis_support=(
+            AnalysisSupport.SPICE_EXPORT,
+            AnalysisSupport.TRANSIENT_EXPORT,
+        ),
     )
 
 
@@ -499,7 +496,10 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             icon="ground",
             spice=None,
             generation_tags=("power", "reference"),
-            analysis_support=(AnalysisSupport.SPICE_EXPORT, AnalysisSupport.LINEAR_DC),
+            analysis_support=(
+                AnalysisSupport.SPICE_EXPORT,
+                AnalysisSupport.TRANSIENT_EXPORT,
+            ),
         )
     )
     power_rail_pins = (PinSpec("net", PinKind.PASSIVE, PinSide.BOTTOM),)
@@ -560,7 +560,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "resistance_ohm",
             "1k",
             ("passive", "load", "divider", "filter"),
-            True,
         )
     )
     add(
@@ -573,7 +572,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "resistance_ohm",
             "1k",
             ("passive", "load", "divider", "adjustable"),
-            True,
         )
     )
     add(
@@ -586,7 +584,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "capacitance_f",
             "1u",
             ("passive", "filter", "decoupling", "transient"),
-            False,
         )
     )
     add(
@@ -628,7 +625,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "inductance_h",
             "1m",
             ("passive", "filter", "transient"),
-            False,
         )
     )
     add(
@@ -641,7 +637,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "inductance_h",
             "1m",
             ("passive", "filter", "transient"),
-            False,
         )
     )
     add(
@@ -681,7 +676,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "resistance_ohm",
             "100",
             ("load", "electromechanical"),
-            True,
         )
     )
     add(
@@ -694,7 +688,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "resistance_ohm",
             "25",
             ("load", "electromechanical"),
-            True,
         )
     )
     add(
@@ -861,7 +854,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "Voltage-Controlled Voltage Source",
             "E",
             ("source", "controlled", "linear"),
-            True,
         )
     )
     add(
@@ -870,7 +862,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "Voltage-Controlled Current Source",
             "G",
             ("source", "controlled", "linear"),
-            True,
         )
     )
     add(
@@ -895,7 +886,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             generation_tags=("passive", "bias", "logic", "pullup"),
             analysis_support=(
                 AnalysisSupport.SPICE_EXPORT,
-                AnalysisSupport.LINEAR_DC,
                 AnalysisSupport.TRANSIENT_EXPORT,
             ),
         )
@@ -922,7 +912,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             generation_tags=("passive", "bias", "logic", "pulldown"),
             analysis_support=(
                 AnalysisSupport.SPICE_EXPORT,
-                AnalysisSupport.LINEAR_DC,
                 AnalysisSupport.TRANSIENT_EXPORT,
             ),
         )
@@ -949,7 +938,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             generation_tags=("switch", "control"),
             analysis_support=(
                 AnalysisSupport.SPICE_EXPORT,
-                AnalysisSupport.LINEAR_DC,
                 AnalysisSupport.TRANSIENT_EXPORT,
             ),
         )
@@ -976,7 +964,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             generation_tags=("switch", "control", "momentary"),
             analysis_support=(
                 AnalysisSupport.SPICE_EXPORT,
-                AnalysisSupport.LINEAR_DC,
                 AnalysisSupport.TRANSIENT_EXPORT,
             ),
         )

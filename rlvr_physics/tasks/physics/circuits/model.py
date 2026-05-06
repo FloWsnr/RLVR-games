@@ -48,7 +48,6 @@ class AnalysisSupport(Enum):
     """Backend analysis capability advertised by a part specification."""
 
     SPICE_EXPORT = "spice_export"
-    LINEAR_DC = "linear_dc"
     TRANSIENT_EXPORT = "transient_export"
 
 
@@ -194,7 +193,7 @@ class PartInstance:
     value:
         Display/SPICE value string.
     parameters:
-        Frozen structured parameters used by solvers, exporters, and tasks.
+        Frozen structured parameters used by exporters and tasks.
     metadata:
         Frozen auxiliary metadata.
     """

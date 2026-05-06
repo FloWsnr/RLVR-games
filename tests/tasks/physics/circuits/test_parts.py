@@ -1,5 +1,8 @@
 """Tests for built-in component catalog coverage."""
 
+import importlib.util
+
+import rlvr_physics.tasks.physics.circuits as circuits
 from rlvr_physics.tasks.physics.circuits import (
     AnalysisSupport,
     PinSide,
@@ -63,8 +66,8 @@ def test_part_catalog_covers_planned_common_component_classes() -> None:
     }
 
     assert required_kinds <= set(catalog)
-    assert AnalysisSupport.LINEAR_DC in catalog["vcvs"].analysis_support
-    assert AnalysisSupport.LINEAR_DC in catalog["vccs"].analysis_support
+    assert AnalysisSupport.TRANSIENT_EXPORT in catalog["vcvs"].analysis_support
+    assert AnalysisSupport.TRANSIENT_EXPORT in catalog["vccs"].analysis_support
     assert AnalysisSupport.SPICE_EXPORT in catalog["jfet_n"].analysis_support
     assert catalog["bjt_npn"].ref_prefix == "Q"
     assert catalog["mosfet_n"].ref_prefix == "Q"
@@ -82,6 +85,21 @@ def test_part_catalog_covers_planned_common_component_classes() -> None:
         "13",
         "12",
         "11",
+    )
+
+
+def test_linear_dc_solver_public_surface_is_removed() -> None:
+    """Verify the deleted local solver is not advertised through the public API."""
+
+    assert tuple(item.value for item in AnalysisSupport) == (
+        "spice_export",
+        "transient_export",
+    )
+    assert not hasattr(circuits, "solve_dc_linear")
+    assert not hasattr(circuits, "LinearDcResult")
+    assert not hasattr(circuits, "UnsupportedCircuitError")
+    assert (
+        importlib.util.find_spec("rlvr_physics.tasks.physics.circuits.solver") is None
     )
 
 
