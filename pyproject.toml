@@ -19,13 +19,9 @@ play = "rlvr_physics.play.cli:main"
 dev = [
     "pyright>=1.1.409",
     "pytest>=9.0.3",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.11.0",
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["rlvr_physics"]
-
-[tool.pytest.ini_options]
-addopts = "--capture=sys"
-pythonpath = ["."]
-testpaths = ["tests"]
