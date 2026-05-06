@@ -1,5 +1,9 @@
 """Tests for SPICE export."""
 
+from pathlib import Path
+import shutil
+import subprocess
+
 import pytest
 
 from rlvr_physics.tasks.physics.circuits import (
@@ -82,6 +86,44 @@ def test_export_spice_preserves_connector_as_noop_subcircuit() -> None:
 
 
 def test_export_spice_handles_new_asset_backed_parts() -> None:
+    netlist_text = _asset_backed_parts_netlist_text()
+
+    assert "VBT1 VIN 0 DC 9" in netlist_text
+    assert "RV1 VIN MID 5000" in netlist_text
+    assert "CP1 MID 0 1e-05" in netlist_text
+    assert "L1 VIN 0 0.001" in netlist_text
+    assert "RS1 VIN SW 1e+12" in netlist_text
+    assert "XPWR1 VIN RLVR_POWER_RAIL" in netlist_text
+    assert "XTP1 MID RLVR_TEST_POINT" in netlist_text
+    assert "XU1 DIP_1 DIP_2" in netlist_text
+    assert ".subckt RLVR_POWER_RAIL net\n.ends RLVR_POWER_RAIL" in netlist_text
+    assert ".subckt RLVR_TEST_POINT net\n.ends RLVR_TEST_POINT" in netlist_text
+    assert ".subckt RLVR_DIP_20_IC 1 2 3" in netlist_text
+    assert ".ends RLVR_DIP_20_IC" in netlist_text
+    assert "RLEAK" not in netlist_text
+
+
+def test_ngspice_accepts_noop_visual_helper_subcircuits(tmp_path: Path) -> None:
+    ngspice = shutil.which("ngspice")
+    if ngspice is None:
+        pytest.skip("ngspice executable is not available")
+    netlist_path = tmp_path / "asset_backed_parts.cir"
+    netlist_path.write_text(_asset_backed_parts_netlist_text(), encoding="utf-8")
+
+    completed = subprocess.run(
+        (ngspice, "-b", str(netlist_path)),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=20.0,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+def _asset_backed_parts_netlist_text() -> str:
+    """Return SPICE text for the asset-backed helper part smoke circuit."""
+
     catalog = default_catalog()
     builder = CircuitBuilder("asset-backed-parts", catalog)
     builder.add_part("GND1", "ground", "0", {}, {})
@@ -121,21 +163,7 @@ def test_export_spice_handles_new_asset_backed_parts() -> None:
     for pin in catalog["dip_20_ic"].pins:
         builder.connect("U1", pin.name, f"DIP_{pin.name}")
 
-    netlist = export_spice(builder.freeze(), catalog, operating_point_analysis())
-
-    assert "VBT1 VIN 0 DC 9" in netlist.text
-    assert "RV1 VIN MID 5000" in netlist.text
-    assert "CP1 MID 0 1e-05" in netlist.text
-    assert "L1 VIN 0 0.001" in netlist.text
-    assert "RS1 VIN SW 1e+12" in netlist.text
-    assert "XPWR1 VIN RLVR_POWER_RAIL" in netlist.text
-    assert "XTP1 MID RLVR_TEST_POINT" in netlist.text
-    assert "XU1 DIP_1 DIP_2" in netlist.text
-    assert ".subckt RLVR_POWER_RAIL net\n.ends RLVR_POWER_RAIL" in netlist.text
-    assert ".subckt RLVR_TEST_POINT net\n.ends RLVR_TEST_POINT" in netlist.text
-    assert ".subckt RLVR_DIP_20_IC 1 2 3" in netlist.text
-    assert ".ends RLVR_DIP_20_IC" in netlist.text
-    assert "RLEAK" not in netlist.text
+    return export_spice(builder.freeze(), catalog, operating_point_analysis()).text
 
 
 @pytest.mark.parametrize(

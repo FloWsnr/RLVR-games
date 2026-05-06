@@ -1195,7 +1195,7 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ref_prefix="U",
             family=ComponentFamily.INTEGRATED,
             pins=dip_20_pins,
-            icon="ic_chip_pin_labels",
+            icon="ic",
             spice=SpiceSpec(
                 prefix="X",
                 pin_order=tuple(pin.name for pin in dip_20_pins),

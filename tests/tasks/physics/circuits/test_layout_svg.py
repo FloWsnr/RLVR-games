@@ -80,6 +80,14 @@ GENERATED_CASES = (
 )
 GEOMETRY_EPSILON = 1.0e-6
 WIRE_CLEARANCE = 1.0
+DYNAMIC_PACKAGE_PIN_LEAD = 14.0
+DYNAMIC_PACKAGE_KINDS = (
+    "controlled_switch",
+    "counter_4bit",
+    "dip_20_ic",
+    "instrumentation_amplifier",
+    "timer_555",
+)
 
 
 def test_layout_places_parts_without_overlap() -> None:
@@ -749,6 +757,24 @@ def test_svg_pin_anchors_are_declared_in_symbol_assets() -> None:
     _assert_asset_anchor(crystal_asset, "2", 9.01058, 0.5)
 
 
+def test_crystal_asset_rotation_places_rendered_pins_left_and_right() -> None:
+    catalog = default_catalog()
+    spec = catalog["crystal"]
+    part = PlacedPart(
+        ref="XTAL1",
+        kind="crystal",
+        center=Point(100.0, 100.0),
+        size=Size(82.0, 48.0),
+    )
+    instance = PartInstance("XTAL1", "crystal", "XTAL", {}, {})
+
+    terminals = asset_terminals_for_part(part, spec, instance)
+
+    assert terminals["1"].x < part.center.x < terminals["2"].x
+    assert abs(terminals["1"].y - part.center.y) <= GEOMETRY_EPSILON
+    assert abs(terminals["2"].y - part.center.y) <= GEOMETRY_EPSILON
+
+
 def test_default_part_assets_declare_every_catalog_pin() -> None:
     catalog = default_catalog()
 
@@ -1016,13 +1042,7 @@ def test_generic_ic_asset_draws_pins_on_layout_slots() -> None:
 
 @pytest.mark.parametrize(
     "kind",
-    (
-        "controlled_switch",
-        "counter_4bit",
-        "dip_20_ic",
-        "instrumentation_amplifier",
-        "timer_555",
-    ),
+    DYNAMIC_PACKAGE_KINDS,
 )
 def test_dynamic_package_symbols_draw_visible_lead_for_every_catalog_pin(
     kind: str,
@@ -1043,10 +1063,21 @@ def test_dynamic_package_symbols_draw_visible_lead_for_every_catalog_pin(
     assert 'class="symbol-asset"' not in fragments
     for pin in spec.pins:
         anchor = pin_position(part, spec, pin.name)
-        assert f'x1="{anchor.x:.1f}" y1="{anchor.y:.1f}"' in fragments, (
+        lead = _dynamic_package_inner_point(anchor, pin.side)
+        assert (
+            f'<line class="symbol-pin" x1="{anchor.x:.1f}" '
+            f'y1="{anchor.y:.1f}" x2="{lead.x:.1f}" y2="{lead.y:.1f}"/>'
+        ) in fragments, (
             kind,
             pin.name,
         )
+
+
+def test_dynamic_package_symbols_do_not_expose_static_assets() -> None:
+    catalog = default_catalog()
+
+    for kind in DYNAMIC_PACKAGE_KINDS:
+        assert asset_for_part(kind, catalog[kind]) is None
 
 
 def test_dip_20_ic_uses_dynamic_package_without_placeholder_labels() -> None:
@@ -1143,7 +1174,10 @@ def test_multi_pin_asset_terminals_are_declared_in_asset_bounds() -> None:
         )
         asset = asset_for_part(kind, spec)
         instance = PartInstance(f"{spec.ref_prefix}1", kind, "value", {}, {})
-        assert asset is not None
+        if kind in DYNAMIC_PACKAGE_KINDS:
+            assert asset is None
+        else:
+            assert asset is not None
         terminals = asset_terminals_for_part(part, spec, instance)
         rendered_bounds = asset_render_bounds_for_part(part, spec, instance)
 
@@ -1358,6 +1392,9 @@ def test_vendored_svg_assets_cover_common_symbols() -> None:
     catalog = default_catalog()
 
     for kind, spec in catalog.items():
+        if kind in DYNAMIC_PACKAGE_KINDS:
+            assert asset_for_part(kind, spec) is None
+            continue
         assert asset_for_part(kind, spec) is not None
 
 
@@ -1365,7 +1402,6 @@ def test_vendored_svg_assets_cover_common_symbols() -> None:
     ("kind", "asset_key"),
     (
         ("battery", "battery"),
-        ("dip_20_ic", "generic_ic"),
         ("inductor_looped", "inductor_looped"),
         ("polarized_capacitor", "polarized_capacitor"),
         ("power_rail", "power_rail"),
@@ -1425,6 +1461,11 @@ def test_generated_circuit_png_artifacts_are_written() -> None:
     catalog = default_catalog()
     _prepare_generated_image_dir(GENERATED_CIRCUIT_IMAGE_DIR)
     image_paths: list[Path] = []
+    expected_paths = {
+        GENERATED_CIRCUIT_IMAGE_DIR
+        / f"circuit_seed_{seed:03d}_parts_{element_count:02d}.png"
+        for seed, element_count in GENERATED_CASES
+    }
 
     for seed, element_count in GENERATED_CASES:
         generated = generate_circuit(
@@ -1447,15 +1488,21 @@ def test_generated_circuit_png_artifacts_are_written() -> None:
         image_paths.append(image_path)
 
     assert len(image_paths) == len(GENERATED_CASES)
-    assert all(path.exists() for path in image_paths)
+    assert set(image_paths) == expected_paths
+    assert set(GENERATED_CIRCUIT_IMAGE_DIR.glob("*.png")) == expected_paths
 
 
 def test_default_motif_png_artifacts_are_written() -> None:
     catalog = default_catalog()
     _prepare_generated_image_dir(GENERATED_MOTIF_IMAGE_DIR)
+    motifs = tuple(default_motifs().items())
     image_paths: list[Path] = []
+    expected_paths = {
+        GENERATED_MOTIF_IMAGE_DIR / f"motif_{index:02d}_{name}.png"
+        for index, (name, _) in enumerate(motifs, start=1)
+    }
 
-    for index, (name, motif) in enumerate(default_motifs().items(), start=1):
+    for index, (name, motif) in enumerate(motifs, start=1):
         circuit = _motif_rendering_circuit(name)
         png = draw_png(circuit, catalog)
         image_path = GENERATED_MOTIF_IMAGE_DIR / f"motif_{index:02d}_{name}.png"
@@ -1465,8 +1512,9 @@ def test_default_motif_png_artifacts_are_written() -> None:
         assert image_path.stat().st_size > 0
         image_paths.append(image_path)
 
-    assert len(image_paths) == len(default_motifs())
-    assert all(path.exists() for path in image_paths)
+    assert len(image_paths) == len(motifs)
+    assert set(image_paths) == expected_paths
+    assert set(GENERATED_MOTIF_IMAGE_DIR.glob("*.png")) == expected_paths
 
 
 def _prepare_generated_image_dir(path: Path) -> None:
@@ -1974,10 +2022,11 @@ def _part_lead_prefix(svg: str, ref: str) -> str:
     """Return the circuit-symbol fragment before embedded asset artwork."""
 
     group_start = svg.index(f'<g id="{ref}" class="circuit-symbol">')
-    try:
-        asset_start = svg.index('<g class="symbol-asset"', group_start)
-    except ValueError:
-        asset_start = svg.index("</g>", group_start)
+    next_part_start = svg.find('\n<g id="', group_start + 1)
+    group_end = next_part_start if next_part_start >= 0 else svg.index("\n</svg>")
+    asset_start = svg.find('<g class="symbol-asset"', group_start, group_end)
+    if asset_start < 0:
+        asset_start = group_end
     return svg[group_start:asset_start]
 
 
@@ -1989,6 +2038,18 @@ def _assert_asset_anchor(asset: SymbolAsset, pin_name: str, x: float, y: float) 
     assert anchor is not None, pin_name
     assert abs(anchor.x - x) <= 1.0e-5
     assert abs(anchor.y - y) <= 1.0e-5
+
+
+def _dynamic_package_inner_point(anchor: Point, side: PinSide) -> Point:
+    """Return the expected inner endpoint for one dynamic package pin."""
+
+    if side is PinSide.LEFT:
+        return anchor.translate(DYNAMIC_PACKAGE_PIN_LEAD, 0.0)
+    if side is PinSide.RIGHT:
+        return anchor.translate(-DYNAMIC_PACKAGE_PIN_LEAD, 0.0)
+    if side is PinSide.TOP:
+        return anchor.translate(0.0, DYNAMIC_PACKAGE_PIN_LEAD)
+    return anchor.translate(0.0, -DYNAMIC_PACKAGE_PIN_LEAD)
 
 
 def _assert_no_corrective_symbol_leads(svg: str, circuit: Circuit) -> None:

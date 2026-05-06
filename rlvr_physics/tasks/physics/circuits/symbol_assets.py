@@ -22,7 +22,7 @@ from rlvr_physics.tasks.physics.circuits.model import PartInstance, PartSpec, Pi
 _SVG_NS = "http://www.w3.org/2000/svg"
 _DEFAULT_SYMBOL_STROKE_WIDTH = 2.5
 _SYMBOL_MASK_INSET = 1.5
-_DYNAMIC_IC_PIN_LEAD = 14.0
+_DYNAMIC_PACKAGE_PIN_LEAD = 14.0
 _DYNAMIC_PACKAGE_KINDS = frozenset(
     (
         "controlled_switch",
@@ -164,11 +164,11 @@ def draw_asset_part(
         Raised when no asset is registered for the part.
     """
 
+    if _uses_dynamic_package_symbol(spec):
+        return _draw_dynamic_package_part(part, spec, instance)
     asset = _asset_for_rendered_part(part.kind, spec, instance)
     if asset is None:
         raise ValueError(f"no SVG asset registered for part kind: {part.kind}")
-    if _uses_dynamic_package_symbol(spec):
-        return _draw_dynamic_ic_part(part, spec, instance)
     terminals = _asset_terminals(part, spec, asset)
     mask_bounds = _asset_render_bounds(part, asset)
     lines = [
@@ -239,10 +239,10 @@ def asset_render_bounds_for_part(
         rotation.
     """
 
+    if _uses_dynamic_package_symbol(spec):
+        return part.bounds
     asset = _asset_for_rendered_part(part.kind, spec, instance)
     if asset is None:
-        return part.bounds
-    if _uses_dynamic_package_symbol(spec):
         return part.bounds
     return _asset_render_bounds(part, asset)
 
@@ -269,15 +269,15 @@ def asset_component_label_bounds(
         Approximate rendered bounds for the component label.
     """
 
-    asset = _asset_for_rendered_part(part.kind, spec, instance)
-    if asset is None:
+    if _uses_dynamic_package_symbol(spec):
         return component_label_bounds_for_symbol_bounds(
             part,
             spec,
             instance.value,
             part.bounds,
         )
-    if _uses_dynamic_package_symbol(spec):
+    asset = _asset_for_rendered_part(part.kind, spec, instance)
+    if asset is None:
         return component_label_bounds_for_symbol_bounds(
             part,
             spec,
@@ -304,11 +304,11 @@ def asset_terminals_for_part(
         Canonical component instance to render.
     """
 
+    if _uses_dynamic_package_symbol(spec):
+        return {pin.name: pin_position(part, spec, pin.name) for pin in spec.pins}
     asset = _asset_for_rendered_part(part.kind, spec, instance)
     if asset is None:
         return {}
-    if _uses_dynamic_package_symbol(spec):
-        return {pin.name: pin_position(part, spec, pin.name) for pin in spec.pins}
     return _asset_terminals(part, spec, asset)
 
 
@@ -334,6 +334,8 @@ def _asset_spec_for_part(
         and _is_closed_switch(instance)
     ):
         return _SPST_SWITCH_CLOSED
+    if _uses_dynamic_package_symbol(spec):
+        return None
     asset_spec = _ASSETS_BY_KIND.get(part_kind)
     if asset_spec is None:
         asset_spec = _ASSETS_BY_ICON.get(spec.icon)
@@ -346,7 +348,7 @@ def _uses_dynamic_package_symbol(spec: PartSpec) -> bool:
     return spec.kind in _DYNAMIC_PACKAGE_KINDS
 
 
-def _draw_dynamic_ic_part(
+def _draw_dynamic_package_part(
     part: PlacedPart,
     spec: PartSpec,
     instance: PartInstance,
@@ -383,7 +385,7 @@ def _draw_dynamic_ic_part(
         lines.append(
             _line(
                 anchor,
-                _dynamic_ic_pin_inner_point(anchor, pin.side),
+                _dynamic_package_pin_inner_point(anchor, pin.side),
                 css_class="symbol-pin",
             )
         )
@@ -404,16 +406,16 @@ def _draw_dynamic_ic_part(
     return lines
 
 
-def _dynamic_ic_pin_inner_point(anchor: Point, side: PinSide) -> Point:
+def _dynamic_package_pin_inner_point(anchor: Point, side: PinSide) -> Point:
     """Return the inner endpoint for one dynamically drawn IC lead."""
 
     if side is PinSide.LEFT:
-        return anchor.translate(_DYNAMIC_IC_PIN_LEAD, 0.0)
+        return anchor.translate(_DYNAMIC_PACKAGE_PIN_LEAD, 0.0)
     if side is PinSide.RIGHT:
-        return anchor.translate(-_DYNAMIC_IC_PIN_LEAD, 0.0)
+        return anchor.translate(-_DYNAMIC_PACKAGE_PIN_LEAD, 0.0)
     if side is PinSide.TOP:
-        return anchor.translate(0.0, _DYNAMIC_IC_PIN_LEAD)
-    return anchor.translate(0.0, -_DYNAMIC_IC_PIN_LEAD)
+        return anchor.translate(0.0, _DYNAMIC_PACKAGE_PIN_LEAD)
+    return anchor.translate(0.0, -_DYNAMIC_PACKAGE_PIN_LEAD)
 
 
 def _is_closed_switch(instance: PartInstance) -> bool:
@@ -1095,11 +1097,6 @@ _GENERIC_IC = _AssetSpec(
     filename="generic_ic.svg",
 )
 
-_IC_CHIP_PIN_LABELS = _AssetSpec(
-    key="ic_chip_pin_labels",
-    filename="ic_chip_pin_labels.svg",
-)
-
 _CONNECTOR = _AssetSpec(
     key="connector",
     filename="connector.svg",
@@ -1155,11 +1152,9 @@ _ASSETS_BY_KIND = {
     "battery": _BATTERY,
     "bjt_npn": _NPN,
     "bjt_pnp": _PNP,
-    "controlled_switch": _GENERIC_IC,
     "crystal": _CRYSTAL,
     "current_source_dc": _CURRENT_SOURCE,
     "diode": _DIODE,
-    "dip_20_ic": _GENERIC_IC,
     "inductor_looped": _INDUCTOR_LOOPED,
     "jfet_n": _NMOS,
     "jfet_p": _PMOS,
@@ -1192,7 +1187,6 @@ _ASSETS_BY_ICON = {
     "controlled_source": _CONTROLLED_SOURCE,
     "ground": _GROUND,
     "ic": _GENERIC_IC,
-    "ic_chip_pin_labels": _IC_CHIP_PIN_LABELS,
     "inductor": _INDUCTOR,
     "inductor_looped": _INDUCTOR_LOOPED,
     "junction_dot": _JUNCTION_DOT,
