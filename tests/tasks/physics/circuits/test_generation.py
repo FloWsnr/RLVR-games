@@ -1,5 +1,11 @@
 """Tests for procedural circuit generation."""
 
+from pathlib import Path
+import shutil
+import subprocess
+
+import pytest
+
 from rlvr_physics.tasks.physics.circuits import (
     AnalysisSupport,
     GeneratorConfig,
@@ -104,6 +110,67 @@ def test_single_default_motif_generations_are_spice_exportable() -> None:
         ).text.endswith(".op\n.end\n")
 
 
+def test_default_generated_spice_refs_are_unique() -> None:
+    catalog = default_catalog()
+    weights = default_motif_weights()
+
+    for seed in range(50):
+        for element_count in range(2, 25):
+            generated = generate_circuit(
+                GeneratorConfig(
+                    seed=seed,
+                    element_count=element_count,
+                    motif_weights=weights,
+                ),
+                catalog,
+            )
+            netlist = export_spice(
+                generated.circuit,
+                catalog,
+                operating_point_analysis(),
+            )
+            refs = _spice_element_refs(netlist.text)
+
+            assert len(refs) == len(set(refs)), (seed, element_count, refs)
+
+
+def test_controlled_source_motifs_run_in_ngspice(tmp_path: Path) -> None:
+    ngspice = shutil.which("ngspice")
+    if ngspice is None:
+        pytest.skip("ngspice executable is not available")
+    catalog = default_catalog()
+
+    for motif_name in (
+        "vccs_voltage_to_current_driver",
+        "vcvs_ideal_voltage_gain_block",
+    ):
+        motif = default_motifs()[motif_name]
+        generated = generate_circuit(
+            GeneratorConfig(
+                seed=123,
+                element_count=motif.element_count + 1,
+                motif_weights={motif_name: 1.0},
+            ),
+            catalog,
+        )
+        netlist = export_spice(
+            generated.circuit,
+            catalog,
+            operating_point_analysis(),
+        )
+        netlist_path = tmp_path / f"{motif_name}.cir"
+        netlist_path.write_text(netlist.text, encoding="utf-8")
+        completed = subprocess.run(
+            (ngspice, "-b", str(netlist_path)),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=20.0,
+        )
+
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
 def test_default_generation_uses_catalog_motifs_before_fallbacks() -> None:
     catalog = default_catalog()
     generated = generate_circuit(
@@ -143,3 +210,21 @@ def test_generate_circuit_seed_sweep_passes_erc_without_errors() -> None:
                 element_count
             )
             assert report.errors == (), (seed, element_count, report.errors)
+
+
+def _spice_element_refs(netlist: str) -> tuple[str, ...]:
+    """Return top-level SPICE element references from a netlist."""
+
+    refs: list[str] = []
+    in_subcircuit = False
+    for line in netlist.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("*", ".")):
+            if stripped.lower().startswith(".subckt"):
+                in_subcircuit = True
+            elif stripped.lower().startswith(".ends"):
+                in_subcircuit = False
+            continue
+        if not in_subcircuit:
+            refs.append(stripped.split()[0])
+    return tuple(refs)

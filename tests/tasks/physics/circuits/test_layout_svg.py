@@ -82,26 +82,26 @@ GENERATED_CASES = (
     (36, 20),
 )
 GENERATED_LAYOUT_FINGERPRINTS = {
-    (0, 6): "6f135fffa535c2752dfbe91989ce9d5b58b5f5634b3a6d34e20c51d7f34568b9",
-    (1, 8): "935d37646de62b6ec14dff7f5b8bc3a9ed401b9c5fb09be359b773d71de8e2f6",
-    (4, 10): "cb3c2cce0b4c52d855fbebee4b64ac293c828ea271022bf6652c62641dba59d3",
-    (2, 10): "3336f97b1e7ab17d699bace1033d84c6fded0a5334c1b99ed48e281248248c86",
-    (3, 12): "848a32b31d38f388435d281bd234b0ef68f6d4d3cd2334ac9865042771a77fe4",
-    (4, 16): "9c84035d8284cf1c2214ac3204b4daa4445fa22afe48cbcc2e64679ff1a689b7",
-    (5, 20): "15e492aa3b5457e003b78254fdb7e15bb85aaffd116b749d12fba9fa36af96ed",
-    (9, 15): "124379f8f1522b977f34a03a86e7389f05eb05c49f96254bd7f738225427af35",
-    (36, 20): "7bc88e2fac7a53a98143fda20c33922a6687101f742851a4dabb41c55f5cfd45",
+    (0, 6): "fbde2c1a84334ccc1b4d985d0b3d8f2791224ca2e26f378eeb1d446b4b2496fe",
+    (1, 8): "6ffbe32666d7e64a270b35631baae79311b96008a175f9c12009f1d1c6339b38",
+    (4, 10): "77c8586d61ab5e3f0863e921c039bec7f7b503e8e85406bbe10d12d0c10e7700",
+    (2, 10): "3f95e6022383af49f00a98e0b1942745829be1149ca538bb9731d5908473c6ba",
+    (3, 12): "985fb9067cc62cfbd32205f8bdc64dc1884551add19910995061badc5dbd68b5",
+    (4, 16): "77f79bfcb730d722e8a842ab6c0367d4337ea734f46cbed602f109d7fb1e7b28",
+    (5, 20): "b08b0207b80069ba29f271642e289eb58186b5ffa089c9d8e1ce6981e1525369",
+    (9, 15): "69db1533893fc000f5bb1aba0d7362c5f0d3bce04ff0af4bb5a6ab8463109213",
+    (36, 20): "19bc879788cbf5729ded80143b31382f33e21bbb6e7b468b8d3e8aec5f5a18f9",
 }
 GENERATED_ASSET_LAYOUT_FINGERPRINTS = {
-    (0, 6): "d4929321bb0410b588f1b1e689c1464aa605b87ad769fd8fafc0df8ad36d3275",
-    (1, 8): "b5a03eb3014f1191aa90631f20433fdd537ae9be0fbe48e24bcff664a502d590",
-    (4, 10): "fffdbebc7768977d672a543b12d9e3a01ea11b86d31b45e3f4fc4a08b46c11dc",
-    (2, 10): "3caf831906b7c05bc6d8a42e070e710ffa22a80549eaaad328d6449b535e53a9",
-    (3, 12): "1a2e83f9e6d1a4ce2b94b765e8afd01f9da211978c3435ae441d96bb89da7b79",
-    (4, 16): "85674f9260208d9eee3c999cde6ee8b90e3bb96a103bb96cbcaba91d036b83ec",
-    (5, 20): "4e0e11bc28116ac3d3b03c8f9b800a99a2eb97cd49a46e72bf0643f9c5cc2e69",
-    (9, 15): "dd74a83e760b85ddda01f67c6d32221df26a7d34a14ebe14c7ad0141037fd0d8",
-    (36, 20): "03c1c1f222a4da70b5537a41dc02ae628ca01c09ace4ac53341d9b2d2916b1dc",
+    (0, 6): "4d0ccb6ab20b54d4f2bad36c8b74624a55ac845d83b5a3f51aeb5baae5342758",
+    (1, 8): "0689c1bb6448a63a46aeaed31ca52681c80ac09c651f22e0319e46fc2105bbf8",
+    (4, 10): "12a289a5a87069f6c71a995101996de4ba590b25c8383fa440f06cbc2963abd5",
+    (2, 10): "8b5bc4aad90296329202e5144918977d5141aa0a43f5aca544f71798a7fa05a1",
+    (3, 12): "0a04ac6d6682ccfe9a47d10110f387985aad4be9c5c876f658f11774e7e90888",
+    (4, 16): "5f37101f5599682df71da07f3747196c708126f501153408818502767cfc04ea",
+    (5, 20): "b414a381d52539714d1728acc670844ef0cead1fe09740dbd8769deb64c013c1",
+    (9, 15): "a9518004a06029fbf5f356c65f7eeb4e31bed61b909f8e490a2bbe79ba253d4f",
+    (36, 20): "a110eea958b58cbb8f32fde839dd3656cc9a07d963c0b1b2c873b05ee2742fd2",
 }
 GEOMETRY_EPSILON = 1.0e-6
 WIRE_CLEARANCE = 1.0
@@ -2085,12 +2085,12 @@ def _motif_rendering_circuit(motif_name: str) -> Circuit:
     assert motif.build(ctx, motif.element_count)
     nets = ctx.builder._nets
     if "VCC" in nets:
-        ctx.builder.add_part("V1", "voltage_source_dc", "5V", {"voltage_v": 5.0}, {})
-        ctx.builder.connect("V1", "p", "VCC")
-        ctx.builder.connect("V1", "n", "0")
+        source = ctx.add_part("V", "voltage_source_dc", "5V", {"voltage_v": 5.0}, {})
+        ctx.builder.connect(source, "p", "VCC")
+        ctx.builder.connect(source, "n", "0")
     if "0" in nets:
-        ctx.builder.add_part("GND1", "ground", "0", {}, {})
-        ctx.builder.connect("GND1", "0", "0")
+        ground = ctx.add_part("GND", "ground", "0", {}, {})
+        ctx.builder.connect(ground, "0", "0")
     return ctx.builder.freeze()
 
 

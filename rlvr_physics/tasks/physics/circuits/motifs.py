@@ -256,6 +256,64 @@ def _controlled_sw(ref: str) -> _MotifPart:
     return _plain_part(ref, "controlled_switch", "ctrl")
 
 
+def _battery(ref: str, value: str, voltage_v: float) -> _MotifPart:
+    """Return one battery motif part."""
+
+    return _part(ref, "battery", value, {"voltage_v": voltage_v})
+
+
+def _ammeter(ref: str) -> _MotifPart:
+    """Return one ammeter motif part."""
+
+    return _part(ref, "ammeter", "0", {"voltage_v": 0.0})
+
+
+def _voltmeter(ref: str) -> _MotifPart:
+    """Return one voltmeter motif part."""
+
+    return _part(ref, "voltmeter", "1T", {"resistance_ohm": 1e12})
+
+
+def _pullup(ref: str, value: str, resistance_ohm: float) -> _MotifPart:
+    """Return one pull-up resistor motif part."""
+
+    return _part(ref, "pullup_resistor", value, {"resistance_ohm": resistance_ohm})
+
+
+def _pulldown(ref: str, value: str, resistance_ohm: float) -> _MotifPart:
+    """Return one pull-down resistor motif part."""
+
+    return _part(ref, "pulldown_resistor", value, {"resistance_ohm": resistance_ohm})
+
+
+def _pushbutton(ref: str, resistance_ohm: float) -> _MotifPart:
+    """Return one pushbutton switch motif part."""
+
+    return _part(
+        ref,
+        "pushbutton_switch",
+        "closed" if resistance_ohm < 1.0 else "open",
+        {"state_resistance_ohm": resistance_ohm},
+    )
+
+
+def _ideal_switch(ref: str, resistance_ohm: float) -> _MotifPart:
+    """Return one ideal switch motif part."""
+
+    return _part(
+        ref,
+        "ideal_switch",
+        "closed" if resistance_ohm < 1.0 else "open",
+        {"state_resistance_ohm": resistance_ohm},
+    )
+
+
+def _variable_res(ref: str, value: str, resistance_ohm: float) -> _MotifPart:
+    """Return one variable resistor motif part."""
+
+    return _part(ref, "variable_resistor", value, {"resistance_ohm": resistance_ohm})
+
+
 def _build_default_motifs() -> Mapping[str, CircuitMotif]:
     """Build the immutable built-in motif catalog."""
 
@@ -310,7 +368,9 @@ def _build_netlist_motif(spec: _MotifSpec) -> MotifBuilder:
 def _element_count(spec: _MotifSpec) -> int:
     """Return the non-ground part count added by ``spec``."""
 
-    return len(spec.parts) + (1 if _uses_net(spec, "VEE") else 0)
+    return sum(1 for part in spec.parts if part.kind != "ground") + (
+        1 if _uses_net(spec, "VEE") else 0
+    )
 
 
 def _uses_net(spec: _MotifSpec, net: str) -> bool:
@@ -1123,7 +1183,7 @@ _DEFAULT_MOTIF_SPECS = (
             _plain_part("Q1", "bjt_npn", "NPN"),
             _plain_part("K1", "relay", "relay"),
             _plain_part("DFLY", "diode", "D"),
-            _part("LOAD", "lamp", "lamp", {"resistance_ohm": 100.0}),
+            _part("LA", "lamp", "lamp", {"resistance_ohm": 100.0}),
         ),
         (
             ("RBASE", "1", "CTRL"),
@@ -1140,8 +1200,8 @@ _DEFAULT_MOTIF_SPECS = (
             ("K1", "nc", "0"),
             ("DFLY", "a", "NLOAD"),
             ("DFLY", "k", "VCC"),
-            ("LOAD", "1", "NCONTACT"),
-            ("LOAD", "2", "0"),
+            ("LA", "1", "NCONTACT"),
+            ("LA", "2", "0"),
         ),
     ),
     _MotifSpec(
@@ -1151,7 +1211,7 @@ _DEFAULT_MOTIF_SPECS = (
             _res("RG", "100", 100.0),
             _res("RPD", "100k", 100000.0),
             _plain_part("M1", "mosfet_n", "NMOS"),
-            _part("LOAD", "motor", "motor", {"resistance_ohm": 25.0}),
+            _part("MOT", "motor", "motor", {"resistance_ohm": 25.0}),
             _plain_part("DFLY", "diode", "D"),
         ),
         (
@@ -1162,8 +1222,8 @@ _DEFAULT_MOTIF_SPECS = (
             ("M1", "g", "NG"),
             ("M1", "s", "0"),
             ("M1", "d", "NLOAD"),
-            ("LOAD", "1", "VCC"),
-            ("LOAD", "2", "NLOAD"),
+            ("MOT", "1", "VCC"),
+            ("MOT", "2", "NLOAD"),
             ("DFLY", "a", "NLOAD"),
             ("DFLY", "k", "VCC"),
         ),
@@ -1385,6 +1445,487 @@ _DEFAULT_MOTIF_SPECS = (
             ("U1", "qc", "Q2"),
             ("U1", "qd", "Q3"),
             ("U1", "rco", "CARRY"),
+        ),
+    ),
+    _MotifSpec(
+        "inline_load_current_meter",
+        0.7,
+        (_battery("B1", "9V", 9.0), _ammeter("AM1"), _res("RLOAD", "1k", 1000.0)),
+        (
+            ("B1", "p", "VBAT"),
+            ("B1", "n", "0"),
+            ("AM1", "p", "VBAT"),
+            ("AM1", "n", "NLOAD"),
+            ("RLOAD", "1", "NLOAD"),
+            ("RLOAD", "2", "0"),
+        ),
+    ),
+    _MotifSpec(
+        "battery_powered_led_indicator",
+        0.8,
+        (
+            _battery("B1", "9V", 9.0),
+            _res("R1", "1k", 1000.0),
+            _plain_part("LED1", "led", "LED"),
+        ),
+        (
+            ("B1", "p", "VBAT"),
+            ("B1", "n", "0"),
+            ("R1", "1", "VBAT"),
+            ("R1", "2", "NLED"),
+            ("LED1", "a", "NLED"),
+            ("LED1", "k", "0"),
+        ),
+    ),
+    _MotifSpec(
+        "two_pin_external_input_connector_rc_filter",
+        0.7,
+        (
+            _plain_part("J1", "connector_2", "J2"),
+            _res("R1", "1k", 1000.0),
+            _cap("C1", "100n", 1e-7),
+        ),
+        (
+            ("J1", "1", "EXT_IN"),
+            ("J1", "2", "0"),
+            ("R1", "1", "EXT_IN"),
+            ("R1", "2", "OUT"),
+            ("C1", "1", "OUT"),
+            ("C1", "2", "0"),
+        ),
+    ),
+    _MotifSpec(
+        "dip20_ic_minimum_system",
+        0.6,
+        (
+            _plain_part("U1", "dip_20_ic", "DIP20"),
+            _cap("CDEC", "100n", 1e-7),
+            _pullup("RRESET", "10k", 10000.0),
+            _pushbutton("SWRESET", 1e12),
+            _plain_part("XTAL1", "crystal", "XTAL"),
+            _cap("CXTAL1", "22p", 2.2e-11),
+            _cap("CXTAL2", "22p", 2.2e-11),
+            _res("RLED", "1k", 1000.0),
+            _plain_part("LED1", "led", "LED"),
+        ),
+        (
+            ("U1", "20", "VCC"),
+            ("U1", "10", "0"),
+            ("CDEC", "1", "VCC"),
+            ("CDEC", "2", "0"),
+            ("RRESET", "net", "RESET_N"),
+            ("RRESET", "rail", "VCC"),
+            ("SWRESET", "1", "RESET_N"),
+            ("SWRESET", "2", "0"),
+            ("U1", "1", "RESET_N"),
+            ("U1", "2", "XTAL_A"),
+            ("U1", "3", "XTAL_B"),
+            ("XTAL1", "1", "XTAL_A"),
+            ("XTAL1", "2", "XTAL_B"),
+            ("CXTAL1", "1", "XTAL_A"),
+            ("CXTAL1", "2", "0"),
+            ("CXTAL2", "1", "XTAL_B"),
+            ("CXTAL2", "2", "0"),
+            ("U1", "5", "NLED"),
+            ("RLED", "1", "NLED"),
+            ("RLED", "2", "LED_A"),
+            ("LED1", "a", "LED_A"),
+            ("LED1", "k", "0"),
+            ("U1", "4", "NC4"),
+            ("U1", "6", "NC6"),
+            ("U1", "7", "NC7"),
+            ("U1", "8", "NC8"),
+            ("U1", "9", "NC9"),
+            ("U1", "11", "NC11"),
+            ("U1", "12", "NC12"),
+            ("U1", "13", "NC13"),
+            ("U1", "14", "NC14"),
+            ("U1", "15", "NC15"),
+            ("U1", "16", "NC16"),
+            ("U1", "17", "NC17"),
+            ("U1", "18", "NC18"),
+            ("U1", "19", "NC19"),
+        ),
+    ),
+    _MotifSpec(
+        "generic_ic_powered_logic_block",
+        0.7,
+        (
+            _plain_part("U1", "generic_ic", "IC"),
+            _cap("CDEC", "100n", 1e-7),
+            _pullup("RPU", "10k", 10000.0),
+            _pulldown("RPD", "10k", 10000.0),
+            _res("RLED", "1k", 1000.0),
+            _plain_part("LED1", "led", "LED"),
+        ),
+        (
+            ("U1", "vcc", "VCC"),
+            ("U1", "gnd", "0"),
+            ("CDEC", "1", "VCC"),
+            ("CDEC", "2", "0"),
+            ("RPU", "net", "IN1"),
+            ("RPU", "rail", "VCC"),
+            ("RPD", "net", "IN2"),
+            ("RPD", "rail", "0"),
+            ("U1", "in1", "IN1"),
+            ("U1", "in2", "IN2"),
+            ("U1", "out1", "OUT"),
+            ("RLED", "1", "OUT"),
+            ("RLED", "2", "LED_A"),
+            ("LED1", "a", "LED_A"),
+            ("LED1", "k", "0"),
+        ),
+    ),
+    _MotifSpec(
+        "explicit_ground_reference_node",
+        0.5,
+        (
+            _plain_part("GND1", "ground", "0"),
+            _cap("CDEC", "100n", 1e-7),
+            _res("RLOAD", "1k", 1000.0),
+        ),
+        (
+            ("GND1", "0", "0"),
+            ("CDEC", "1", "VCC"),
+            ("CDEC", "2", "0"),
+            ("RLOAD", "1", "VCC"),
+            ("RLOAD", "2", "0"),
+        ),
+    ),
+    _MotifSpec(
+        "ideal_switch_power_disconnect",
+        0.7,
+        (
+            _battery("B1", "9V", 9.0),
+            _ideal_switch("SW1", 0.1),
+            _cap("COUT", "100u", 1e-4),
+            _res("RLOAD", "1k", 1000.0),
+        ),
+        (
+            ("B1", "p", "VBAT"),
+            ("B1", "n", "0"),
+            ("SW1", "1", "VBAT"),
+            ("SW1", "2", "VSW"),
+            ("COUT", "1", "VSW"),
+            ("COUT", "2", "0"),
+            ("RLOAD", "1", "VSW"),
+            ("RLOAD", "2", "0"),
+        ),
+    ),
+    _MotifSpec(
+        "looped_inductor_parallel_resonant_tank",
+        0.6,
+        (
+            _cap("CIN", "10p", 1e-11),
+            _part("LLOOP1", "inductor_looped", "1u", {"inductance_h": 1e-6}),
+            _cap("CTANK", "100p", 1e-10),
+            _res("RLOSS", "100k", 100000.0),
+        ),
+        (
+            ("CIN", "1", "IN"),
+            ("CIN", "2", "OUT"),
+            ("LLOOP1", "1", "OUT"),
+            ("LLOOP1", "2", "0"),
+            ("CTANK", "1", "OUT"),
+            ("CTANK", "2", "0"),
+            ("RLOSS", "1", "OUT"),
+            ("RLOSS", "2", "0"),
+        ),
+    ),
+    _MotifSpec(
+        "n_jfet_source_follower_buffer",
+        0.7,
+        (
+            _cap("CIN", "1u", 1e-6),
+            _res("RG", "1M", 1000000.0),
+            _plain_part("J1", "jfet_n", "NJFET"),
+            _res("RS", "2.2k", 2200.0),
+            _cap("COUT", "1u", 1e-6),
+            _res("RLOAD", "10k", 10000.0),
+        ),
+        (
+            ("CIN", "1", "IN"),
+            ("CIN", "2", "NG"),
+            ("RG", "1", "NG"),
+            ("RG", "2", "0"),
+            ("J1", "g", "NG"),
+            ("J1", "d", "VDD"),
+            ("J1", "s", "NS"),
+            ("RS", "1", "NS"),
+            ("RS", "2", "0"),
+            ("COUT", "1", "NS"),
+            ("COUT", "2", "OUT"),
+            ("RLOAD", "1", "OUT"),
+            ("RLOAD", "2", "0"),
+        ),
+    ),
+    _MotifSpec(
+        "p_jfet_high_side_current_source",
+        0.6,
+        (
+            _res("RSET", "1k", 1000.0),
+            _plain_part("J1", "jfet_p", "PJFET"),
+            _res("RLOAD", "1k", 1000.0),
+        ),
+        (
+            ("RSET", "1", "VCC"),
+            ("RSET", "2", "NS"),
+            ("J1", "s", "NS"),
+            ("J1", "g", "VCC"),
+            ("J1", "d", "OUT"),
+            ("RLOAD", "1", "OUT"),
+            ("RLOAD", "2", "0"),
+        ),
+    ),
+    _MotifSpec(
+        "led_power_indicator",
+        0.8,
+        (_res("RLED", "1k", 1000.0), _plain_part("LED1", "led", "LED")),
+        (
+            ("RLED", "1", "VCC"),
+            ("RLED", "2", "NLED"),
+            ("LED1", "a", "NLED"),
+            ("LED1", "k", "0"),
+        ),
+    ),
+    _MotifSpec(
+        "pmos_high_side_load_switch",
+        0.7,
+        (
+            _plain_part("MP1", "mosfet_p", "PMOS"),
+            _plain_part("QN1", "bjt_npn", "NPN"),
+            _res("RGPU", "100k", 100000.0),
+            _res("RB", "10k", 10000.0),
+            _cap("COUT", "10u", 1e-5),
+            _res("RLOAD", "100", 100.0),
+        ),
+        (
+            ("MP1", "s", "VCC"),
+            ("MP1", "d", "VOUT"),
+            ("MP1", "g", "NGATE"),
+            ("RGPU", "1", "VCC"),
+            ("RGPU", "2", "NGATE"),
+            ("RB", "1", "CTRL"),
+            ("RB", "2", "NB"),
+            ("QN1", "b", "NB"),
+            ("QN1", "e", "0"),
+            ("QN1", "c", "NGATE"),
+            ("COUT", "1", "VOUT"),
+            ("COUT", "2", "0"),
+            ("RLOAD", "1", "VOUT"),
+            ("RLOAD", "2", "0"),
+        ),
+    ),
+    _MotifSpec(
+        "two_input_or_gate_with_led_output",
+        0.7,
+        (
+            _plain_part("U1", "or_gate", "OR"),
+            _pulldown("RPD_A", "10k", 10000.0),
+            _pulldown("RPD_B", "10k", 10000.0),
+            _pushbutton("SWA", 0.1),
+            _pushbutton("SWB", 0.1),
+            _res("RLED", "1k", 1000.0),
+            _plain_part("LED1", "led", "LED"),
+        ),
+        (
+            ("U1", "vcc", "VCC"),
+            ("U1", "gnd", "0"),
+            ("RPD_A", "net", "A"),
+            ("RPD_A", "rail", "0"),
+            ("RPD_B", "net", "B"),
+            ("RPD_B", "rail", "0"),
+            ("SWA", "1", "VCC"),
+            ("SWA", "2", "A"),
+            ("SWB", "1", "VCC"),
+            ("SWB", "2", "B"),
+            ("U1", "in1", "A"),
+            ("U1", "in2", "B"),
+            ("U1", "out", "Y"),
+            ("RLED", "1", "Y"),
+            ("RLED", "2", "LED_A"),
+            ("LED1", "a", "LED_A"),
+            ("LED1", "k", "0"),
+        ),
+    ),
+    _MotifSpec(
+        "bulk_polarized_supply_capacitor",
+        0.7,
+        (
+            _part("CPOL1", "polarized_capacitor", "100u", {"capacitance_f": 1e-4}),
+            _cap("CFAST", "100n", 1e-7),
+            _res("RLOAD", "1k", 1000.0),
+        ),
+        (
+            ("CPOL1", "p", "VCC"),
+            ("CPOL1", "n", "0"),
+            ("CFAST", "1", "VCC"),
+            ("CFAST", "2", "0"),
+            ("RLOAD", "1", "VCC"),
+            ("RLOAD", "2", "0"),
+        ),
+    ),
+    _MotifSpec(
+        "visible_power_rail_distribution",
+        0.6,
+        (
+            _plain_part("PWR1", "power_rail", "VCC"),
+            _cap("CDEC", "100n", 1e-7),
+            _res("RLOAD", "1k", 1000.0),
+            _res("RLED", "1k", 1000.0),
+            _plain_part("LED1", "led", "LED"),
+        ),
+        (
+            ("PWR1", "net", "VCC"),
+            ("CDEC", "1", "VCC"),
+            ("CDEC", "2", "0"),
+            ("RLOAD", "1", "VCC"),
+            ("RLOAD", "2", "0"),
+            ("RLED", "1", "VCC"),
+            ("RLED", "2", "LED_A"),
+            ("LED1", "a", "LED_A"),
+            ("LED1", "k", "0"),
+        ),
+    ),
+    _MotifSpec(
+        "default_low_digital_input",
+        0.7,
+        (
+            _pulldown("RPD1", "10k", 10000.0),
+            _pushbutton("SW1", 1e12),
+            _res("RLED", "1k", 1000.0),
+            _plain_part("LED1", "led", "LED"),
+        ),
+        (
+            ("RPD1", "net", "SIG"),
+            ("RPD1", "rail", "0"),
+            ("SW1", "1", "VCC"),
+            ("SW1", "2", "SIG"),
+            ("RLED", "1", "SIG"),
+            ("RLED", "2", "LED_A"),
+            ("LED1", "a", "LED_A"),
+            ("LED1", "k", "0"),
+        ),
+    ),
+    _MotifSpec(
+        "active_low_reset_pullup",
+        0.7,
+        (
+            _pullup("RPU1", "10k", 10000.0),
+            _pushbutton("SW1", 1e12),
+            _cap("C1", "100n", 1e-7),
+        ),
+        (
+            ("RPU1", "net", "RESET_N"),
+            ("RPU1", "rail", "VCC"),
+            ("SW1", "1", "RESET_N"),
+            ("SW1", "2", "0"),
+            ("C1", "1", "RESET_N"),
+            ("C1", "2", "0"),
+        ),
+    ),
+    _MotifSpec(
+        "rc_debounced_pushbutton_input",
+        0.7,
+        (
+            _pushbutton("SW1", 0.1),
+            _pulldown("RPD", "10k", 10000.0),
+            _res("RFILT", "1k", 1000.0),
+            _cap("CFILT", "100n", 1e-7),
+            _res("RREF_TOP", "10k", 10000.0),
+            _res("RREF_BOT", "10k", 10000.0),
+            _plain_part("CMP1", "comparator", "CMP"),
+        ),
+        (
+            ("SW1", "1", "VCC"),
+            ("SW1", "2", "NBUTTON"),
+            ("RPD", "net", "NBUTTON"),
+            ("RPD", "rail", "0"),
+            ("RFILT", "1", "NBUTTON"),
+            ("RFILT", "2", "NFILT"),
+            ("CFILT", "1", "NFILT"),
+            ("CFILT", "2", "0"),
+            ("RREF_TOP", "1", "VCC"),
+            ("RREF_TOP", "2", "VREF"),
+            ("RREF_BOT", "1", "VREF"),
+            ("RREF_BOT", "2", "0"),
+            ("CMP1", "noninv", "NFILT"),
+            ("CMP1", "inv", "VREF"),
+            ("CMP1", "out", "OUT"),
+            ("CMP1", "vpos", "VCC"),
+            ("CMP1", "vneg", "0"),
+        ),
+    ),
+    _MotifSpec(
+        "test_point_on_filtered_signal",
+        0.7,
+        (
+            _res("R1", "1k", 1000.0),
+            _cap("C1", "100n", 1e-7),
+            _plain_part("TP1", "test_point", "TP"),
+        ),
+        (
+            ("R1", "1", "IN"),
+            ("R1", "2", "SENSE"),
+            ("C1", "1", "SENSE"),
+            ("C1", "2", "0"),
+            ("TP1", "net", "SENSE"),
+        ),
+    ),
+    _MotifSpec(
+        "variable_cutoff_rc_low_pass",
+        0.7,
+        (
+            _variable_res("RV1", "10k", 10000.0),
+            _cap("C1", "100n", 1e-7),
+            _res("RLOAD", "10k", 10000.0),
+        ),
+        (
+            ("RV1", "1", "IN"),
+            ("RV1", "2", "OUT"),
+            ("C1", "1", "OUT"),
+            ("C1", "2", "0"),
+            ("RLOAD", "1", "OUT"),
+            ("RLOAD", "2", "0"),
+        ),
+    ),
+    _MotifSpec(
+        "vccs_voltage_to_current_driver",
+        0.6,
+        (_part("G1", "vccs", "1m", {"gain": 0.001}), _res("RLOAD", "1k", 1000.0)),
+        (
+            ("G1", "cp", "VCC"),
+            ("G1", "cn", "0"),
+            ("G1", "p", "NLOAD"),
+            ("G1", "n", "0"),
+            ("RLOAD", "1", "VCC"),
+            ("RLOAD", "2", "NLOAD"),
+        ),
+    ),
+    _MotifSpec(
+        "vcvs_ideal_voltage_gain_block",
+        0.6,
+        (_part("E1", "vcvs", "10", {"gain": 10.0}), _res("RLOAD", "10k", 10000.0)),
+        (
+            ("E1", "cp", "VCC"),
+            ("E1", "cn", "0"),
+            ("E1", "p", "OUT"),
+            ("E1", "n", "0"),
+            ("RLOAD", "1", "OUT"),
+            ("RLOAD", "2", "0"),
+        ),
+    ),
+    _MotifSpec(
+        "voltage_divider_with_voltmeter",
+        0.7,
+        (_voltmeter("VM1"), _res("R1", "10k", 10000.0), _res("R2", "10k", 10000.0)),
+        (
+            ("R1", "1", "VCC"),
+            ("R1", "2", "VMID"),
+            ("R2", "1", "VMID"),
+            ("R2", "2", "0"),
+            ("VM1", "p", "VMID"),
+            ("VM1", "n", "0"),
         ),
     ),
 )
