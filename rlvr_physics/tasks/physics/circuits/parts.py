@@ -110,6 +110,15 @@ def _two_pin_passive_pins() -> tuple[PinSpec, PinSpec]:
     )
 
 
+def _polarized_passive_pins() -> tuple[PinSpec, PinSpec]:
+    """Return left/right pins for a polarized passive component."""
+
+    return (
+        PinSpec("p", PinKind.PASSIVE, PinSide.LEFT),
+        PinSpec("n", PinKind.PASSIVE, PinSide.RIGHT),
+    )
+
+
 def _power_source(
     kind: str,
     display_name: str,
@@ -453,6 +462,25 @@ def _subcircuit_part(
     )
 
 
+def _empty_subcircuit_model(model_name: str, pins: tuple[PinSpec, ...]) -> str:
+    """Return a no-op SPICE subcircuit for visual helper parts."""
+
+    pin_names = " ".join(pin.name for pin in pins)
+    return f".subckt {model_name} {pin_names}\n.ends {model_name}"
+
+
+def _dip_20_pins() -> tuple[PinSpec, ...]:
+    """Return pin metadata for a generic twenty-pin DIP package."""
+
+    return tuple(
+        PinSpec(str(index), PinKind.BIDIRECTIONAL, PinSide.LEFT)
+        for index in range(1, 11)
+    ) + tuple(
+        PinSpec(str(index), PinKind.BIDIRECTIONAL, PinSide.RIGHT)
+        for index in range(20, 10, -1)
+    )
+
+
 def _build_default_part_catalog() -> Mapping[str, PartSpec]:
     """Build the immutable built-in part catalog."""
 
@@ -474,6 +502,54 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             analysis_support=(AnalysisSupport.SPICE_EXPORT, AnalysisSupport.LINEAR_DC),
         )
     )
+    power_rail_pins = (PinSpec("net", PinKind.PASSIVE, PinSide.BOTTOM),)
+    add(
+        PartSpec(
+            kind="power_rail",
+            display_name="Power Rail",
+            ref_prefix="PWR",
+            family=ComponentFamily.POWER,
+            pins=power_rail_pins,
+            icon="power_rail",
+            spice=SpiceSpec(
+                prefix="X",
+                pin_order=("net",),
+                value_parameter=None,
+                default_value="",
+                model_name="RLVR_POWER_RAIL",
+                model_definition=_empty_subcircuit_model(
+                    "RLVR_POWER_RAIL",
+                    power_rail_pins,
+                ),
+            ),
+            generation_tags=("power", "reference", "visual"),
+            analysis_support=(AnalysisSupport.SPICE_EXPORT,),
+        )
+    )
+    test_point_pins = (PinSpec("net", PinKind.PASSIVE, PinSide.LEFT),)
+    add(
+        PartSpec(
+            kind="test_point",
+            display_name="Test Point",
+            ref_prefix="TP",
+            family=ComponentFamily.CONNECTOR,
+            pins=test_point_pins,
+            icon="junction_dot",
+            spice=SpiceSpec(
+                prefix="X",
+                pin_order=("net",),
+                value_parameter=None,
+                default_value="",
+                model_name="RLVR_TEST_POINT",
+                model_definition=_empty_subcircuit_model(
+                    "RLVR_TEST_POINT",
+                    test_point_pins,
+                ),
+            ),
+            generation_tags=("connector", "test_point", "probe"),
+            analysis_support=(AnalysisSupport.SPICE_EXPORT,),
+        )
+    )
     add(
         _two_pin_passive(
             "resistor",
@@ -484,6 +560,19 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "resistance_ohm",
             "1k",
             ("passive", "load", "divider", "filter"),
+            True,
+        )
+    )
+    add(
+        _two_pin_passive(
+            "variable_resistor",
+            "Variable Resistor",
+            "RV",
+            "variable_resistor",
+            "R",
+            "resistance_ohm",
+            "1k",
+            ("passive", "load", "divider", "adjustable"),
             True,
         )
     )
@@ -501,11 +590,53 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
         )
     )
     add(
+        PartSpec(
+            kind="polarized_capacitor",
+            display_name="Polarized Capacitor",
+            ref_prefix="C",
+            family=ComponentFamily.PASSIVE,
+            pins=_polarized_passive_pins(),
+            icon="polarized_capacitor",
+            spice=SpiceSpec(
+                prefix="C",
+                pin_order=("p", "n"),
+                value_parameter="capacitance_f",
+                default_value="1u",
+                model_name=None,
+                model_definition=None,
+            ),
+            generation_tags=(
+                "passive",
+                "filter",
+                "decoupling",
+                "polarized",
+                "transient",
+            ),
+            analysis_support=(
+                AnalysisSupport.SPICE_EXPORT,
+                AnalysisSupport.TRANSIENT_EXPORT,
+            ),
+        )
+    )
+    add(
         _two_pin_passive(
             "inductor",
             "Inductor",
             "L",
             "inductor",
+            "L",
+            "inductance_h",
+            "1m",
+            ("passive", "filter", "transient"),
+            False,
+        )
+    )
+    add(
+        _two_pin_passive(
+            "inductor_looped",
+            "Looped Inductor",
+            "L",
+            "inductor_looped",
             "L",
             "inductance_h",
             "1m",
@@ -575,6 +706,18 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "voltage_v",
             "DC 5",
             ("source", "power"),
+            PinKind.POWER_OUT,
+        )
+    )
+    add(
+        _power_source(
+            "battery",
+            "Battery",
+            "BT",
+            "V",
+            "voltage_v",
+            "DC 9",
+            ("source", "power", "battery"),
             PinKind.POWER_OUT,
         )
     )
@@ -812,6 +955,33 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
         )
     )
     add(
+        PartSpec(
+            kind="pushbutton_switch",
+            display_name="Pushbutton Switch",
+            ref_prefix="S",
+            family=ComponentFamily.SWITCH,
+            pins=(
+                PinSpec("1", PinKind.PASSIVE, PinSide.LEFT),
+                PinSpec("2", PinKind.PASSIVE, PinSide.RIGHT),
+            ),
+            icon="pushbutton_switch",
+            spice=SpiceSpec(
+                prefix="R",
+                pin_order=("1", "2"),
+                value_parameter="state_resistance_ohm",
+                default_value="1e12",
+                model_name=None,
+                model_definition=None,
+            ),
+            generation_tags=("switch", "control", "momentary"),
+            analysis_support=(
+                AnalysisSupport.SPICE_EXPORT,
+                AnalysisSupport.LINEAR_DC,
+                AnalysisSupport.TRANSIENT_EXPORT,
+            ),
+        )
+    )
+    add(
         _subcircuit_part(
             "controlled_switch",
             "Controlled Switch",
@@ -1014,6 +1184,30 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
                 ),
             ),
             generation_tags=("integrated", "block", "generic"),
+            analysis_support=(AnalysisSupport.SPICE_EXPORT,),
+        )
+    )
+    dip_20_pins = _dip_20_pins()
+    add(
+        PartSpec(
+            kind="dip_20_ic",
+            display_name="20-pin DIP IC",
+            ref_prefix="U",
+            family=ComponentFamily.INTEGRATED,
+            pins=dip_20_pins,
+            icon="ic_chip_pin_labels",
+            spice=SpiceSpec(
+                prefix="X",
+                pin_order=tuple(pin.name for pin in dip_20_pins),
+                value_parameter=None,
+                default_value="",
+                model_name="RLVR_DIP_20_IC",
+                model_definition=_empty_subcircuit_model(
+                    "RLVR_DIP_20_IC",
+                    dip_20_pins,
+                ),
+            ),
+            generation_tags=("integrated", "block", "dip"),
             analysis_support=(AnalysisSupport.SPICE_EXPORT,),
         )
     )

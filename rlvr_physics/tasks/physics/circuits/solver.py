@@ -58,18 +58,24 @@ def solve_dc_linear(
     if not ground_nets:
         raise UnsupportedCircuitError("linear DC solve requires a ground net")
 
-    supported = {
-        "ground",
+    resistive_kinds = {
         "resistor",
         "lamp",
         "motor",
         "pullup_resistor",
         "pulldown_resistor",
-        "voltage_source_dc",
+        "variable_resistor",
+    }
+    switch_kinds = {"ideal_switch", "pushbutton_switch"}
+    independent_voltage_source_kinds = {"voltage_source_dc", "battery"}
+    supported = {
+        "ground",
+        *resistive_kinds,
+        *switch_kinds,
+        *independent_voltage_source_kinds,
         "current_source_dc",
         "vcvs",
         "vccs",
-        "ideal_switch",
     }
     for part in circuit.parts:
         if part.kind not in supported:
@@ -78,7 +84,9 @@ def solve_dc_linear(
     node_names = tuple(net for net in circuit.nets if not is_ground_net(net))
     node_index = {net: idx for idx, net in enumerate(node_names)}
     voltage_sources = tuple(
-        part for part in circuit.parts if part.kind in {"voltage_source_dc", "vcvs"}
+        part
+        for part in circuit.parts
+        if part.kind in {*independent_voltage_source_kinds, "vcvs"}
     )
     size = len(node_names) + len(voltage_sources)
     if size == 0:
@@ -90,15 +98,9 @@ def solve_dc_linear(
     rhs = [0.0 for _ in range(size)]
 
     for part in circuit.parts:
-        if part.kind in {
-            "resistor",
-            "lamp",
-            "motor",
-            "pullup_resistor",
-            "pulldown_resistor",
-        }:
+        if part.kind in resistive_kinds:
             _stamp_resistor(circuit, node_index, matrix, part)
-        elif part.kind == "ideal_switch":
+        elif part.kind in switch_kinds:
             _stamp_switch(circuit, node_index, matrix, part)
         elif part.kind == "current_source_dc":
             _stamp_current_source(circuit, node_index, rhs, part)
@@ -106,7 +108,7 @@ def solve_dc_linear(
             _stamp_vccs(circuit, node_index, matrix, part)
 
     for source_number, part in enumerate(voltage_sources):
-        if part.kind == "voltage_source_dc":
+        if part.kind in independent_voltage_source_kinds:
             _stamp_voltage_source(
                 circuit,
                 node_index,

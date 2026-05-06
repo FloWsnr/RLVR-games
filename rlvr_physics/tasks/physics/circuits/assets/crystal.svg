@@ -13,6 +13,23 @@
    xmlns:dc="http://purl.org/dc/elements/1.1/">
   <defs
      id="defs4492" />
+  <g
+     id="pin-anchors"
+     data-rlvr-role="pin-anchors"
+     display="none">
+    <circle
+       id="pin-1"
+       data-pin="1"
+       cx="9.01058"
+       cy="49.478763"
+       r="0" />
+    <circle
+       id="pin-2"
+       data-pin="2"
+       cx="9.01058"
+       cy="0.5"
+       r="0" />
+  </g>
   <metadata
      id="metadata4495">
     <rdf:RDF>

@@ -2047,6 +2047,8 @@ def _net_label_bounds(label: NetLabel) -> Bounds:
 def _part_size(spec: PartSpec) -> Size:
     """Return deterministic symbol size for a part."""
 
+    if spec.kind == "test_point":
+        return Size(width=14.0, height=14.0)
     pin_count = max(len(spec.pins), 2)
     return Size(width=82.0, height=max(48.0, 16.0 * pin_count))
 

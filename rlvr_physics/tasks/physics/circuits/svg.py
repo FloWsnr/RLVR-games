@@ -185,6 +185,10 @@ def draw_svg(
             f".symbol{{stroke:#111827;stroke-width:{style.symbol_stroke_width};"
             "fill:none;stroke-linecap:round;stroke-linejoin:round}"
         ),
+        (
+            f".symbol-pin{{stroke:#111827;stroke-width:{style.symbol_stroke_width};"
+            "fill:none;stroke-linecap:round;stroke-linejoin:round}"
+        ),
         ".symbol-fill{fill:#ffffff}",
         (
             f".symbol-solid{{stroke:#111827;stroke-width:{style.symbol_solid_stroke_width};"

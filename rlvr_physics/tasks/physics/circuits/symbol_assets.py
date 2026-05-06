@@ -17,11 +17,21 @@ from rlvr_physics.tasks.physics.circuits.layout import (
     component_label_position_from_bounds,
     pin_position,
 )
-from rlvr_physics.tasks.physics.circuits.model import PartInstance, PartSpec
+from rlvr_physics.tasks.physics.circuits.model import PartInstance, PartSpec, PinSide
 
 _SVG_NS = "http://www.w3.org/2000/svg"
 _DEFAULT_SYMBOL_STROKE_WIDTH = 2.5
 _SYMBOL_MASK_INSET = 1.5
+_DYNAMIC_IC_PIN_LEAD = 14.0
+_DYNAMIC_PACKAGE_KINDS = frozenset(
+    (
+        "controlled_switch",
+        "counter_4bit",
+        "dip_20_ic",
+        "instrumentation_amplifier",
+        "timer_555",
+    )
+)
 _SWITCH_CLOSED_MAX_RESISTANCE_OHM = 1.0e6
 _TRANSFORM_PATTERN = re.compile(r"([A-Za-z]+)\(([^)]*)\)")
 
@@ -157,15 +167,18 @@ def draw_asset_part(
     asset = _asset_for_rendered_part(part.kind, spec, instance)
     if asset is None:
         raise ValueError(f"no SVG asset registered for part kind: {part.kind}")
+    if _uses_dynamic_package_symbol(spec):
+        return _draw_dynamic_ic_part(part, spec, instance)
     terminals = _asset_terminals(part, spec, asset)
+    mask_bounds = _asset_render_bounds(part, asset)
     lines = [
         f'<g id="{escape(part.ref)}" class="circuit-symbol">',
         f"<title>{escape(part.ref)} {escape(spec.display_name)}</title>",
         (
-            f'<rect class="symbol-mask" x="{part.bounds.x + _SYMBOL_MASK_INSET:.1f}" '
-            f'y="{part.bounds.y + _SYMBOL_MASK_INSET:.1f}" '
-            f'width="{part.bounds.width - 2.0 * _SYMBOL_MASK_INSET:.1f}" '
-            f'height="{part.bounds.height - 2.0 * _SYMBOL_MASK_INSET:.1f}"/>'
+            f'<rect class="symbol-mask" x="{mask_bounds.x + _SYMBOL_MASK_INSET:.1f}" '
+            f'y="{mask_bounds.y + _SYMBOL_MASK_INSET:.1f}" '
+            f'width="{mask_bounds.width - 2.0 * _SYMBOL_MASK_INSET:.1f}" '
+            f'height="{mask_bounds.height - 2.0 * _SYMBOL_MASK_INSET:.1f}"/>'
         ),
     ]
     if draw_leads:
@@ -229,6 +242,8 @@ def asset_render_bounds_for_part(
     asset = _asset_for_rendered_part(part.kind, spec, instance)
     if asset is None:
         return part.bounds
+    if _uses_dynamic_package_symbol(spec):
+        return part.bounds
     return _asset_render_bounds(part, asset)
 
 
@@ -262,6 +277,13 @@ def asset_component_label_bounds(
             instance.value,
             part.bounds,
         )
+    if _uses_dynamic_package_symbol(spec):
+        return component_label_bounds_for_symbol_bounds(
+            part,
+            spec,
+            instance.value,
+            part.bounds,
+        )
     return _component_label_bounds_for_asset(part, spec, instance, asset)
 
 
@@ -285,6 +307,8 @@ def asset_terminals_for_part(
     asset = _asset_for_rendered_part(part.kind, spec, instance)
     if asset is None:
         return {}
+    if _uses_dynamic_package_symbol(spec):
+        return {pin.name: pin_position(part, spec, pin.name) for pin in spec.pins}
     return _asset_terminals(part, spec, asset)
 
 
@@ -314,6 +338,82 @@ def _asset_spec_for_part(
     if asset_spec is None:
         asset_spec = _ASSETS_BY_ICON.get(spec.icon)
     return asset_spec
+
+
+def _uses_dynamic_package_symbol(spec: PartSpec) -> bool:
+    """Return whether a package should be drawn from its catalog pin sides."""
+
+    return spec.kind in _DYNAMIC_PACKAGE_KINDS
+
+
+def _draw_dynamic_ic_part(
+    part: PlacedPart,
+    spec: PartSpec,
+    instance: PartInstance,
+) -> list[str]:
+    """Draw a scalable IC package from the catalog pin sides.
+
+    Parameters
+    ----------
+    part:
+        Placed part to draw.
+    spec:
+        Static component specification.
+    instance:
+        Canonical component instance to render.
+
+    Returns
+    -------
+    list[str]
+        SVG fragments for a rectangular IC package with one visible lead per
+        catalog pin.
+    """
+
+    body = part.bounds
+    lines = [
+        f'<g id="{escape(part.ref)}" class="circuit-symbol">',
+        f"<title>{escape(part.ref)} {escape(spec.display_name)}</title>",
+        (
+            f'<rect class="symbol-fill symbol" x="{body.x:.1f}" y="{body.y:.1f}" '
+            f'width="{body.width:.1f}" height="{body.height:.1f}"/>'
+        ),
+    ]
+    for pin in spec.pins:
+        anchor = pin_position(part, spec, pin.name)
+        lines.append(
+            _line(
+                anchor,
+                _dynamic_ic_pin_inner_point(anchor, pin.side),
+                css_class="symbol-pin",
+            )
+        )
+    label_text = f"{part.ref} {instance.value}".strip()
+    label_position = component_label_position_from_bounds(
+        component_label_bounds_for_symbol_bounds(part, spec, instance.value, body)
+    )
+    lines.append(
+        f'<text class="label-halo" x="{label_position.x:.1f}" '
+        f'y="{label_position.y:.1f}">{escape(label_text)}</text>'
+    )
+    lines.append(
+        f'<text class="label" x="{label_position.x:.1f}" '
+        f'y="{label_position.y:.1f}">'
+        f"{escape(label_text)}</text>"
+    )
+    lines.append("</g>")
+    return lines
+
+
+def _dynamic_ic_pin_inner_point(anchor: Point, side: PinSide) -> Point:
+    """Return the inner endpoint for one dynamically drawn IC lead."""
+
+    if side is PinSide.LEFT:
+        return anchor.translate(_DYNAMIC_IC_PIN_LEAD, 0.0)
+    if side is PinSide.RIGHT:
+        return anchor.translate(-_DYNAMIC_IC_PIN_LEAD, 0.0)
+    if side is PinSide.TOP:
+        return anchor.translate(0.0, _DYNAMIC_IC_PIN_LEAD)
+    return anchor.translate(0.0, -_DYNAMIC_IC_PIN_LEAD)
 
 
 def _is_closed_switch(instance: PartInstance) -> bool:
@@ -398,10 +498,11 @@ def _asset_terminals(
     terminals: dict[str, Point] = {}
     for pin in spec.pins:
         source = asset.anchor(pin.name)
-        if source is not None:
-            terminals[pin.name] = _asset_point(part, asset, source)
-        else:
-            terminals[pin.name] = pin_position(part, spec, pin.name)
+        if source is None:
+            raise ValueError(
+                f"SVG asset for {part.kind!r} does not declare pin {pin.name!r}"
+            )
+        terminals[pin.name] = _asset_point(part, asset, source)
     return terminals
 
 
@@ -521,11 +622,11 @@ def _lead_lines(
     return lines
 
 
-def _line(start: Point, end: Point) -> str:
+def _line(start: Point, end: Point, *, css_class: str = "symbol") -> str:
     """Return an SVG lead line fragment."""
 
     return (
-        f'<line class="symbol" x1="{start.x:.1f}" y1="{start.y:.1f}" '
+        f'<line class="{escape(css_class)}" x1="{start.x:.1f}" y1="{start.y:.1f}" '
         f'x2="{end.x:.1f}" y2="{end.y:.1f}"/>'
     )
 
@@ -827,6 +928,11 @@ _VARIABLE_RESISTOR = _AssetSpec(
     rotation_degrees=90.0,
 )
 
+_BATTERY = _AssetSpec(
+    key="battery",
+    filename="battery.svg",
+)
+
 _RESISTOR = _AssetSpec(
     key="resistor",
     filename="resistor.svg",
@@ -849,9 +955,21 @@ _CAPACITOR = _AssetSpec(
     rotation_degrees=90.0,
 )
 
+_POLARIZED_CAPACITOR = _AssetSpec(
+    key="polarized_capacitor",
+    filename="polarized_capacitor.svg",
+    rotation_degrees=-90.0,
+)
+
 _INDUCTOR = _AssetSpec(
     key="inductor",
     filename="inductor.svg",
+    rotation_degrees=90.0,
+)
+
+_INDUCTOR_LOOPED = _AssetSpec(
+    key="inductor_looped",
+    filename="inductor_looped.svg",
     rotation_degrees=90.0,
 )
 
@@ -891,6 +1009,12 @@ _SPST_SWITCH_CLOSED = _AssetSpec(
     rotation_degrees=90.0,
 )
 
+_PUSHBUTTON_SWITCH = _AssetSpec(
+    key="pushbutton_switch",
+    filename="pushbutton_switch.svg",
+    rotation_degrees=90.0,
+)
+
 _DC_SOURCE = _AssetSpec(
     key="dc_voltage_source",
     filename="dc_voltage_source.svg",
@@ -909,6 +1033,16 @@ _CURRENT_SOURCE = _AssetSpec(
 _GROUND = _AssetSpec(
     key="ground",
     filename="ground.svg",
+)
+
+_POWER_RAIL = _AssetSpec(
+    key="power_rail",
+    filename="power_rail.svg",
+)
+
+_JUNCTION_DOT = _AssetSpec(
+    key="junction_dot",
+    filename="junction_dot.svg",
 )
 
 _NPN = _AssetSpec(
@@ -959,6 +1093,11 @@ _RELAY = _AssetSpec(
 _GENERIC_IC = _AssetSpec(
     key="generic_ic",
     filename="generic_ic.svg",
+)
+
+_IC_CHIP_PIN_LABELS = _AssetSpec(
+    key="ic_chip_pin_labels",
+    filename="ic_chip_pin_labels.svg",
 )
 
 _CONNECTOR = _AssetSpec(
@@ -1013,11 +1152,15 @@ _NOT_GATE = _AssetSpec(
 
 _ASSETS_BY_KIND = {
     "ammeter": _AMMETER,
+    "battery": _BATTERY,
     "bjt_npn": _NPN,
     "bjt_pnp": _PNP,
+    "controlled_switch": _GENERIC_IC,
     "crystal": _CRYSTAL,
     "current_source_dc": _CURRENT_SOURCE,
     "diode": _DIODE,
+    "dip_20_ic": _GENERIC_IC,
+    "inductor_looped": _INDUCTOR_LOOPED,
     "jfet_n": _NMOS,
     "jfet_p": _PMOS,
     "led": _LED,
@@ -1027,8 +1170,13 @@ _ASSETS_BY_KIND = {
     "photodiode": _DIODE,
     "not_gate": _NOT_GATE,
     "or_gate": _OR_GATE,
+    "polarized_capacitor": _POLARIZED_CAPACITOR,
+    "power_rail": _POWER_RAIL,
     "pulldown_resistor": _PULLDOWN_RESISTOR,
     "pullup_resistor": _PULLUP_RESISTOR,
+    "pushbutton_switch": _PUSHBUTTON_SWITCH,
+    "test_point": _JUNCTION_DOT,
+    "variable_resistor": _VARIABLE_RESISTOR,
     "vccs": _CONTROLLED_CURRENT_SOURCE,
     "voltage_source_ac": _AC_SOURCE,
     "voltage_source_dc": _DC_SOURCE,
@@ -1038,20 +1186,28 @@ _ASSETS_BY_KIND = {
 }
 
 _ASSETS_BY_ICON = {
+    "battery": _BATTERY,
     "capacitor": _CAPACITOR,
     "connector": _CONNECTOR,
     "controlled_source": _CONTROLLED_SOURCE,
     "ground": _GROUND,
     "ic": _GENERIC_IC,
+    "ic_chip_pin_labels": _IC_CHIP_PIN_LABELS,
     "inductor": _INDUCTOR,
+    "inductor_looped": _INDUCTOR_LOOPED,
+    "junction_dot": _JUNCTION_DOT,
     "lamp": _LAMP,
     "logic": _LOGIC,
     "meter": _VOLTMETER,
     "motor": _MOTOR,
     "opamp": _OPAMP,
+    "polarized_capacitor": _POLARIZED_CAPACITOR,
+    "power_rail": _POWER_RAIL,
+    "pushbutton_switch": _PUSHBUTTON_SWITCH,
     "relay": _RELAY,
     "resistor": _RESISTOR,
     "source": _DC_SOURCE,
     "switch": _SPST_SWITCH,
     "transformer": _TRANSFORMER,
+    "variable_resistor": _VARIABLE_RESISTOR,
 }

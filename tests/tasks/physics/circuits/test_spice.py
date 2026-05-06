@@ -81,6 +81,63 @@ def test_export_spice_preserves_connector_as_noop_subcircuit() -> None:
     assert ".subckt RLVR_CONNECTOR_2 1 2\n.ends RLVR_CONNECTOR_2" in netlist.text
 
 
+def test_export_spice_handles_new_asset_backed_parts() -> None:
+    catalog = default_catalog()
+    builder = CircuitBuilder("asset-backed-parts", catalog)
+    builder.add_part("GND1", "ground", "0", {}, {})
+    builder.add_part("BT1", "battery", "9V", {"voltage_v": 9.0}, {})
+    builder.add_part("RV1", "variable_resistor", "5k", {"resistance_ohm": 5000.0}, {})
+    builder.add_part(
+        "CP1",
+        "polarized_capacitor",
+        "10u",
+        {"capacitance_f": 1.0e-5},
+        {},
+    )
+    builder.add_part("L1", "inductor_looped", "1m", {"inductance_h": 1.0e-3}, {})
+    builder.add_part(
+        "S1",
+        "pushbutton_switch",
+        "open",
+        {"state_resistance_ohm": 1.0e12},
+        {},
+    )
+    builder.add_part("PWR1", "power_rail", "VCC", {}, {})
+    builder.add_part("TP1", "test_point", "", {}, {})
+    builder.add_part("U1", "dip_20_ic", "DIP", {}, {})
+    builder.connect("GND1", "0", "0")
+    builder.connect("BT1", "p", "VIN")
+    builder.connect("BT1", "n", "0")
+    builder.connect("RV1", "1", "VIN")
+    builder.connect("RV1", "2", "MID")
+    builder.connect("CP1", "p", "MID")
+    builder.connect("CP1", "n", "0")
+    builder.connect("L1", "1", "VIN")
+    builder.connect("L1", "2", "0")
+    builder.connect("S1", "1", "VIN")
+    builder.connect("S1", "2", "SW")
+    builder.connect("PWR1", "net", "VIN")
+    builder.connect("TP1", "net", "MID")
+    for pin in catalog["dip_20_ic"].pins:
+        builder.connect("U1", pin.name, f"DIP_{pin.name}")
+
+    netlist = export_spice(builder.freeze(), catalog, operating_point_analysis())
+
+    assert "VBT1 VIN 0 DC 9" in netlist.text
+    assert "RV1 VIN MID 5000" in netlist.text
+    assert "CP1 MID 0 1e-05" in netlist.text
+    assert "L1 VIN 0 0.001" in netlist.text
+    assert "RS1 VIN SW 1e+12" in netlist.text
+    assert "XPWR1 VIN RLVR_POWER_RAIL" in netlist.text
+    assert "XTP1 MID RLVR_TEST_POINT" in netlist.text
+    assert "XU1 DIP_1 DIP_2" in netlist.text
+    assert ".subckt RLVR_POWER_RAIL net\n.ends RLVR_POWER_RAIL" in netlist.text
+    assert ".subckt RLVR_TEST_POINT net\n.ends RLVR_TEST_POINT" in netlist.text
+    assert ".subckt RLVR_DIP_20_IC 1 2 3" in netlist.text
+    assert ".ends RLVR_DIP_20_IC" in netlist.text
+    assert "RLEAK" not in netlist.text
+
+
 @pytest.mark.parametrize(
     ("source_ref", "start", "stop", "step"),
     (

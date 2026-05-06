@@ -57,3 +57,31 @@ def test_linear_dc_solver_solves_voltage_controlled_source() -> None:
     assert result.node_voltages["IN"] == pytest.approx(2.0)
     assert result.node_voltages["OUT"] == pytest.approx(6.0)
     assert result.voltage_source_currents["E1"] == pytest.approx(-0.006)
+
+
+def test_linear_dc_solver_supports_asset_backed_linear_aliases() -> None:
+    catalog = default_catalog()
+    builder = CircuitBuilder("asset-backed-linear", catalog)
+    builder.add_part("BT1", "battery", "9V", {"voltage_v": 9.0}, {})
+    builder.add_part("GND1", "ground", "0", {}, {})
+    builder.add_part("RV1", "variable_resistor", "2k", {"resistance_ohm": 2000.0}, {})
+    builder.add_part(
+        "S1",
+        "pushbutton_switch",
+        "closed",
+        {"state_resistance_ohm": 1000.0},
+        {},
+    )
+    builder.connect("BT1", "p", "VIN")
+    builder.connect("BT1", "n", "0")
+    builder.connect("GND1", "0", "0")
+    builder.connect("RV1", "1", "VIN")
+    builder.connect("RV1", "2", "MID")
+    builder.connect("S1", "1", "MID")
+    builder.connect("S1", "2", "0")
+
+    result = solve_dc_linear(builder.freeze(), catalog)
+
+    assert result.node_voltages["VIN"] == pytest.approx(9.0)
+    assert result.node_voltages["MID"] == pytest.approx(3.0)
+    assert result.voltage_source_currents["BT1"] == pytest.approx(-0.003)
