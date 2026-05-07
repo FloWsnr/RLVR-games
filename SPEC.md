@@ -143,20 +143,6 @@ should require behavior, not inheritance from a single base class.
 Task families may depend on shared domain backends when a domain has reusable
 authoritative state and executable rules.
 
-For reusable circuit backends, procedural generation should compose declared
-motifs through typed port contracts over the canonical part/pin/net/connection
-graph. Motifs, not loose generator-added parts, are the unit of diversity.
-Generated circuits should contain a connected source-to-load or source-to-probe
-path with structural validation before they become task instances. SPICE
-netlist export is a deterministic adapter over canonical circuit truth; ngspice
-simulation is a separate executable validation layer whose task-facing
-parameters should be explicit in task specs or generated circuit payloads.
-Generated circuit topology should declare external supply ports without baking in
-applied source voltages. Operating conditions such as VCC or VEE voltages are
-overlaid by the simulation layer. The initial shared simulation surface returns
-operating-point voltages for every canonical circuit net; task-specific
-measurement policies decide which of those values are public.
-
 ### Task Session
 
 A task session is the scalar runtime wrapper around one task instance and one

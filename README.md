@@ -50,13 +50,7 @@ rlvr_physics/
         specs.py      # public task configuration and spec helpers
         task.py       # configured task builder
       task2/
-      circuits/
-        generation.py  # deterministic motif-only procedural generation
-        motifs.py      # reusable circuit motifs and port contracts
-        model.py       # canonical part/pin/net/connection graph
-        erc.py         # structural electrical rule checks
-        spice_export.py # deterministic SPICE netlist export
-        spice_sim.py    # ngspice-backed simulation
+        ...
 
 tests/
   core/

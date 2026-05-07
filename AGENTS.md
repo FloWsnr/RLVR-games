@@ -25,21 +25,6 @@ renderer peripherals, and deferred trainer integration surfaces.
 - Prefer deterministic tests with explicit seeds.
 - Keep types explicit. Avoid optional/default parameters when they hide
   behavior.
-- Keep scalar reward assignment in task-local rewards modules. Invalid
-  submission policies should describe control effects such as budget
-  consumption, terminal state, and truncation.
-- For procedural circuit generation, compose full motifs through declared port
-  contracts. Do not add loose generator-level parts or fallback loads.
-- Keep circuit netlist export and executable simulation separate: deterministic
-  SPICE export belongs in `spice_export`, while ngspice execution belongs in
-  `spice_sim`.
-- Keep generated circuit topology separate from operating conditions. Generated
-  circuits may declare supply ports, but task or simulation specs should apply
-  VCC/VEE voltages.
-- Public play and adapter surfaces should preserve `RewardResult.public_info`
-  and omit `RewardResult.debug_info`.
-- Do not expose procedural replay seeds through public task metadata. Use
-  stable task IDs or explicit trainer-safe source IDs instead.
 - Do not use `from __future__ import annotations`.
 - Write numpy-style docstrings for functions and classes.
 - If asked to use worktrees, create new worktrees in the `./worktrees/`
@@ -48,7 +33,7 @@ renderer peripherals, and deferred trainer integration surfaces.
 - If you encounter changes you didn't do yourself, you can usually assume they are from another agent or user. Therefore, don't revert them. If you have questions about them, ask the other agent or user.
 
 - Update `README.md`, `SPEC.md`, and `AGENTS.md` when changing mission,
-  architecture, task domains, or public API. However, make sure to not duplicate information across these files. `SPEC.md` should be the source of truth for mission and architecture, while `README.md` should provide a high-level overview and quick start guide. `AGENTS.md` should focus on specific rules and guidelines for agents.
+  architecture, task domains, or public API. However, make sure to not duplicate information across these files. `SPEC.md` should be the source of truth for mission and architecture, while `README.md` should provide a high-level overview and quick start guide. `AGENTS.md` should focus on specific rules and guidelines for agents. Do not add specific architectural details to `AGENTS.md`.
 
 ## Git Hygiene
 
