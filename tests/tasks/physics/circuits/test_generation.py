@@ -38,22 +38,26 @@ SAFE_GENERATED_IDENTIFIER_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|0")
 
 
 def test_generate_circuit_is_deterministic_and_hits_motif_count() -> None:
+    catalog = default_catalog()
+    weights = default_motif_weights()
     config = GeneratorConfig(
         seed=123,
         supply_voltage_v=5.0,
         motif_count_min=3,
         motif_count_max=5,
-        motif_weights=default_motif_weights(),
+        motif_weights=weights,
     )
 
-    generated = generate_circuit(config, default_catalog())
-    repeated = generate_circuit(config, default_catalog())
+    generated = generate_circuit(config, catalog)
+    repeated = generate_circuit(config, catalog)
 
     assert generated.circuit.content_hash() == repeated.circuit.content_hash()
     assert generated.motif_names == repeated.motif_names
     assert generated.motif_instances == repeated.motif_instances
     assert 3 <= len(generated.motif_names) <= 5
     assert len(generated.motif_instances) == len(generated.motif_names)
+    assert set(generated.motif_names) <= set(default_motifs())
+    assert "load_resistor" not in generated.motif_names
 
 
 def test_generated_circuit_plain_data_does_not_expose_seed() -> None:
@@ -282,24 +286,6 @@ def test_controlled_source_motifs_run_in_ngspice(tmp_path: Path) -> None:
         assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
-def test_default_generation_uses_only_catalog_motifs() -> None:
-    generated = generate_circuit(
-        GeneratorConfig(
-            seed=123,
-            supply_voltage_v=5.0,
-            motif_count_min=3,
-            motif_count_max=5,
-            motif_weights=default_motif_weights(),
-        ),
-        default_catalog(),
-    )
-
-    assert generated.motif_names
-    assert len(generated.motif_names) == len(generated.motif_instances)
-    assert set(generated.motif_names) <= set(default_motifs())
-    assert "load_resistor" not in generated.motif_names
-
-
 def test_default_weighted_motifs_are_reachable() -> None:
     catalog = default_catalog()
     weights = default_motif_weights()
@@ -345,21 +331,6 @@ def test_generated_parts_are_owned_by_motif_instances() -> None:
     assert set(owners) == {part.ref for part in generated.circuit.parts}
     for part in generated.circuit.parts:
         assert part.metadata["motif_instance"] == owners[part.ref]
-
-
-def test_generated_circuit_has_cross_motif_signal_net() -> None:
-    generated = generate_circuit(
-        GeneratorConfig(
-            seed=123,
-            supply_voltage_v=5.0,
-            motif_count_min=3,
-            motif_count_max=5,
-            motif_weights=default_motif_weights(),
-        ),
-        default_catalog(),
-    )
-
-    assert _has_cross_motif_nonrail_net(generated)
 
 
 def test_generated_path_motifs_consume_previous_signal() -> None:

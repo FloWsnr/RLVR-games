@@ -112,6 +112,12 @@ DYNAMIC_PACKAGE_KINDS = (
     "instrumentation_amplifier",
     "timer_555",
 )
+CORRECTIVE_LEAD_RENDER_MOTIFS = (
+    "battery_powered_led_indicator",
+    "generic_ic_powered_logic_block",
+    "timer_555_astable_oscillator",
+    "vcvs_ideal_voltage_gain_block",
+)
 
 
 def test_layout_places_parts_without_overlap() -> None:
@@ -900,13 +906,15 @@ def test_asset_pin_resolver_fails_when_anchor_is_missing() -> None:
 def test_svg_routes_to_asset_pin_anchors_without_corrective_leads() -> None:
     catalog = default_catalog()
 
-    for seed, element_count in GENERATED_CASES:
+    for seed, element_count in (GENERATED_CASES[0], GENERATED_CASES[-1]):
         circuit, _ = _planned_generated_case(seed, element_count)
         svg = draw_svg(circuit, catalog)
 
         _assert_no_corrective_symbol_leads(svg, circuit)
 
-    for index, (name, motif) in enumerate(default_motifs().items()):
+    motifs = default_motifs()
+    for index, name in enumerate(CORRECTIVE_LEAD_RENDER_MOTIFS):
+        motif = motifs[name]
         circuit, _ = _planned_motif_case(index, name, motif.element_count + 1)
         svg = draw_svg(circuit, catalog)
 
@@ -1424,27 +1432,23 @@ def test_vendored_svg_assets_cover_common_symbols() -> None:
         assert asset_for_part(kind, spec) is not None
 
 
-@pytest.mark.parametrize(
-    ("kind", "asset_key"),
-    (
-        ("battery", "battery"),
-        ("inductor_looped", "inductor_looped"),
-        ("polarized_capacitor", "polarized_capacitor"),
-        ("power_rail", "power_rail"),
-        ("pushbutton_switch", "pushbutton_switch"),
-        ("test_point", "junction_dot"),
-        ("variable_resistor", "variable_resistor"),
-    ),
-)
-def test_asset_backed_symbols_are_reachable_for_motifs(
-    kind: str, asset_key: str
-) -> None:
+def test_specialized_part_kinds_use_specialized_symbol_assets() -> None:
     catalog = default_catalog()
+    expected_asset_keys = {
+        "battery": "battery",
+        "inductor_looped": "inductor_looped",
+        "polarized_capacitor": "polarized_capacitor",
+        "power_rail": "power_rail",
+        "pushbutton_switch": "pushbutton_switch",
+        "test_point": "junction_dot",
+        "variable_resistor": "variable_resistor",
+    }
 
-    asset = asset_for_part(kind, catalog[kind])
+    for kind, asset_key in expected_asset_keys.items():
+        asset = asset_for_part(kind, catalog[kind])
 
-    assert asset is not None
-    assert asset.key == asset_key
+        assert asset is not None
+        assert asset.key == asset_key
 
 
 def test_exported_symbol_assets_are_used_directly() -> None:

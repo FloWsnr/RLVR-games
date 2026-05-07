@@ -8,6 +8,7 @@ from rlvr_physics.tasks.physics.cart_inference.specs import (
     CartInferenceConfig,
     cart_inference_spec,
 )
+from rlvr_physics.tasks.physics.cart_inference.renderers import CART_TEXT_RENDERER
 from tests.tasks.physics.cart_inference.conftest import CartInferenceFixture
 
 
@@ -22,6 +23,9 @@ def test_cart_inference_spec_advertises_public_contract(
     assert spec.source.source_type == "cart_inference_generator"
     assert spec.source.parameters["target_time_s"] == fixture.config.target_time_s
     assert "answer_tolerance_abs_m" not in spec.source.parameters
+    assert {renderer.renderer_type for renderer in spec.renderers} == {
+        CART_TEXT_RENDERER
+    }
     assert spec.renderers[0].renderer_type == fixture.renderer_name
     assert spec.verifier.parameters["absolute_tolerance_source"] == (
         "privileged_instance_payload"

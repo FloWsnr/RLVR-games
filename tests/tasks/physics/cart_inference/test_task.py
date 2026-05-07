@@ -8,7 +8,6 @@ from rlvr_physics.tasks.physics.cart_inference import cart_inference_task
 from rlvr_physics.tasks.physics.cart_inference.instances import (
     build_cart_inference_instance,
 )
-from rlvr_physics.tasks.physics.cart_inference.renderers import CART_TEXT_RENDERER
 from rlvr_physics.tasks.physics.cart_inference.rewards import CartRewardConfig
 from rlvr_physics.tasks.physics.cart_inference.sessions import CartInferenceSession
 from rlvr_physics.tasks.physics.cart_inference.specs import (
@@ -61,11 +60,3 @@ def test_cart_inference_task_session_uses_configured_reward_policy(
 
     assert result.reward == 0.25
     assert task.spec.reward.parameters["accepted_measurement_reward"] == 0.25
-
-
-def test_cart_inference_spec_advertises_text_renderer(
-    cart_task: ConfiguredTask,
-) -> None:
-    renderer_types = {renderer.renderer_type for renderer in cart_task.spec.renderers}
-
-    assert renderer_types == {CART_TEXT_RENDERER}
