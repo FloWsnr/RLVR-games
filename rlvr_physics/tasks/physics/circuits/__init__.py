@@ -13,9 +13,11 @@ from rlvr_physics.tasks.physics.circuits.erc import (
 )
 from rlvr_physics.tasks.physics.circuits.generation import (
     CircuitGenerationError,
+    CircuitSupplyPort,
     GeneratedCircuit,
     GeneratorConfig,
     generate_circuit,
+    simulation_spec_with_supply_voltages,
 )
 from rlvr_physics.tasks.physics.circuits.motifs import (
     CircuitMotif,
@@ -66,6 +68,7 @@ from rlvr_physics.tasks.physics.circuits.spice_sim import (
     SpiceSimulationResult,
     SpiceSimulationSpec,
     SpiceSimulatorConfig,
+    SpiceVoltageSource,
     default_spice_simulator_config,
     simulate_spice,
 )
@@ -84,6 +87,7 @@ __all__ = [
     "CheckReport",
     "CircuitGenerationError",
     "CircuitMotif",
+    "CircuitSupplyPort",
     "Circuit",
     "CircuitBuilder",
     "CircuitTopologyError",
@@ -116,6 +120,7 @@ __all__ = [
     "SpiceSimulationSpec",
     "SpiceSimulatorConfig",
     "SpiceSpec",
+    "SpiceVoltageSource",
     "WirePath",
     "WireSegment",
     "check_circuit",
@@ -134,6 +139,7 @@ __all__ = [
     "plan_layout",
     "require_part_spec",
     "simulate_spice",
+    "simulation_spec_with_supply_voltages",
     "to_png",
     "transient_analysis",
 ]

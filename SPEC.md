@@ -150,10 +150,12 @@ Generated circuits should contain a connected source-to-load or source-to-probe
 path with structural validation before they become task instances. SPICE
 netlist export is a deterministic adapter over canonical circuit truth; ngspice
 simulation is a separate executable validation layer whose task-facing
-parameters should be explicit in task specs or generated circuit payloads. The
-initial shared simulation surface returns operating-point voltages for every
-canonical circuit net; task-specific measurement policies decide which of those
-values are public.
+parameters should be explicit in task specs or generated circuit payloads.
+Generated circuit topology should declare external supply ports without baking in
+applied source voltages. Operating conditions such as VCC or VEE voltages are
+overlaid by the simulation layer. The initial shared simulation surface returns
+operating-point voltages for every canonical circuit net; task-specific
+measurement policies decide which of those values are public.
 
 ### Task Session
 

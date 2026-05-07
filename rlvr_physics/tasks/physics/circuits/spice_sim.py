@@ -29,9 +29,34 @@ class SpiceSimulationSpec:
     ----------
     analysis:
         SPICE analysis to execute.
+    voltage_sources:
+        External operating voltage sources to overlay for this simulation.
     """
 
     analysis: SpiceAnalysis
+    voltage_sources: tuple["SpiceVoltageSource", ...]
+
+
+@dataclass(frozen=True)
+class SpiceVoltageSource:
+    """External operating voltage applied during simulation.
+
+    Parameters
+    ----------
+    name:
+        Stable source name used to derive an emitted SPICE reference.
+    positive_net:
+        Canonical circuit net connected to the source positive terminal.
+    negative_net:
+        Canonical circuit net connected to the source negative terminal.
+    voltage_v:
+        Source voltage in volts from positive terminal to negative terminal.
+    """
+
+    name: str
+    positive_net: str
+    negative_net: str
+    voltage_v: float
 
 
 @dataclass(frozen=True)
@@ -146,7 +171,8 @@ def simulate_spice(
     _validate_config(config)
     if spec.analysis.kind is not SpiceAnalysisKind.OPERATING_POINT:
         raise ValueError("spice simulation v1 supports operating-point analysis only")
-    netlist = export_spice(circuit, catalog, spec.analysis)
+    exported_netlist = export_spice(circuit, catalog, spec.analysis)
+    netlist = _netlist_with_operating_conditions(exported_netlist, spec.voltage_sources)
     planned_nodes = _planned_node_voltages(netlist)
     with TemporaryDirectory(prefix="rlvr-spice-") as temp_name:
         temp_dir = Path(temp_name)
@@ -269,6 +295,115 @@ def _validate_config(config: SpiceSimulatorConfig) -> None:
         raise ValueError("timeout_s must be positive and finite")
 
 
+def _netlist_with_operating_conditions(
+    netlist: SpiceNetlist,
+    voltage_sources: tuple[SpiceVoltageSource, ...],
+) -> SpiceNetlist:
+    """Return netlist text with external operating sources overlaid."""
+
+    source_lines = _external_voltage_source_lines(netlist, voltage_sources)
+    if not source_lines:
+        return netlist
+    return SpiceNetlist(
+        text=_insert_before_analysis_card(netlist.text, source_lines),
+        analysis=netlist.analysis,
+        node_names=netlist.node_names,
+        element_refs=netlist.element_refs,
+    )
+
+
+def _external_voltage_source_lines(
+    netlist: SpiceNetlist,
+    voltage_sources: tuple[SpiceVoltageSource, ...],
+) -> tuple[str, ...]:
+    """Return SPICE source lines for external operating voltages."""
+
+    used_names = {ref.upper() for ref in netlist.element_refs.values()}
+    source_names: set[str] = set()
+    lines: list[str] = []
+    for source in voltage_sources:
+        _validate_voltage_source(source, netlist)
+        source_name = source.name.upper()
+        if source_name in source_names:
+            raise ValueError(f"duplicate voltage source name: {source.name}")
+        source_names.add(source_name)
+        ref = _unique_source_ref(source.name, used_names)
+        positive_node = netlist.node_names[source.positive_net]
+        negative_node = netlist.node_names[source.negative_net]
+        lines.append(
+            f"{ref} {positive_node} {negative_node} DC {_fmt_float(source.voltage_v)}"
+        )
+    return tuple(lines)
+
+
+def _validate_voltage_source(source: SpiceVoltageSource, netlist: SpiceNetlist) -> None:
+    """Validate one external voltage source against a netlist."""
+
+    if not source.name.strip():
+        raise ValueError("voltage source name cannot be empty")
+    if source.positive_net not in netlist.node_names:
+        raise ValueError(f"unknown voltage source positive net: {source.positive_net}")
+    if source.negative_net not in netlist.node_names:
+        raise ValueError(f"unknown voltage source negative net: {source.negative_net}")
+    if source.positive_net == source.negative_net:
+        raise ValueError(
+            f"voltage source terminals must use different nets: {source.name}"
+        )
+    if (
+        netlist.node_names[source.positive_net]
+        == netlist.node_names[source.negative_net]
+    ):
+        raise ValueError(
+            f"voltage source terminals map to the same SPICE node: {source.name}"
+        )
+    if not isfinite(float(source.voltage_v)):
+        raise ValueError(f"voltage source voltage must be finite: {source.name}")
+
+
+def _unique_source_ref(name: str, used_names: set[str]) -> str:
+    """Return a unique SPICE voltage-source reference."""
+
+    base = f"VOP_{_safe_identifier(name)}"
+    candidate = base
+    suffix = 2
+    while candidate.upper() in used_names:
+        candidate = f"{base}_{suffix}"
+        suffix += 1
+    used_names.add(candidate.upper())
+    return candidate
+
+
+def _safe_identifier(value: str) -> str:
+    """Return a SPICE-safe identifier suffix."""
+
+    identifier = "".join(
+        char if char.isalnum() or char == "_" else "_" for char in value
+    )
+    identifier = identifier.strip("_")
+    if not identifier:
+        return "SOURCE"
+    if identifier[0].isdigit():
+        return f"SOURCE_{identifier}"
+    return identifier
+
+
+def _fmt_float(value: float) -> str:
+    """Return compact floating point text."""
+
+    return f"{value:.12g}"
+
+
+def _insert_before_analysis_card(text: str, source_lines: tuple[str, ...]) -> str:
+    """Insert source lines before the exported analysis card."""
+
+    lines = text.rstrip().splitlines()
+    if len(lines) < 2 or lines[-1].lower() != ".end":
+        raise ValueError(
+            "exported SPICE netlist must end with an analysis card and .end"
+        )
+    return "\n".join((*lines[:-2], *source_lines, lines[-2], lines[-1])) + "\n"
+
+
 def _planned_node_voltages(netlist: SpiceNetlist) -> tuple[_PlannedNodeVoltage, ...]:
     """Return all non-ground node-voltage measurements for a netlist."""
 
@@ -287,8 +422,10 @@ def _simulation_netlist_text(
     """Insert an ngspice control block into exported netlist text."""
 
     lines = exported_text.rstrip().splitlines()
-    if not lines or lines[-1].lower() != ".end":
-        raise ValueError("exported SPICE netlist must end with .end")
+    if len(lines) < 2 or lines[-1].lower() != ".end":
+        raise ValueError(
+            "exported SPICE netlist must end with an analysis card and .end"
+        )
     control = [
         ".control",
         "set wr_singlescale",

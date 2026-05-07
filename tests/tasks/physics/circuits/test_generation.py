@@ -11,8 +11,11 @@ import pytest
 
 from rlvr_physics.tasks.physics.circuits import (
     AnalysisSupport,
+    CheckIssue,
+    CheckReport,
     Circuit,
     CircuitBuilder,
+    CircuitSupplyPort,
     GeneratedCircuit,
     GeneratorConfig,
     InstantiatedMotif,
@@ -26,9 +29,11 @@ from rlvr_physics.tasks.physics.circuits import (
     generate_circuit,
     operating_point_analysis,
     simulate_spice,
+    simulation_spec_with_supply_voltages,
 )
 
 REJECTED_GENERATION_WARNING_CODES = {
+    "empty_net",
     "excessive_drive",
     "insufficient_drive",
     "pin_conflict",
@@ -42,7 +47,6 @@ def test_generate_circuit_is_deterministic_and_hits_motif_count() -> None:
     weights = default_motif_weights()
     config = GeneratorConfig(
         seed=123,
-        supply_voltage_v=5.0,
         motif_count_min=3,
         motif_count_max=5,
         motif_weights=weights,
@@ -54,7 +58,9 @@ def test_generate_circuit_is_deterministic_and_hits_motif_count() -> None:
     assert generated.circuit.content_hash() == repeated.circuit.content_hash()
     assert generated.motif_names == repeated.motif_names
     assert generated.motif_instances == repeated.motif_instances
-    assert 3 <= len(generated.motif_names) <= 5
+    assert (
+        config.motif_count_min <= len(generated.motif_names) <= config.motif_count_max
+    )
     assert len(generated.motif_instances) == len(generated.motif_names)
     assert set(generated.motif_names) <= set(default_motifs())
     assert "load_resistor" not in generated.motif_names
@@ -63,7 +69,6 @@ def test_generate_circuit_is_deterministic_and_hits_motif_count() -> None:
 def test_generated_circuit_plain_data_does_not_expose_seed() -> None:
     config = GeneratorConfig(
         seed=123,
-        supply_voltage_v=5.0,
         motif_count_min=3,
         motif_count_max=5,
         motif_weights=default_motif_weights(),
@@ -85,7 +90,6 @@ def test_generated_circuit_uses_spice_safe_canonical_identifiers() -> None:
     generated = generate_circuit(
         GeneratorConfig(
             seed=123,
-            supply_voltage_v=5.0,
             motif_count_min=3,
             motif_count_max=5,
             motif_weights=default_motif_weights(),
@@ -108,36 +112,57 @@ def test_generated_circuit_uses_spice_safe_canonical_identifiers() -> None:
     )
 
 
-def test_generated_circuit_has_default_five_volt_simulation_spec() -> None:
+def test_generated_circuit_declares_supply_port_without_applied_voltage() -> None:
     generated = generate_circuit(
         GeneratorConfig(
             seed=123,
-            supply_voltage_v=5.0,
             motif_count_min=3,
             motif_count_max=3,
             motif_weights=default_motif_weights(),
         ),
         default_catalog(),
     )
-    main_supplies = [
+    applied_supplies = [
         part
         for part in generated.circuit.parts
-        if part.metadata.get("role") == "main_supply"
+        if part.kind == "voltage_source_dc"
+        and part.metadata.get("role") in {"main_supply", "negative_supply"}
     ]
+    metadata = generated.circuit.metadata
 
-    assert generated.motif_names[0] == "dc_supply_source"
+    assert generated.motif_names[0] == "supply_port"
+    assert generated.supply_ports == (CircuitSupplyPort("VCC", "VCC", "0"),)
+    assert metadata["supply_ports"] == (
+        {"name": "VCC", "positive_net": "VCC", "reference_net": "0"},
+    )
     assert generated.simulation_spec.analysis == operating_point_analysis()
-    assert len(main_supplies) == 1
-    assert main_supplies[0].parameters["voltage_v"] == 5.0
+    assert generated.simulation_spec.voltage_sources == ()
+    assert applied_supplies == []
 
 
-def test_generated_default_simulation_spec_runs_in_ngspice() -> None:
+def test_supply_voltage_simulation_spec_requires_declared_supply_names() -> None:
+    generated = generate_circuit(
+        GeneratorConfig(
+            seed=123,
+            motif_count_min=3,
+            motif_count_max=3,
+            motif_weights=default_motif_weights(),
+        ),
+        default_catalog(),
+    )
+
+    with pytest.raises(ValueError, match="missing supply voltages"):
+        simulation_spec_with_supply_voltages(generated, {})
+    with pytest.raises(ValueError, match="unknown supply voltages"):
+        simulation_spec_with_supply_voltages(generated, {"VCC": 5.0, "VDD": 3.3})
+
+
+def test_generated_circuit_runs_in_ngspice_with_explicit_supply_voltages() -> None:
     if shutil.which("ngspice") is None:
         pytest.skip("ngspice executable is not available")
     generated = generate_circuit(
         GeneratorConfig(
             seed=0,
-            supply_voltage_v=5.0,
             motif_count_min=3,
             motif_count_max=3,
             motif_weights=default_motif_weights(),
@@ -147,7 +172,7 @@ def test_generated_default_simulation_spec_runs_in_ngspice() -> None:
     result = simulate_spice(
         generated.circuit,
         default_catalog(),
-        generated.simulation_spec,
+        simulation_spec_with_supply_voltages(generated, {"VCC": 5.0}),
         default_spice_simulator_config(),
     )
 
@@ -157,10 +182,66 @@ def test_generated_default_simulation_spec_runs_in_ngspice() -> None:
     assert set(result.values) == set(generated.circuit.nets)
 
 
+def test_large_generated_circuit_runs_in_ngspice() -> None:
+    if shutil.which("ngspice") is None:
+        pytest.skip("ngspice executable is not available")
+    generated = generate_circuit(
+        GeneratorConfig(
+            seed=0,
+            motif_count_min=8,
+            motif_count_max=8,
+            motif_weights=default_motif_weights(),
+        ),
+        default_catalog(),
+    )
+    result = simulate_spice(
+        generated.circuit,
+        default_catalog(),
+        simulation_spec_with_supply_voltages(
+            generated,
+            _default_supply_voltages(generated),
+        ),
+        default_spice_simulator_config(),
+    )
+
+    assert len(generated.motif_names) == 8
+    assert result.ok, result.issues
+    assert set(result.values) == set(generated.circuit.nets)
+
+
+def test_default_generated_circuit_seed_sweep_runs_in_ngspice() -> None:
+    if shutil.which("ngspice") is None:
+        pytest.skip("ngspice executable is not available")
+    catalog = default_catalog()
+    weights = default_motif_weights()
+
+    for seed in range(30):
+        generated = generate_circuit(
+            GeneratorConfig(
+                seed=seed,
+                motif_count_min=3,
+                motif_count_max=8,
+                motif_weights=weights,
+            ),
+            catalog,
+        )
+        result = simulate_spice(
+            generated.circuit,
+            catalog,
+            simulation_spec_with_supply_voltages(
+                generated,
+                _default_supply_voltages(generated),
+            ),
+            default_spice_simulator_config(),
+        )
+
+        assert result.ok, (seed, generated.motif_names, result.issues)
+        assert set(result.values) == set(generated.circuit.nets)
+
+
 def test_generate_circuit_passes_structural_checks() -> None:
     config = GeneratorConfig(
         seed=456,
-        supply_voltage_v=5.0,
         motif_count_min=3,
         motif_count_max=5,
         motif_weights=default_motif_weights(),
@@ -174,9 +255,7 @@ def test_generate_circuit_passes_structural_checks() -> None:
     )
 
     assert report.errors == ()
-    assert not any(
-        issue.code in REJECTED_GENERATION_WARNING_CODES for issue in report.warnings
-    )
+    assert _unexpected_generation_warnings(generated, report) == ()
 
 
 def test_generate_circuit_rejects_part_count_api_shape() -> None:
@@ -190,32 +269,45 @@ def test_generate_circuit_rejects_part_count_api_shape() -> None:
         GeneratorConfig(**old_shape)
 
 
-def test_generate_circuit_rejects_too_few_motifs() -> None:
+@pytest.mark.parametrize("motif_count", (0, 2))
+def test_generate_circuit_rejects_too_few_motifs(motif_count: int) -> None:
     with pytest.raises(ValueError, match="motif_count_min"):
         generate_circuit(
             GeneratorConfig(
                 seed=123,
-                supply_voltage_v=5.0,
-                motif_count_min=2,
-                motif_count_max=2,
+                motif_count_min=motif_count,
+                motif_count_max=motif_count,
                 motif_weights=default_motif_weights(),
             ),
             default_catalog(),
         )
 
 
-def test_generate_circuit_rejects_too_many_motifs() -> None:
+def test_generate_circuit_rejects_inverted_motif_range() -> None:
     with pytest.raises(ValueError, match="motif_count_max"):
         generate_circuit(
             GeneratorConfig(
                 seed=123,
-                supply_voltage_v=5.0,
-                motif_count_min=3,
-                motif_count_max=6,
+                motif_count_min=5,
+                motif_count_max=4,
                 motif_weights=default_motif_weights(),
             ),
             default_catalog(),
         )
+
+
+def test_generate_circuit_accepts_motif_counts_above_five() -> None:
+    generated = generate_circuit(
+        GeneratorConfig(
+            seed=0,
+            motif_count_min=8,
+            motif_count_max=8,
+            motif_weights=default_motif_weights(),
+        ),
+        default_catalog(),
+    )
+
+    assert len(generated.motif_names) == 8
 
 
 def test_generate_circuit_rejects_incomplete_weight_role_sets() -> None:
@@ -223,7 +315,6 @@ def test_generate_circuit_rejects_incomplete_weight_role_sets() -> None:
         generate_circuit(
             GeneratorConfig(
                 seed=123,
-                supply_voltage_v=5.0,
                 motif_count_min=3,
                 motif_count_max=3,
                 motif_weights={"inverting_op_amp_amplifier": 1.0},
@@ -240,7 +331,6 @@ def test_default_generated_spice_refs_are_unique() -> None:
         generated = generate_circuit(
             GeneratorConfig(
                 seed=seed,
-                supply_voltage_v=5.0,
                 motif_count_min=3,
                 motif_count_max=5,
                 motif_weights=weights,
@@ -296,7 +386,6 @@ def test_default_weighted_motifs_are_reachable() -> None:
         generated = generate_circuit(
             GeneratorConfig(
                 seed=seed,
-                supply_voltage_v=5.0,
                 motif_count_min=3,
                 motif_count_max=5,
                 motif_weights=weights,
@@ -314,7 +403,6 @@ def test_generated_parts_are_owned_by_motif_instances() -> None:
     generated = generate_circuit(
         GeneratorConfig(
             seed=15,
-            supply_voltage_v=5.0,
             motif_count_min=5,
             motif_count_max=5,
             motif_weights=default_motif_weights(),
@@ -337,7 +425,6 @@ def test_generated_path_motifs_consume_previous_signal() -> None:
     generated = generate_circuit(
         GeneratorConfig(
             seed=9,
-            supply_voltage_v=5.0,
             motif_count_min=5,
             motif_count_max=5,
             motif_weights=default_motif_weights(),
@@ -367,7 +454,7 @@ def test_generated_path_motifs_consume_previous_signal() -> None:
     assert consumed_count >= 1, generated.motif_names
 
 
-def test_dual_rail_motifs_share_one_negative_supply_source() -> None:
+def test_dual_rail_motifs_declare_one_negative_supply_port() -> None:
     weights = {name: 0.0 for name in default_motif_weights()} | {
         "battery_powered_led_indicator": 1.0,
         "voltage_divider_with_voltmeter": 1.0,
@@ -378,7 +465,6 @@ def test_dual_rail_motifs_share_one_negative_supply_source() -> None:
     generated = generate_circuit(
         GeneratorConfig(
             seed=4,
-            supply_voltage_v=5.0,
             motif_count_min=4,
             motif_count_max=4,
             motif_weights=weights,
@@ -390,24 +476,26 @@ def test_dual_rail_motifs_share_one_negative_supply_source() -> None:
         default_catalog(),
         AnalysisSupport.SPICE_EXPORT,
     )
-    negative_sources = [
+    negative_ports = [
+        port for port in generated.supply_ports if port.positive_net == "VEE"
+    ]
+    applied_sources = [
         part
         for part in generated.circuit.parts
         if part.kind == "voltage_source_dc"
-        and part.metadata.get("role") == "negative_supply"
+        and part.metadata.get("role") in {"main_supply", "negative_supply"}
     ]
 
     assert set(generated.motif_names) == {
-        "dc_supply_source",
+        "supply_port",
         "voltage_divider_with_voltmeter",
         "inverting_op_amp_amplifier",
         "non_inverting_op_amp_amplifier",
     }
-    assert len(negative_sources) == 1
+    assert negative_ports == [CircuitSupplyPort("VEE", "VEE", "0")]
+    assert applied_sources == []
     assert report.errors == ()
-    assert not any(
-        issue.code in REJECTED_GENERATION_WARNING_CODES for issue in report.warnings
-    )
+    assert _unexpected_generation_warnings(generated, report) == ()
 
 
 def test_generate_circuit_seed_sweep_passes_structural_checks() -> None:
@@ -418,7 +506,6 @@ def test_generate_circuit_seed_sweep_passes_structural_checks() -> None:
         generated = generate_circuit(
             GeneratorConfig(
                 seed=seed,
-                supply_voltage_v=5.0,
                 motif_count_min=3,
                 motif_count_max=5,
                 motif_weights=weights,
@@ -433,11 +520,40 @@ def test_generate_circuit_seed_sweep_passes_structural_checks() -> None:
 
         assert 3 <= len(generated.motif_names) <= 5
         assert report.errors == (), (seed, generated.motif_names, report.errors)
-        assert not any(
-            issue.code in REJECTED_GENERATION_WARNING_CODES for issue in report.warnings
-        ), (seed, generated.motif_names, report.warnings)
+        assert _unexpected_generation_warnings(generated, report) == (), (
+            seed,
+            generated.motif_names,
+            report.warnings,
+        )
+        assert all(
+            generated.circuit.connections_for_net(port.positive_net)
+            for port in generated.supply_ports
+        )
         assert _has_cross_motif_nonrail_net(generated)
         assert _has_ordered_signal_path(generated)
+
+
+def _default_supply_voltages(
+    generated: GeneratedCircuit,
+) -> Mapping[str, float]:
+    """Return test default voltages for generated supply ports."""
+
+    voltages = {"VCC": 5.0, "VEE": -5.0}
+    return {port.name: voltages[port.name] for port in generated.supply_ports}
+
+
+def _unexpected_generation_warnings(
+    generated: GeneratedCircuit, report: CheckReport
+) -> tuple[CheckIssue, ...]:
+    """Return structural warnings that are not explained by external supplies."""
+
+    supply_nets = {port.positive_net for port in generated.supply_ports}
+    return tuple(
+        issue
+        for issue in report.warnings
+        if issue.code in REJECTED_GENERATION_WARNING_CODES
+        and not (issue.code == "insufficient_drive" and set(issue.nets) <= supply_nets)
+    )
 
 
 class _MotifTestContext:
@@ -448,7 +564,6 @@ class _MotifTestContext:
 
         self.builder = CircuitBuilder("motif", default_catalog())
         self.rng = Random(123)
-        self.supply_voltage_v = 5.0
         self.counters: dict[str, int] = {}
         self.non_ground_count = 0
         self.node_counter = 0
@@ -489,25 +604,14 @@ class _MotifTestContext:
     def add_negative_supply(
         self, net: str, motif_name: str, instance_id: str
     ) -> tuple[str, ...]:
-        """Add one negative supply source per generated net."""
+        """Declare one negative supply port per generated net."""
 
         if net in self.negative_supply_nets:
             return ()
         self.negative_supply_nets.add(net)
-        negative = self.add_part(
-            "VEE",
-            "voltage_source_dc",
-            "-5V",
-            {"voltage_v": -5.0},
-            {
-                "role": "negative_supply",
-                "motif": motif_name,
-                "motif_instance": instance_id,
-            },
-        )
-        self.builder.connect(negative, "p", net)
-        self.builder.connect(negative, "n", "0")
-        return (negative,)
+        self.builder.add_net(net)
+        self.builder.add_net("0")
+        return ()
 
 
 def _built_motif_circuit(motif_name: str) -> Circuit:
@@ -520,6 +624,12 @@ def _built_motif_circuit(motif_name: str) -> Circuit:
     if "VCC" in nets:
         source = ctx.add_part("V", "voltage_source_dc", "5V", {"voltage_v": 5.0}, {})
         ctx.builder.connect(source, "p", "VCC")
+        ctx.builder.connect(source, "n", "0")
+    if "VEE" in nets:
+        source = ctx.add_part(
+            "VEE", "voltage_source_dc", "-5V", {"voltage_v": -5.0}, {}
+        )
+        ctx.builder.connect(source, "p", "VEE")
         ctx.builder.connect(source, "n", "0")
     if "0" in nets:
         ground = ctx.add_part("GND", "ground", "0", {}, {})

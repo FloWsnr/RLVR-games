@@ -32,7 +32,6 @@ class _MotifTestContext:
 
         self.builder = CircuitBuilder("motif", default_part_catalog())
         self.rng = Random(123)
-        self.supply_voltage_v = 5.0
         self.counters: dict[str, int] = {}
         self.non_ground_count = 0
         self.node_counter = 0
@@ -73,29 +72,18 @@ class _MotifTestContext:
     def add_negative_supply(
         self, net: str, motif_name: str, instance_id: str
     ) -> tuple[str, ...]:
-        """Add one negative supply source per generated net."""
+        """Declare one negative supply port per generated net."""
 
         if net in self.negative_supply_nets:
             return ()
         self.negative_supply_nets.add(net)
-        negative = self.add_part(
-            "VEE",
-            "voltage_source_dc",
-            "-5V",
-            {"voltage_v": -5.0},
-            {
-                "role": "negative_supply",
-                "motif": motif_name,
-                "motif_instance": instance_id,
-            },
-        )
-        self.builder.connect(negative, "p", net)
-        self.builder.connect(negative, "n", "0")
-        return (negative,)
+        self.builder.add_net(net)
+        self.builder.add_net("0")
+        return ()
 
 
 EXPECTED_DEFAULT_MOTIFS = (
-    "dc_supply_source",
+    "supply_port",
     "bridge_rectifier",
     "crc_power_filter",
     "zener_shunt_regulator",

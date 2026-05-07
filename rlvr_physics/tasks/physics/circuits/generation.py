@@ -23,10 +23,14 @@ from rlvr_physics.tasks.physics.circuits.model import (
     is_ground_net,
 )
 from rlvr_physics.tasks.physics.circuits.spice_export import operating_point_analysis
-from rlvr_physics.tasks.physics.circuits.spice_sim import SpiceSimulationSpec
+from rlvr_physics.tasks.physics.circuits.spice_sim import (
+    SpiceSimulationSpec,
+    SpiceVoltageSource,
+)
 
 _MAX_GENERATION_ATTEMPTS = 500
 _REJECTED_WARNING_CODES = {
+    "empty_net",
     "excessive_drive",
     "insufficient_drive",
     "pin_conflict",
@@ -47,8 +51,6 @@ class GeneratorConfig:
     ----------
     seed:
         Deterministic generator seed.
-    supply_voltage_v:
-        Main generated VCC supply voltage in volts.
     motif_count_min:
         Minimum number of motif instances to compose.
     motif_count_max:
@@ -58,10 +60,28 @@ class GeneratorConfig:
     """
 
     seed: int
-    supply_voltage_v: float
     motif_count_min: int
     motif_count_max: int
     motif_weights: Mapping[str, float]
+
+
+@dataclass(frozen=True)
+class CircuitSupplyPort:
+    """Declared external supply connection for a generated topology.
+
+    Parameters
+    ----------
+    name:
+        Stable supply name, such as ``VCC`` or ``VEE``.
+    positive_net:
+        Canonical circuit net for the external source positive terminal.
+    reference_net:
+        Canonical circuit net used as the external source reference terminal.
+    """
+
+    name: str
+    positive_net: str
+    reference_net: str
 
 
 @dataclass(frozen=True)
@@ -71,6 +91,7 @@ class GeneratedCircuit:
     circuit: Circuit
     motif_names: tuple[str, ...]
     motif_instances: tuple[InstantiatedMotif, ...]
+    supply_ports: tuple[CircuitSupplyPort, ...]
     simulation_spec: SpiceSimulationSpec
     seed: int
 
@@ -118,22 +139,65 @@ def generate_circuit(
     )
 
 
+def simulation_spec_with_supply_voltages(
+    generated: GeneratedCircuit,
+    supply_voltages: Mapping[str, float],
+) -> SpiceSimulationSpec:
+    """Return an operating-point simulation spec with explicit supply voltages.
+
+    Parameters
+    ----------
+    generated:
+        Generated circuit whose declared supply ports should be energized.
+    supply_voltages:
+        Voltage in volts keyed by declared supply port name.
+
+    Returns
+    -------
+    SpiceSimulationSpec
+        Simulation spec with external voltage sources for all declared supplies.
+    """
+
+    port_names = {port.name for port in generated.supply_ports}
+    missing = port_names - set(supply_voltages)
+    if missing:
+        raise ValueError(f"missing supply voltages: {tuple(sorted(missing))}")
+    unknown = set(supply_voltages) - port_names
+    if unknown:
+        raise ValueError(f"unknown supply voltages: {tuple(sorted(unknown))}")
+    voltage_sources: list[SpiceVoltageSource] = []
+    for port in generated.supply_ports:
+        voltage = float(supply_voltages[port.name])
+        if not isfinite(voltage):
+            raise ValueError(f"supply voltage must be finite: {port.name}")
+        voltage_sources.append(
+            SpiceVoltageSource(
+                name=port.name,
+                positive_net=port.positive_net,
+                negative_net=port.reference_net,
+                voltage_v=voltage,
+            )
+        )
+    return SpiceSimulationSpec(
+        analysis=generated.simulation_spec.analysis,
+        voltage_sources=tuple(voltage_sources),
+    )
+
+
 class _GenerationContext:
     """Mutable generator context."""
 
-    def __init__(
-        self, builder: CircuitBuilder, rng: Random, supply_voltage_v: float
-    ) -> None:
+    def __init__(self, builder: CircuitBuilder, rng: Random) -> None:
         """Initialize context state."""
 
         self.builder = builder
         self.rng = rng
-        self.supply_voltage_v = supply_voltage_v
         self.counters: dict[str, int] = {}
         self.non_ground_count = 0
         self.node_counter = 0
         self.motif_counters: dict[str, int] = {}
         self.negative_supply_nets: set[str] = set()
+        self.supply_ports: dict[str, CircuitSupplyPort] = {}
 
     def add_part(
         self,
@@ -170,25 +234,26 @@ class _GenerationContext:
     def add_negative_supply(
         self, net: str, motif_name: str, instance_id: str
     ) -> tuple[str, ...]:
-        """Add one negative supply source per generated net."""
+        """Declare one external negative supply port per generated net."""
 
         if net in self.negative_supply_nets:
             return ()
         self.negative_supply_nets.add(net)
-        negative = self.add_part(
-            "VEE",
-            "voltage_source_dc",
-            "-5V",
-            {"voltage_v": -5.0},
-            {
-                "role": "negative_supply",
-                "motif": motif_name,
-                "motif_instance": instance_id,
-            },
+        self.declare_supply_port(net, net, "0")
+        return ()
+
+    def declare_supply_port(
+        self, name: str, positive_net: str, reference_net: str
+    ) -> None:
+        """Declare a topology supply port without adding an applied source."""
+
+        self.builder.add_net(positive_net)
+        self.builder.add_net(reference_net)
+        self.supply_ports[name] = CircuitSupplyPort(
+            name=name,
+            positive_net=positive_net,
+            reference_net=reference_net,
         )
-        self.builder.connect(negative, "p", net)
-        self.builder.connect(negative, "n", "0")
-        return (negative,)
 
 
 def _validate_config(config: GeneratorConfig) -> None:
@@ -196,12 +261,8 @@ def _validate_config(config: GeneratorConfig) -> None:
 
     if config.motif_count_min < 3:
         raise ValueError("motif_count_min must be at least 3")
-    if config.motif_count_max > 5:
-        raise ValueError("motif_count_max must be at most 5")
     if config.motif_count_max < config.motif_count_min:
         raise ValueError("motif_count_max must be greater than or equal to min")
-    if not isfinite(float(config.supply_voltage_v)) or config.supply_voltage_v <= 0.0:
-        raise ValueError("supply_voltage_v must be positive and finite")
 
 
 def _safe_identifier(value: str, fallback: str) -> str:
@@ -247,15 +308,14 @@ def _try_generate_candidate(
 ) -> GeneratedCircuit | None:
     """Try to compose one candidate circuit."""
 
-    ctx = _GenerationContext(
-        CircuitBuilder(_GENERATED_CIRCUIT_NAME, catalog), rng, config.supply_voltage_v
-    )
+    ctx = _GenerationContext(CircuitBuilder(_GENERATED_CIRCUIT_NAME, catalog), rng)
     used_names: set[str] = set()
     instances: list[InstantiatedMotif] = []
     live_signals: list[_LiveSignal] = []
 
-    supply = motif_catalog["dc_supply_source"]
+    supply = motif_catalog["supply_port"]
     supply_instance = supply.build(ctx, {"source_vcc": "VCC"})
+    ctx.declare_supply_port("VCC", "VCC", "0")
     instances.append(supply_instance)
     used_names.add(supply.name)
     live_power = _LiveSignal("VCC", MotifSignalKind.POWER)
@@ -324,15 +384,21 @@ def _try_generate_candidate(
             live_signals.append(path_signal)
 
     circuit = ctx.builder.freeze()
-    if not _candidate_is_valid(circuit, catalog, motif_catalog, instances):
+    supply_ports = tuple(ctx.supply_ports.values())
+    if not _candidate_is_valid(
+        circuit, catalog, motif_catalog, instances, supply_ports
+    ):
         return None
     motif_names = tuple(instance.motif_name for instance in instances)
-    circuit = _with_generation_metadata(circuit, motif_names, instances, motif_count)
+    circuit = _with_generation_metadata(
+        circuit, motif_names, instances, motif_count, supply_ports
+    )
     simulation_spec = _default_simulation_spec()
     return GeneratedCircuit(
         circuit=circuit,
         motif_names=motif_names,
         motif_instances=tuple(instances),
+        supply_ports=supply_ports,
         simulation_spec=simulation_spec,
         seed=config.seed,
     )
@@ -343,6 +409,7 @@ def _with_generation_metadata(
     motif_names: tuple[str, ...],
     instances: list[InstantiatedMotif],
     motif_count: int,
+    supply_ports: tuple[CircuitSupplyPort, ...],
 ) -> Circuit:
     """Return a circuit with procedural generation metadata attached."""
 
@@ -355,6 +422,14 @@ def _with_generation_metadata(
             "source": "procedural",
             "target_motif_count": motif_count,
             "motifs": motif_names,
+            "supply_ports": tuple(
+                {
+                    "name": port.name,
+                    "positive_net": port.positive_net,
+                    "reference_net": port.reference_net,
+                }
+                for port in supply_ports
+            ),
             "motif_instances": tuple(
                 {
                     "motif": instance.motif_name,
@@ -371,7 +446,7 @@ def _with_generation_metadata(
 def _default_simulation_spec() -> SpiceSimulationSpec:
     """Return the default operating-point simulation spec for generation."""
 
-    return SpiceSimulationSpec(analysis=operating_point_analysis())
+    return SpiceSimulationSpec(analysis=operating_point_analysis(), voltage_sources=())
 
 
 def _choose_weighted(
@@ -583,17 +658,34 @@ def _candidate_is_valid(
     catalog: Mapping[str, PartSpec],
     motif_catalog: Mapping[str, CircuitMotif],
     instances: list[InstantiatedMotif],
+    supply_ports: tuple[CircuitSupplyPort, ...],
 ) -> bool:
     """Return whether a generated circuit satisfies structural constraints."""
 
     report = check_circuit(circuit, catalog, AnalysisSupport.SPICE_EXPORT)
     if report.errors:
         return False
-    if any(issue.code in _REJECTED_WARNING_CODES for issue in report.warnings):
+    supply_nets = {port.positive_net for port in supply_ports}
+    if any(
+        _warning_blocks_generation(issue.code, issue.nets, supply_nets)
+        for issue in report.warnings
+    ):
         return False
     return _has_cross_motif_nonrail_net(
         circuit, instances
     ) and _has_ordered_signal_path(tuple(instances), motif_catalog)
+
+
+def _warning_blocks_generation(
+    code: str, nets: tuple[str, ...], supply_nets: set[str]
+) -> bool:
+    """Return whether an ERC warning rejects topology generation."""
+
+    if code not in _REJECTED_WARNING_CODES:
+        return False
+    if code == "insufficient_drive" and set(nets) <= supply_nets:
+        return False
+    return True
 
 
 def _has_cross_motif_nonrail_net(

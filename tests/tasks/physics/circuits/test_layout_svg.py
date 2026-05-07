@@ -82,26 +82,26 @@ GENERATED_CASES = (
     (40, 5),
 )
 GENERATED_LAYOUT_FINGERPRINTS = {
-    (0, 3): "a0d9887f87c801eee94856fa1f40818f3d762fecb3e765b422b0fd343b7f410f",
-    (1, 3): "7d32d0234cf7249f9f5443c9cb16f5b4da9c033f8c1afa1acfd4d9effdc06ce2",
-    (7, 4): "7765b7fccbe6876fa699286694370362230e093d4cbf3886c2766c0f33ff490f",
-    (2, 4): "50e8ba52c20cd3769b4293fead1586a209836e5628772dfd9ae36fb2afc5d066",
-    (4, 5): "dbf24454651a9cf8edb19a40c43190373bf27fe6753c57496236a968e894b104",
-    (6, 5): "f8b52d1d1da55dfb552cf8a551100371dc9ef7edb7575297c215e8a46c1147ee",
-    (9, 3): "f66d9827dbd80fd2fb283fd1d850d6ff74d658e89e9c9058c85211e1f5b181dd",
-    (36, 4): "6b4860581ea0c276b7185e484720368ee3576cb4b309c3d2a09d5897c2519e72",
-    (40, 5): "dd314e5c4cf97772c429e4ca6a7dbf4d6a392b3f5a2065629b7f7679e7ac6086",
+    (0, 3): "1d6647b438c50d3549bd0156fe701e305f17ca2839863d384f41187da4d869b2",
+    (1, 3): "aa901cfa7939ca4aa4a963d4c348150d54c10df6e63a0d5be5f09ff7c936a86a",
+    (7, 4): "dde81aa913ba9c9cb3b8ea3f0822f7e016fcfc24560680a341f8ca051c08ee1a",
+    (2, 4): "50589b2b08076e7daa6f024fa267f164c8c852a7489ec3e47878af2359115133",
+    (4, 5): "0b41728a90e4cfa6ca839fa4eead784084372d2addfb393ab78dc3cf96d35ad4",
+    (6, 5): "af79e929e1a27c9495b01b979738115e4539e34596ec02bb8532bf2e97a86792",
+    (9, 3): "832086999bf2aac4128c6c04881e093ecbb63c3a2bdf5d0f6ea57b82a9fd5a6d",
+    (36, 4): "7a434c7df023ab9da1a1954cf5956443e19da95a0cae2a1a48395b92a4e025ac",
+    (40, 5): "18220a47c8ac7bd079e0a959ea5d65f9a9bb13bfa4c7bbe45a5bb2133e4dcb6f",
 }
 GENERATED_ASSET_LAYOUT_FINGERPRINTS = {
-    (0, 3): "ab0172f581659d68a03e3858dbfec1414081f01e77e6203c42c99b4632ef6821",
-    (1, 3): "a78efd7f2f95a6c46ea059a128ab4bb95c02a25661f6add24e25ef4cafa6cf83",
-    (7, 4): "c35aff5eb1a786294be10101151ba558fa79d14e6a1b8e00c74c047d40101b23",
-    (2, 4): "833a7cde26c6cae95afed76076cd8f716657dbf3752afb93f5def8cf0f13a696",
-    (4, 5): "00fee81a9beaeb40e61ed68cae4a97c05ec84a193cb6d76f0c0ea8292ee1a9b1",
-    (6, 5): "c5bd6fc6526c324a05c41837c5418a68f16c8f92475771b6a5666334003f7f86",
-    (9, 3): "1fe15e4de2fe6ee1de23d47320fd3fd9dd3c1347595dd5c4dae087e467e8c1bd",
-    (36, 4): "57500ee2b670cebf59ab1d5bbb9cf0122af0ffd50004a6af14d55c79e7f77020",
-    (40, 5): "b9989027b7ddf8e9ae3d72e5b3177f64241b0469c6e19db52493ea9f3ee0d7a7",
+    (0, 3): "4c084f17b4d0a2cf8da7dcc048b4fa54264820d68615361120f3d14992fd3033",
+    (1, 3): "ff49d7cc6477a7c0e489cff5b3c3bb4acc56890f0ac09ff9d13b34beaa16e7c5",
+    (7, 4): "d47589f69ffc3376983cf612e305a2fdf9245619bdba163febaf2e1ad2fff1f4",
+    (2, 4): "81d3db62063b74f06f8dc38adc941139386151cb9d13bfb722717f7693ec7a83",
+    (4, 5): "0856adad926a175e00fff95e6cf4bf1f723c82af8fd7b5d96c3cdbb3495dc95e",
+    (6, 5): "7349f208964ba00e5452b232c5b4982f87c817389b576af85b713efd16cc952d",
+    (9, 3): "5431e6f8c0aa0498eee9fe280f473d5291c376d448fa0248d34c1067fac1ecdd",
+    (36, 4): "eab8f2d953c95318288e8bb9a1e3a92a24e787db46cb9efb137cab392cd730d4",
+    (40, 5): "1eff1c6f046d7b83aad9ed03d8ead0dad4d611dc71b77667649fdbae4a797c6a",
 }
 GEOMETRY_EPSILON = 1.0e-6
 WIRE_CLEARANCE = 1.0
@@ -1501,7 +1501,6 @@ def test_generated_circuit_png_artifacts_are_written() -> None:
         generated = generate_circuit(
             GeneratorConfig(
                 seed=seed,
-                supply_voltage_v=5.0,
                 motif_count_min=element_count,
                 motif_count_max=element_count,
                 motif_weights=default_motif_weights(),
@@ -2009,7 +2008,6 @@ def _planned_generated_case(seed: int, element_count: int) -> tuple[Circuit, Lay
     generated = generate_circuit(
         GeneratorConfig(
             seed=seed,
-            supply_voltage_v=5.0,
             motif_count_min=element_count,
             motif_count_max=element_count,
             motif_weights=default_motif_weights(),
@@ -2056,7 +2054,6 @@ class _MotifRenderingContext:
 
         self.builder = builder
         self.rng = Random(123)
-        self.supply_voltage_v = 5.0
         self.counters: dict[str, int] = {}
         self.node_counter = 0
         self.motif_counters: dict[str, int] = {}
@@ -2094,25 +2091,14 @@ class _MotifRenderingContext:
     def add_negative_supply(
         self, net: str, motif_name: str, instance_id: str
     ) -> tuple[str, ...]:
-        """Add one negative supply source per generated net."""
+        """Declare one negative supply port per generated net."""
 
         if net in self.negative_supply_nets:
             return ()
         self.negative_supply_nets.add(net)
-        negative = self.add_part(
-            "VEE",
-            "voltage_source_dc",
-            "-5V",
-            {"voltage_v": -5.0},
-            {
-                "role": "negative_supply",
-                "motif": motif_name,
-                "motif_instance": instance_id,
-            },
-        )
-        self.builder.connect(negative, "p", net)
-        self.builder.connect(negative, "n", "0")
-        return (negative,)
+        self.builder.add_net(net)
+        self.builder.add_net("0")
+        return ()
 
 
 def _default_rendered_boxes(

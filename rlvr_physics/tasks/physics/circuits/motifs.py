@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from math import isfinite
 from random import Random
 import re
 from types import MappingProxyType
@@ -22,13 +21,10 @@ class MotifContext(Protocol):
         Circuit builder that receives new parts and connections.
     rng:
         Deterministic random number generator owned by the generation run.
-    supply_voltage_v:
-        Main generated supply voltage in volts.
     """
 
     builder: CircuitBuilder
     rng: Random
-    supply_voltage_v: float
 
     def add_part(
         self,
@@ -88,7 +84,7 @@ class MotifContext(Protocol):
     def add_negative_supply(
         self, net: str, motif_name: str, instance_id: str
     ) -> tuple[str, ...]:
-        """Add or reuse a negative supply source for ``net``.
+        """Declare or reuse a negative supply port for ``net``.
 
         Parameters
         ----------
@@ -102,8 +98,8 @@ class MotifContext(Protocol):
         Returns
         -------
         tuple[str, ...]
-            Newly added part references, or an empty tuple when the supply
-            already exists.
+            Newly added topology part references. This is empty when the supply
+            is represented as an external operating condition.
         """
         ...
 
@@ -409,13 +405,13 @@ def _variable_res(ref: str, value: str, resistance_ohm: float) -> _MotifPart:
     return _part(ref, "variable_resistor", value, {"resistance_ohm": resistance_ohm})
 
 
-def _configured_supply_motif() -> CircuitMotif:
-    """Return the generator-owned configurable DC supply motif."""
+def _supply_port_motif() -> CircuitMotif:
+    """Return the generator-owned external supply port motif."""
 
-    name = "dc_supply_source"
+    name = "supply_port"
 
     def build(ctx: MotifContext, port_bindings: Mapping[str, str]) -> InstantiatedMotif:
-        """Build the configured supply source into ``ctx``."""
+        """Build the external supply port into ``ctx``."""
 
         unknown_ports = set(port_bindings) - {"ground_n_0", "source_vcc"}
         if unknown_ports:
@@ -426,34 +422,19 @@ def _configured_supply_motif() -> CircuitMotif:
         vcc_net = port_bindings.get("source_vcc", "VCC")
         if not vcc_net:
             raise ValueError(f"empty binding for {name}.source_vcc")
-        supply_voltage_v = float(ctx.supply_voltage_v)
-        if not isfinite(supply_voltage_v):
-            raise ValueError("supply_voltage_v must be finite")
         instance_id = ctx.motif_instance_id(name)
-        ref = ctx.add_part(
-            "V",
-            "voltage_source_dc",
-            _voltage_display(supply_voltage_v),
-            {"voltage_v": supply_voltage_v},
-            {
-                "role": "main_supply",
-                "motif": name,
-                "motif_instance": instance_id,
-                "source_ref": "VMAIN",
-            },
-        )
-        ctx.builder.connect(ref, "p", vcc_net)
-        ctx.builder.connect(ref, "n", ground_net)
+        ctx.builder.add_net(vcc_net)
+        ctx.builder.add_net(ground_net)
         return InstantiatedMotif(
             motif_name=name,
             instance_id=instance_id,
             port_nets={"ground_n_0": ground_net, "source_vcc": vcc_net},
-            part_refs=(ref,),
+            part_refs=(),
         )
 
     return CircuitMotif(
         name=name,
-        element_count=1,
+        element_count=0,
         default_weight=0.0,
         ports=(
             MotifPort(
@@ -475,16 +456,10 @@ def _configured_supply_motif() -> CircuitMotif:
     )
 
 
-def _voltage_display(value: float) -> str:
-    """Return compact display text for a voltage value."""
-
-    return f"{value:.12g}V"
-
-
 def _build_default_motifs() -> Mapping[str, CircuitMotif]:
     """Build the immutable built-in motif catalog."""
 
-    motifs = {"dc_supply_source": _configured_supply_motif()}
+    motifs = {"supply_port": _supply_port_motif()}
     for spec in _DEFAULT_MOTIF_SPECS:
         motifs[spec.name] = CircuitMotif(
             spec.name,
@@ -546,9 +521,7 @@ def _build_netlist_motif(spec: _MotifSpec) -> MotifBuilder:
 def _element_count(spec: _MotifSpec) -> int:
     """Return the non-ground part count added by ``spec``."""
 
-    return sum(1 for part in spec.parts if part.kind != "ground") + (
-        1 if _uses_net(spec, "VEE") else 0
-    )
+    return sum(1 for part in spec.parts if part.kind != "ground")
 
 
 def _motif_ports(spec: _MotifSpec) -> tuple[MotifPort, ...]:
@@ -880,10 +853,13 @@ def _local_net(
     return net_map[normalized]
 
 
+# Motifs with default_weight=0 remain addressable through explicit weights, but
+# are excluded from the default operating-point generator because their intended
+# behavior needs transient/sweep analysis or an intentionally ideal source.
 _DEFAULT_MOTIF_SPECS = (
     _MotifSpec(
         "bridge_rectifier",
-        0.8,
+        0.0,
         (
             _plain_part("T1", "transformer", "1:1"),
             _ac_source("VAC1", "AC 6"),
@@ -1335,7 +1311,7 @@ _DEFAULT_MOTIF_SPECS = (
     ),
     _MotifSpec(
         "rc_phase_shift_oscillator",
-        0.6,
+        0.0,
         (
             _plain_part("U1", "op_amp", "ideal"),
             _res("RF", "300k", 300000.0),
@@ -1373,7 +1349,7 @@ _DEFAULT_MOTIF_SPECS = (
     ),
     _MotifSpec(
         "wien_bridge_oscillator",
-        0.6,
+        0.0,
         (
             _plain_part("U1", "op_amp", "ideal"),
             _cap("C1", "10n", 1e-8),
@@ -1411,7 +1387,7 @@ _DEFAULT_MOTIF_SPECS = (
     ),
     _MotifSpec(
         "colpitts_lc_oscillator",
-        0.6,
+        0.0,
         (
             _res("RB1", "100k", 100000.0),
             _res("RB2", "22k", 22000.0),
@@ -1447,7 +1423,7 @@ _DEFAULT_MOTIF_SPECS = (
     ),
     _MotifSpec(
         "pierce_crystal_oscillator",
-        0.7,
+        0.0,
         (
             _plain_part("U1", "not_gate", "INV"),
             _res("RFB", "1M", 1000000.0),
@@ -1498,7 +1474,7 @@ _DEFAULT_MOTIF_SPECS = (
     ),
     _MotifSpec(
         "wheatstone_bridge_instrumentation_amplifier",
-        0.7,
+        0.0,
         (
             _res("R1", "1k", 1000.0),
             _res("R2", "1k", 1000.0),
@@ -1530,7 +1506,7 @@ _DEFAULT_MOTIF_SPECS = (
     ),
     _MotifSpec(
         "timer_555_astable_oscillator",
-        0.7,
+        0.0,
         (
             _plain_part("U555", "timer_555", "555"),
             _cap("CCTRL", "10n", 1e-8),
@@ -1559,7 +1535,7 @@ _DEFAULT_MOTIF_SPECS = (
     ),
     _MotifSpec(
         "timer_555_monostable_one_shot",
-        0.7,
+        0.0,
         (
             _plain_part("U555", "timer_555", "555"),
             _cap("CCTRL", "10n", 1e-8),
@@ -1615,7 +1591,7 @@ _DEFAULT_MOTIF_SPECS = (
     ),
     _MotifSpec(
         "nmos_low_side_pwm_driver",
-        0.8,
+        0.0,
         (
             _res("RG", "100", 100.0),
             _res("RPD", "100k", 100000.0),
@@ -1639,7 +1615,7 @@ _DEFAULT_MOTIF_SPECS = (
     ),
     _MotifSpec(
         "asynchronous_buck_converter",
-        0.7,
+        0.0,
         (
             _dc_source("VIN", "12V", 12.0),
             _controlled_sw("S1"),
@@ -1666,7 +1642,7 @@ _DEFAULT_MOTIF_SPECS = (
     ),
     _MotifSpec(
         "asynchronous_boost_converter",
-        0.7,
+        0.0,
         (
             _dc_source("VIN", "5V", 5.0),
             _ind("L1", "100u", 1e-4),
@@ -1693,7 +1669,7 @@ _DEFAULT_MOTIF_SPECS = (
     ),
     _MotifSpec(
         "diode_capacitor_voltage_doubler",
-        0.8,
+        0.0,
         (
             _ac_source("VAC1", "AC 3"),
             _cap("C1", "10u", 1e-5),
@@ -1719,7 +1695,7 @@ _DEFAULT_MOTIF_SPECS = (
     ),
     _MotifSpec(
         "peak_detector_envelope_detector",
-        0.9,
+        0.0,
         (
             _ac_source("VSIG", "AC 1"),
             _plain_part("D1", "diode", "D"),
@@ -1762,7 +1738,7 @@ _DEFAULT_MOTIF_SPECS = (
     ),
     _MotifSpec(
         "sample_and_hold",
-        0.8,
+        0.0,
         (
             _controlled_sw("S1"),
             _cap("C1", "1u", 1e-6),
@@ -1839,7 +1815,7 @@ _DEFAULT_MOTIF_SPECS = (
     ),
     _MotifSpec(
         "four_bit_synchronous_binary_counter",
-        0.5,
+        0.0,
         (
             _plain_part("U1", "counter_4bit", "74HC161"),
             _plain_part("TPQ0", "test_point", "Q0"),
@@ -1966,7 +1942,7 @@ _DEFAULT_MOTIF_SPECS = (
     ),
     _MotifSpec(
         "ideal_switch_power_disconnect",
-        0.7,
+        0.0,
         (
             _battery("B1", "9V", 9.0),
             _ideal_switch("SW1", 0.1),
@@ -1986,7 +1962,7 @@ _DEFAULT_MOTIF_SPECS = (
     ),
     _MotifSpec(
         "looped_inductor_parallel_resonant_tank",
-        0.6,
+        0.0,
         (
             _cap("CIN", "10p", 1e-11),
             _part("LLOOP1", "inductor_looped", "1u", {"inductance_h": 1e-6}),
@@ -2276,7 +2252,7 @@ _DEFAULT_MOTIF_SPECS = (
     ),
     _MotifSpec(
         "vcvs_ideal_voltage_gain_block",
-        0.6,
+        0.0,
         (_part("E1", "vcvs", "10", {"gain": 10.0}), _res("RLOAD", "10k", 10000.0)),
         (
             ("E1", "cp", "VCC"),

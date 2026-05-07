@@ -33,6 +33,9 @@ renderer peripherals, and deferred trainer integration surfaces.
 - Keep circuit netlist export and executable simulation separate: deterministic
   SPICE export belongs in `spice_export`, while ngspice execution belongs in
   `spice_sim`.
+- Keep generated circuit topology separate from operating conditions. Generated
+  circuits may declare supply ports, but task or simulation specs should apply
+  VCC/VEE voltages.
 - Public play and adapter surfaces should preserve `RewardResult.public_info`
   and omit `RewardResult.debug_info`.
 - Do not expose procedural replay seeds through public task metadata. Use
