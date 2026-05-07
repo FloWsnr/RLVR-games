@@ -408,23 +408,35 @@ def _logic_model_definition(
     """Return a simple behavioral SPICE model for a logic gate."""
 
     pins = " ".join((*input_names, "out", "vcc", "gnd"))
+    supply = "max(V(vcc)-V(gnd), 1e-9)"
     if kind == "not_gate":
-        expression = "limit(V(vcc)-V(in1), 0, V(vcc))"
+        raw_expression = "V(vcc)-V(in1)"
     elif kind == "nand_gate":
-        expression = "limit(V(vcc)-V(in1)*V(in2)/max(V(vcc), 1e-9), 0, V(vcc))"
+        raw_expression = f"V(vcc)-((V(in1)-V(gnd))*(V(in2)-V(gnd))/{supply})"
     elif kind == "and_gate":
-        expression = "limit(V(in1)*V(in2)/max(V(vcc), 1e-9), 0, V(vcc))"
+        raw_expression = f"(V(in1)-V(gnd))*(V(in2)-V(gnd))/{supply}"
     elif kind == "xor_gate":
-        expression = "limit(abs(V(in1)-V(in2)), 0, V(vcc))"
+        raw_expression = "abs(V(in1)-V(in2))"
     else:
-        expression = "limit(max(V(in1), V(in2)), 0, V(vcc))"
+        raw_expression = "max(V(in1)-V(gnd), V(in2)-V(gnd))"
+    expression = _spice_clamp(raw_expression, "0", "max(V(vcc)-V(gnd), 0)")
+    input_leakage = "".join(
+        f"RIN{idx} {name} gnd 1e12\n" for idx, name in enumerate(input_names, start=1)
+    )
     return (
         f".subckt {model_name} {pins}\n"
-        "RIN1 in1 gnd 1e12\n"
-        f"{'RIN2 in2 gnd 1e12\n' if len(input_names) > 1 else ''}"
-        f"BOUT out gnd V = {{{expression}}}\n"
+        f"{input_leakage}"
+        f"BDRV drv gnd V = {{{expression}}}\n"
+        "ROUT drv out 50\n"
+        "RLEAK out gnd 1e9\n"
         f".ends {model_name}"
     )
+
+
+def _spice_clamp(value: str, lower: str, upper: str) -> str:
+    """Return an ngspice expression clamped between lower and upper bounds."""
+
+    return f"min(max({value}, {lower}), {upper})"
 
 
 def _subcircuit_part(
@@ -1024,7 +1036,11 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
                 model_name="RLVR_IDEAL_OPAMP",
                 model_definition=(
                     ".subckt RLVR_IDEAL_OPAMP noninv inv vpos vneg out\n"
-                    "BOUT out vneg V = {limit(1e6*(V(noninv)-V(inv)), 0, V(vpos)-V(vneg))}\n"
+                    "RINP noninv vneg 1e12\n"
+                    "RINN inv vneg 1e12\n"
+                    "BDRV drv vneg V = {0.5*max(V(vpos)-V(vneg), 0)*(1+tanh(200*(V(noninv)-V(inv))))}\n"
+                    "ROUT drv out 50\n"
+                    "RLEAK out vneg 1e9\n"
                     ".ends RLVR_IDEAL_OPAMP"
                 ),
             ),
@@ -1054,7 +1070,11 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
                 model_name="RLVR_COMPARATOR",
                 model_definition=(
                     ".subckt RLVR_COMPARATOR noninv inv vpos vneg out\n"
-                    "BOUT out vneg V = {limit(1e6*(V(noninv)-V(inv)), 0, V(vpos)-V(vneg))}\n"
+                    "RINP noninv vneg 1e12\n"
+                    "RINN inv vneg 1e12\n"
+                    "BDRV drv vneg V = {0.5*max(V(vpos)-V(vneg), 0)*(1+tanh(500*(V(noninv)-V(inv))))}\n"
+                    "ROUT drv out 100\n"
+                    "RLEAK out vneg 1e9\n"
                     ".ends RLVR_COMPARATOR"
                 ),
             ),
@@ -1084,7 +1104,9 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
                 "RINP inp ref 1e12\n"
                 "RINN inn ref 1e12\n"
                 "RGINT rg1 rg2 1e9\n"
-                "EOUT out ref inp inn 100\n"
+                "BDRV drv vneg V = {min(max(V(ref)-V(vneg)+100*(V(inp)-V(inn)), 0), max(V(vpos)-V(vneg), 0))}\n"
+                "ROUT drv out 50\n"
+                "RLEAK out vneg 1e9\n"
                 ".ends RLVR_INSTRUMENTATION_AMP"
             ),
             ("amplifier", "instrumentation", "integrated"),
@@ -1144,7 +1166,9 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
                     ".subckt RLVR_GENERIC_IC in1 in2 out1 vcc gnd\n"
                     "RIN1 in1 gnd 1e12\n"
                     "RIN2 in2 gnd 1e12\n"
-                    "EOUT out1 gnd in1 in2 1\n"
+                    "BDRV drv gnd V = {min(max(V(in1)-V(in2), 0), max(V(vcc)-V(gnd), 0))}\n"
+                    "ROUT drv out1 50\n"
+                    "RLEAK out1 gnd 1e9\n"
                     ".ends RLVR_GENERIC_IC"
                 ),
             ),

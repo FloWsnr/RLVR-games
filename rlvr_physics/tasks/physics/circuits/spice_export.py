@@ -17,6 +17,9 @@ from rlvr_physics.tasks.physics.circuits.model import (
     is_ground_net,
 )
 
+_CAPACITOR_LIKE_KINDS = {"capacitor", "polarized_capacitor"}
+_CAPACITOR_LEAKAGE_OHM = "1e9"
+
 
 class SpiceAnalysisKind(Enum):
     """Supported exported SPICE analysis cards."""
@@ -182,6 +185,7 @@ def export_spice(
     lines = [f"* RLVR-physics circuit: {circuit.name}"]
     node_names = _node_names(circuit)
     element_refs = _element_refs(circuit, catalog)
+    used_refs = {ref.upper() for ref in element_refs.values()}
     model_lines: dict[str, str] = {}
     for part in circuit.parts:
         spec = catalog[part.kind]
@@ -193,6 +197,16 @@ def export_spice(
             )
         element_ref = element_refs[part.ref]
         lines.append(_part_line(circuit, part, spec.spice, node_names, element_ref))
+        lines.extend(
+            _extra_part_lines(
+                circuit,
+                part,
+                spec,
+                node_names,
+                element_ref,
+                used_refs,
+            )
+        )
         if spec.spice.model_definition is not None:
             model_lines[spec.spice.model_definition] = spec.spice.model_definition
 
@@ -226,6 +240,39 @@ def _part_line(
     if value:
         pieces.append(value)
     return " ".join(pieces)
+
+
+def _extra_part_lines(
+    circuit: Circuit,
+    part: PartInstance,
+    spec: PartSpec,
+    node_names: Mapping[str, str],
+    element_ref: str,
+    used_refs: set[str],
+) -> tuple[str, ...]:
+    """Return auxiliary SPICE lines needed for a part's executable model."""
+
+    if spec.kind not in _CAPACITOR_LIKE_KINDS or spec.spice is None:
+        return ()
+    first_node = _node_for_pin(circuit, part.ref, spec.spice.pin_order[0], node_names)
+    second_node = _node_for_pin(circuit, part.ref, spec.spice.pin_order[1], node_names)
+    leakage_ref = _unique_extra_ref(f"R{element_ref}_LEAK", used_refs)
+    return (f"{leakage_ref} {first_node} {second_node} {_CAPACITOR_LEAKAGE_OHM}",)
+
+
+def _unique_extra_ref(candidate: str, used_refs: set[str]) -> str:
+    """Return a unique legal auxiliary SPICE reference."""
+
+    legal_candidate = _legalize(candidate)
+    if not legal_candidate.upper().startswith("R"):
+        legal_candidate = f"R{legal_candidate}"
+    ref = legal_candidate
+    suffix = 2
+    while ref.upper() in used_refs:
+        ref = f"{legal_candidate}_{suffix}"
+        suffix += 1
+    used_refs.add(ref.upper())
+    return ref
 
 
 def _node_for_pin(

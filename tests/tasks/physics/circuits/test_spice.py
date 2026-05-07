@@ -148,6 +148,7 @@ def test_export_spice_handles_new_asset_backed_parts() -> None:
     assert "VBT1 VIN 0 DC 9" in netlist_text
     assert "RV1 VIN MID 5000" in netlist_text
     assert "CP1 MID 0 1e-05" in netlist_text
+    assert "RCP1_LEAK MID 0 1e9" in netlist_text
     assert "L1 VIN 0 0.001" in netlist_text
     assert "RS1 VIN SW 1e+12" in netlist_text
     assert "XPWR1 VIN RLVR_POWER_RAIL" in netlist_text
