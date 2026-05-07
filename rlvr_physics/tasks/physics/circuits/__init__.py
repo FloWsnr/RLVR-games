@@ -52,7 +52,7 @@ from rlvr_physics.tasks.physics.circuits.model import (
     SpiceSpec,
     is_ground_net,
 )
-from rlvr_physics.tasks.physics.circuits.spice import (
+from rlvr_physics.tasks.physics.circuits.spice_export import (
     SpiceAnalysis,
     SpiceAnalysisKind,
     SpiceNetlist,
@@ -60,6 +60,14 @@ from rlvr_physics.tasks.physics.circuits.spice import (
     export_spice,
     operating_point_analysis,
     transient_analysis,
+)
+from rlvr_physics.tasks.physics.circuits.spice_sim import (
+    SpiceSimulationIssue,
+    SpiceSimulationResult,
+    SpiceSimulationSpec,
+    SpiceSimulatorConfig,
+    default_spice_simulator_config,
+    simulate_spice,
 )
 from rlvr_physics.tasks.physics.circuits.svg import (
     DEFAULT_RENDER_STYLE,
@@ -103,11 +111,16 @@ __all__ = [
     "SpiceAnalysis",
     "SpiceAnalysisKind",
     "SpiceNetlist",
+    "SpiceSimulationIssue",
+    "SpiceSimulationResult",
+    "SpiceSimulationSpec",
+    "SpiceSimulatorConfig",
     "SpiceSpec",
     "WirePath",
     "WireSegment",
     "check_circuit",
     "dc_sweep_analysis",
+    "default_spice_simulator_config",
     "default_catalog",
     "default_motif_weights",
     "default_motifs",
@@ -120,6 +133,7 @@ __all__ = [
     "operating_point_analysis",
     "plan_layout",
     "require_part_spec",
+    "simulate_spice",
     "to_png",
     "transient_analysis",
 ]

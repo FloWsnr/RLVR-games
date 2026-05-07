@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from math import isfinite
 import re
+from types import MappingProxyType
 from typing import Mapping
 
 from rlvr_physics.tasks.physics.circuits.model import (
@@ -63,10 +64,16 @@ class SpiceNetlist:
         Full SPICE netlist text.
     analysis:
         Analysis card used in the export.
+    node_names:
+        Mapping from canonical net name to emitted SPICE node name.
+    element_refs:
+        Mapping from canonical part reference to emitted SPICE element reference.
     """
 
     text: str
     analysis: SpiceAnalysis
+    node_names: Mapping[str, str]
+    element_refs: Mapping[str, str]
 
 
 def operating_point_analysis() -> SpiceAnalysis:
@@ -173,6 +180,8 @@ def export_spice(
     """
 
     lines = [f"* RLVR-physics circuit: {circuit.name}"]
+    node_names = _node_names(circuit)
+    element_refs = _element_refs(circuit, catalog)
     model_lines: dict[str, str] = {}
     for part in circuit.parts:
         spec = catalog[part.kind]
@@ -182,22 +191,35 @@ def export_spice(
             raise CircuitTopologyError(
                 f"cannot export {part.ref} ({part.kind}) to SPICE"
             )
-        lines.append(_part_line(circuit, part, spec.spice))
+        element_ref = element_refs[part.ref]
+        lines.append(_part_line(circuit, part, spec.spice, node_names, element_ref))
         if spec.spice.model_definition is not None:
             model_lines[spec.spice.model_definition] = spec.spice.model_definition
 
     lines.extend(sorted(model_lines))
-    lines.append(_analysis_card(circuit, catalog, analysis))
+    lines.append(_analysis_card(circuit, catalog, analysis, element_refs))
     lines.append(".end")
-    return SpiceNetlist(text="\n".join(lines) + "\n", analysis=analysis)
+    return SpiceNetlist(
+        text="\n".join(lines) + "\n",
+        analysis=analysis,
+        node_names=MappingProxyType(node_names),
+        element_refs=MappingProxyType(element_refs),
+    )
 
 
-def _part_line(circuit: Circuit, part: PartInstance, spice: SpiceSpec) -> str:
+def _part_line(
+    circuit: Circuit,
+    part: PartInstance,
+    spice: SpiceSpec,
+    node_names: Mapping[str, str],
+    element_ref: str,
+) -> str:
     """Return one SPICE element line."""
 
-    nodes = [_node_for_pin(circuit, part.ref, pin) for pin in spice.pin_order]
-    ref = _spice_ref(part.ref, spice.prefix)
-    pieces = [ref, *nodes]
+    nodes = [
+        _node_for_pin(circuit, part.ref, pin, node_names) for pin in spice.pin_order
+    ]
+    pieces = [element_ref, *nodes]
     if spice.model_name is not None:
         pieces.append(spice.model_name)
     value = _spice_value(part, spice)
@@ -206,15 +228,38 @@ def _part_line(circuit: Circuit, part: PartInstance, spice: SpiceSpec) -> str:
     return " ".join(pieces)
 
 
-def _node_for_pin(circuit: Circuit, ref: str, pin: str) -> str:
+def _node_for_pin(
+    circuit: Circuit, ref: str, pin: str, node_names: Mapping[str, str]
+) -> str:
     """Return SPICE node name for a connected pin."""
 
     net = circuit.net_for_pin(ref, pin)
     if net is None:
         raise CircuitTopologyError(f"cannot export unconnected pin: {ref}.{pin}")
-    if is_ground_net(net):
-        return "0"
-    return _legalize(net)
+    return node_names[net]
+
+
+def _node_names(circuit: Circuit) -> dict[str, str]:
+    """Return emitted SPICE node names keyed by canonical circuit net."""
+
+    names = {net: "0" for net in circuit.nets if is_ground_net(net)}
+    non_ground_nets = tuple(net for net in circuit.nets if not is_ground_net(net))
+    names.update(_unique_legal_names(non_ground_nets, reserved=("0",)))
+    return names
+
+
+def _element_refs(
+    circuit: Circuit, catalog: Mapping[str, PartSpec]
+) -> Mapping[str, str]:
+    """Return unique emitted SPICE references keyed by canonical part reference."""
+
+    candidates: list[tuple[str, str]] = []
+    for part in circuit.parts:
+        spec = catalog[part.kind]
+        if spec.kind == "ground" or spec.spice is None:
+            continue
+        candidates.append((part.ref, _spice_ref(part.ref, spec.spice.prefix)))
+    return MappingProxyType(_unique_candidate_names(tuple(candidates)))
 
 
 def _spice_ref(ref: str, prefix: str) -> str:
@@ -245,6 +290,7 @@ def _analysis_card(
     circuit: Circuit,
     catalog: Mapping[str, PartSpec],
     analysis: SpiceAnalysis,
+    element_refs: Mapping[str, str],
 ) -> str:
     """Return the SPICE analysis card."""
 
@@ -257,7 +303,7 @@ def _analysis_card(
             analysis.stop,
             analysis.step,
         )
-        spice_ref = _dc_sweep_spice_ref(circuit, catalog, source_ref)
+        spice_ref = _dc_sweep_spice_ref(circuit, catalog, source_ref, element_refs)
         return (
             f".dc {spice_ref} {_fmt_float(start)} {_fmt_float(stop)} {_fmt_float(step)}"
         )
@@ -266,7 +312,10 @@ def _analysis_card(
 
 
 def _dc_sweep_spice_ref(
-    circuit: Circuit, catalog: Mapping[str, PartSpec], source_ref: str
+    circuit: Circuit,
+    catalog: Mapping[str, PartSpec],
+    source_ref: str,
+    element_refs: Mapping[str, str],
 ) -> str:
     """Return the emitted SPICE ref for a swept independent source."""
 
@@ -286,7 +335,7 @@ def _dc_sweep_spice_ref(
             f"dc sweep source must be an independent voltage or current source: "
             f"{source_ref}"
         )
-    return _spice_ref(part.ref, spec.spice.prefix)
+    return element_refs[part.ref]
 
 
 def _validate_dc_sweep_values(
@@ -358,4 +407,35 @@ def _fmt_float(value: float) -> str:
 def _legalize(name: str) -> str:
     """Return a SPICE-safe identifier."""
 
-    return re.sub(r"\W", "_", name)
+    legal = re.sub(r"\W", "_", name)
+    if legal:
+        return legal
+    return "_"
+
+
+def _unique_legal_names(
+    names: tuple[str, ...], *, reserved: tuple[str, ...] = ()
+) -> dict[str, str]:
+    """Return unique legal names keyed by canonical names."""
+
+    return _unique_candidate_names(
+        tuple((name, _legalize(name)) for name in names), reserved
+    )
+
+
+def _unique_candidate_names(
+    candidates: tuple[tuple[str, str], ...], reserved: tuple[str, ...] = ()
+) -> dict[str, str]:
+    """Return unique emitted names from precomputed legal candidates."""
+
+    used = {name.upper() for name in reserved}
+    result: dict[str, str] = {}
+    for canonical, base in candidates:
+        candidate = base
+        suffix = 2
+        while candidate.upper() in used:
+            candidate = f"{base}_{suffix}"
+            suffix += 1
+        used.add(candidate.upper())
+        result[canonical] = candidate
+    return result

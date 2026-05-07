@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from random import Random
+import re
 import shutil
 import subprocess
 from typing import Any, Mapping
@@ -20,9 +21,11 @@ from rlvr_physics.tasks.physics.circuits import (
     default_catalog,
     default_motif_weights,
     default_motifs,
+    default_spice_simulator_config,
     export_spice,
     generate_circuit,
     operating_point_analysis,
+    simulate_spice,
 )
 
 REJECTED_GENERATION_WARNING_CODES = {
@@ -31,11 +34,13 @@ REJECTED_GENERATION_WARNING_CODES = {
     "pin_conflict",
     "single_pin_net",
 }
+SAFE_GENERATED_IDENTIFIER_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|0")
 
 
 def test_generate_circuit_is_deterministic_and_hits_motif_count() -> None:
     config = GeneratorConfig(
         seed=123,
+        supply_voltage_v=5.0,
         motif_count_min=3,
         motif_count_max=5,
         motif_weights=default_motif_weights(),
@@ -54,6 +59,7 @@ def test_generate_circuit_is_deterministic_and_hits_motif_count() -> None:
 def test_generated_circuit_plain_data_does_not_expose_seed() -> None:
     config = GeneratorConfig(
         seed=123,
+        supply_voltage_v=5.0,
         motif_count_min=3,
         motif_count_max=5,
         motif_weights=default_motif_weights(),
@@ -64,15 +70,93 @@ def test_generated_circuit_plain_data_does_not_expose_seed() -> None:
     metadata = plain_data["metadata"]
 
     assert generated.seed == 123
-    assert plain_data["name"] == "generated-circuit"
+    assert plain_data["name"] == "generated_circuit"
     assert isinstance(metadata, dict)
     assert metadata["target_motif_count"] == len(generated.motif_names)
     assert "seed" not in metadata
+    assert "simulation_spec" not in metadata
+
+
+def test_generated_circuit_uses_spice_safe_canonical_identifiers() -> None:
+    generated = generate_circuit(
+        GeneratorConfig(
+            seed=123,
+            supply_voltage_v=5.0,
+            motif_count_min=3,
+            motif_count_max=5,
+            motif_weights=default_motif_weights(),
+        ),
+        default_catalog(),
+    )
+
+    assert SAFE_GENERATED_IDENTIFIER_PATTERN.fullmatch(generated.circuit.name)
+    assert all(
+        SAFE_GENERATED_IDENTIFIER_PATTERN.fullmatch(part.ref)
+        for part in generated.circuit.parts
+    )
+    assert all(
+        SAFE_GENERATED_IDENTIFIER_PATTERN.fullmatch(net)
+        for net in generated.circuit.nets
+    )
+    assert all(
+        SAFE_GENERATED_IDENTIFIER_PATTERN.fullmatch(instance.instance_id)
+        for instance in generated.motif_instances
+    )
+
+
+def test_generated_circuit_has_default_five_volt_simulation_spec() -> None:
+    generated = generate_circuit(
+        GeneratorConfig(
+            seed=123,
+            supply_voltage_v=5.0,
+            motif_count_min=3,
+            motif_count_max=3,
+            motif_weights=default_motif_weights(),
+        ),
+        default_catalog(),
+    )
+    main_supplies = [
+        part
+        for part in generated.circuit.parts
+        if part.metadata.get("role") == "main_supply"
+    ]
+
+    assert generated.motif_names[0] == "dc_supply_source"
+    assert generated.simulation_spec.analysis == operating_point_analysis()
+    assert len(main_supplies) == 1
+    assert main_supplies[0].parameters["voltage_v"] == 5.0
+
+
+def test_generated_default_simulation_spec_runs_in_ngspice() -> None:
+    if shutil.which("ngspice") is None:
+        pytest.skip("ngspice executable is not available")
+    generated = generate_circuit(
+        GeneratorConfig(
+            seed=0,
+            supply_voltage_v=5.0,
+            motif_count_min=3,
+            motif_count_max=3,
+            motif_weights=default_motif_weights(),
+        ),
+        default_catalog(),
+    )
+    result = simulate_spice(
+        generated.circuit,
+        default_catalog(),
+        generated.simulation_spec,
+        default_spice_simulator_config(),
+    )
+
+    assert result.ok, result.issues
+    assert result.values["0"] == pytest.approx(0.0)
+    assert result.values["VCC"] == pytest.approx(5.0)
+    assert set(result.values) == set(generated.circuit.nets)
 
 
 def test_generate_circuit_passes_structural_checks() -> None:
     config = GeneratorConfig(
         seed=456,
+        supply_voltage_v=5.0,
         motif_count_min=3,
         motif_count_max=5,
         motif_weights=default_motif_weights(),
@@ -107,6 +191,7 @@ def test_generate_circuit_rejects_too_few_motifs() -> None:
         generate_circuit(
             GeneratorConfig(
                 seed=123,
+                supply_voltage_v=5.0,
                 motif_count_min=2,
                 motif_count_max=2,
                 motif_weights=default_motif_weights(),
@@ -120,6 +205,7 @@ def test_generate_circuit_rejects_too_many_motifs() -> None:
         generate_circuit(
             GeneratorConfig(
                 seed=123,
+                supply_voltage_v=5.0,
                 motif_count_min=3,
                 motif_count_max=6,
                 motif_weights=default_motif_weights(),
@@ -129,10 +215,11 @@ def test_generate_circuit_rejects_too_many_motifs() -> None:
 
 
 def test_generate_circuit_rejects_incomplete_weight_role_sets() -> None:
-    with pytest.raises(ValueError, match="supply source motif"):
+    with pytest.raises(ValueError, match="signal source motif"):
         generate_circuit(
             GeneratorConfig(
                 seed=123,
+                supply_voltage_v=5.0,
                 motif_count_min=3,
                 motif_count_max=3,
                 motif_weights={"inverting_op_amp_amplifier": 1.0},
@@ -149,6 +236,7 @@ def test_default_generated_spice_refs_are_unique() -> None:
         generated = generate_circuit(
             GeneratorConfig(
                 seed=seed,
+                supply_voltage_v=5.0,
                 motif_count_min=3,
                 motif_count_max=5,
                 motif_weights=weights,
@@ -198,6 +286,7 @@ def test_default_generation_uses_only_catalog_motifs() -> None:
     generated = generate_circuit(
         GeneratorConfig(
             seed=123,
+            supply_voltage_v=5.0,
             motif_count_min=3,
             motif_count_max=5,
             motif_weights=default_motif_weights(),
@@ -221,13 +310,14 @@ def test_default_weighted_motifs_are_reachable() -> None:
         generated = generate_circuit(
             GeneratorConfig(
                 seed=seed,
+                supply_voltage_v=5.0,
                 motif_count_min=3,
                 motif_count_max=5,
                 motif_weights=weights,
             ),
             catalog,
         )
-        seen_motifs.update(generated.motif_names)
+        seen_motifs.update(name for name in generated.motif_names if name in weights)
         if seen_motifs == weighted_motifs:
             break
 
@@ -238,6 +328,7 @@ def test_generated_parts_are_owned_by_motif_instances() -> None:
     generated = generate_circuit(
         GeneratorConfig(
             seed=15,
+            supply_voltage_v=5.0,
             motif_count_min=5,
             motif_count_max=5,
             motif_weights=default_motif_weights(),
@@ -260,6 +351,7 @@ def test_generated_circuit_has_cross_motif_signal_net() -> None:
     generated = generate_circuit(
         GeneratorConfig(
             seed=123,
+            supply_voltage_v=5.0,
             motif_count_min=3,
             motif_count_max=5,
             motif_weights=default_motif_weights(),
@@ -274,6 +366,7 @@ def test_generated_path_motifs_consume_previous_signal() -> None:
     generated = generate_circuit(
         GeneratorConfig(
             seed=9,
+            supply_voltage_v=5.0,
             motif_count_min=5,
             motif_count_max=5,
             motif_weights=default_motif_weights(),
@@ -314,6 +407,7 @@ def test_dual_rail_motifs_share_one_negative_supply_source() -> None:
     generated = generate_circuit(
         GeneratorConfig(
             seed=4,
+            supply_voltage_v=5.0,
             motif_count_min=4,
             motif_count_max=4,
             motif_weights=weights,
@@ -333,7 +427,7 @@ def test_dual_rail_motifs_share_one_negative_supply_source() -> None:
     ]
 
     assert set(generated.motif_names) == {
-        "battery_powered_led_indicator",
+        "dc_supply_source",
         "voltage_divider_with_voltmeter",
         "inverting_op_amp_amplifier",
         "non_inverting_op_amp_amplifier",
@@ -353,6 +447,7 @@ def test_generate_circuit_seed_sweep_passes_structural_checks() -> None:
         generated = generate_circuit(
             GeneratorConfig(
                 seed=seed,
+                supply_voltage_v=5.0,
                 motif_count_min=3,
                 motif_count_max=5,
                 motif_weights=weights,
@@ -382,6 +477,7 @@ class _MotifTestContext:
 
         self.builder = CircuitBuilder("motif", default_catalog())
         self.rng = Random(123)
+        self.supply_voltage_v = 5.0
         self.counters: dict[str, int] = {}
         self.non_ground_count = 0
         self.node_counter = 0
@@ -417,7 +513,7 @@ class _MotifTestContext:
 
         number = self.motif_counters.get(motif_name, 0) + 1
         self.motif_counters[motif_name] = number
-        return f"{motif_name}#{number}"
+        return f"{motif_name}_{number}"
 
     def add_negative_supply(
         self, net: str, motif_name: str, instance_id: str

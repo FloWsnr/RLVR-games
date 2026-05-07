@@ -82,26 +82,26 @@ GENERATED_CASES = (
     (40, 5),
 )
 GENERATED_LAYOUT_FINGERPRINTS = {
-    (0, 3): "7113aab8c49450c872b2955ea6cc9c91bfc10cdb1215febe15eee58e7d5b34dc",
-    (1, 3): "d640ebf1c21a92635f64f1629647d86b7989a3a77d35a08ee2e0a923a084f827",
-    (7, 4): "ffb238ae8c13f725beecfbe8f11317357fa9e07b2e9b15337df02d928ecc80de",
-    (2, 4): "d307e3eb03c7dc09e2f367716170d4688ca5e338bf10378afe00efed26e896e0",
-    (4, 5): "773ab232acfeb4e526af828cf9485ba35064c32f5d3c288a634ee4f9de3d2e2c",
-    (6, 5): "e9941783afa9f26f9cc5ec244e1cbc1748fc395f54d67eb6f3e3dd725829de05",
-    (9, 3): "7a500804c7e882186241c2a3090b425c082594048db86096cda2310670471195",
-    (36, 4): "7f19fabe15433c47cd91fbb96470f797faf0dfbce7eae88cf0d82f16aced1f3f",
-    (40, 5): "4af835a10566d023a91dcd8d2cbf75d7118412eb30c070be96aa1685396be9f7",
+    (0, 3): "a0d9887f87c801eee94856fa1f40818f3d762fecb3e765b422b0fd343b7f410f",
+    (1, 3): "7d32d0234cf7249f9f5443c9cb16f5b4da9c033f8c1afa1acfd4d9effdc06ce2",
+    (7, 4): "7765b7fccbe6876fa699286694370362230e093d4cbf3886c2766c0f33ff490f",
+    (2, 4): "50e8ba52c20cd3769b4293fead1586a209836e5628772dfd9ae36fb2afc5d066",
+    (4, 5): "dbf24454651a9cf8edb19a40c43190373bf27fe6753c57496236a968e894b104",
+    (6, 5): "f8b52d1d1da55dfb552cf8a551100371dc9ef7edb7575297c215e8a46c1147ee",
+    (9, 3): "f66d9827dbd80fd2fb283fd1d850d6ff74d658e89e9c9058c85211e1f5b181dd",
+    (36, 4): "6b4860581ea0c276b7185e484720368ee3576cb4b309c3d2a09d5897c2519e72",
+    (40, 5): "dd314e5c4cf97772c429e4ca6a7dbf4d6a392b3f5a2065629b7f7679e7ac6086",
 }
 GENERATED_ASSET_LAYOUT_FINGERPRINTS = {
-    (0, 3): "d6db662f89125548364831804d5889ec104894418a2ca191b56b87d5c5b493e6",
-    (1, 3): "059e61d903b86f19e17c922b81fb448a5a65247ae8a3378afaf157782c8e70cd",
-    (7, 4): "fa5b8734c2b7ff19b5ee228cb0606805af2fb7cd91c1961993071adfde61c582",
-    (2, 4): "696ea4d6489f2baa6b958b02129158823257c611eb9622c254f51deaae05be25",
-    (4, 5): "e7c850dc1f31a52f4d002d8d9c3c326f7ed82893b61b2b909e56cdb1b8a6f2df",
-    (6, 5): "5fb81902bd80c757216a5feac842a0f8a2efb0704d149dc8e5bd5a2bd8d099a5",
-    (9, 3): "e9f84e1d33cc3364715097296598ad10cc60c05f58d470bd570a10d7e41b45f0",
-    (36, 4): "46a677c385753709d235790c0146bce6c20d41d3c63e627470c7677dbf4f0efe",
-    (40, 5): "6223a28a15871313bbfcef9f6612cf102b735d4b238ed03dad2486c40072400b",
+    (0, 3): "ab0172f581659d68a03e3858dbfec1414081f01e77e6203c42c99b4632ef6821",
+    (1, 3): "a78efd7f2f95a6c46ea059a128ab4bb95c02a25661f6add24e25ef4cafa6cf83",
+    (7, 4): "c35aff5eb1a786294be10101151ba558fa79d14e6a1b8e00c74c047d40101b23",
+    (2, 4): "833a7cde26c6cae95afed76076cd8f716657dbf3752afb93f5def8cf0f13a696",
+    (4, 5): "00fee81a9beaeb40e61ed68cae4a97c05ec84a193cb6d76f0c0ea8292ee1a9b1",
+    (6, 5): "c5bd6fc6526c324a05c41837c5418a68f16c8f92475771b6a5666334003f7f86",
+    (9, 3): "1fe15e4de2fe6ee1de23d47320fd3fd9dd3c1347595dd5c4dae087e467e8c1bd",
+    (36, 4): "57500ee2b670cebf59ab1d5bbb9cf0122af0ffd50004a6af14d55c79e7f77020",
+    (40, 5): "b9989027b7ddf8e9ae3d72e5b3177f64241b0469c6e19db52493ea9f3ee0d7a7",
 }
 GEOMETRY_EPSILON = 1.0e-6
 WIRE_CLEARANCE = 1.0
@@ -1497,6 +1497,7 @@ def test_generated_circuit_png_artifacts_are_written() -> None:
         generated = generate_circuit(
             GeneratorConfig(
                 seed=seed,
+                supply_voltage_v=5.0,
                 motif_count_min=element_count,
                 motif_count_max=element_count,
                 motif_weights=default_motif_weights(),
@@ -2004,6 +2005,7 @@ def _planned_generated_case(seed: int, element_count: int) -> tuple[Circuit, Lay
     generated = generate_circuit(
         GeneratorConfig(
             seed=seed,
+            supply_voltage_v=5.0,
             motif_count_min=element_count,
             motif_count_max=element_count,
             motif_weights=default_motif_weights(),
@@ -2050,6 +2052,7 @@ class _MotifRenderingContext:
 
         self.builder = builder
         self.rng = Random(123)
+        self.supply_voltage_v = 5.0
         self.counters: dict[str, int] = {}
         self.node_counter = 0
         self.motif_counters: dict[str, int] = {}
@@ -2082,7 +2085,7 @@ class _MotifRenderingContext:
 
         number = self.motif_counters.get(motif_name, 0) + 1
         self.motif_counters[motif_name] = number
-        return f"{motif_name}#{number}"
+        return f"{motif_name}_{number}"
 
     def add_negative_supply(
         self, net: str, motif_name: str, instance_id: str

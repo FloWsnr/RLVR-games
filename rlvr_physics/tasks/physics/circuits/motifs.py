@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from enum import Enum
+from math import isfinite
 from random import Random
 import re
 from types import MappingProxyType
@@ -21,10 +22,13 @@ class MotifContext(Protocol):
         Circuit builder that receives new parts and connections.
     rng:
         Deterministic random number generator owned by the generation run.
+    supply_voltage_v:
+        Main generated supply voltage in volts.
     """
 
     builder: CircuitBuilder
     rng: Random
+    supply_voltage_v: float
 
     def add_part(
         self,
@@ -405,19 +409,90 @@ def _variable_res(ref: str, value: str, resistance_ohm: float) -> _MotifPart:
     return _part(ref, "variable_resistor", value, {"resistance_ohm": resistance_ohm})
 
 
+def _configured_supply_motif() -> CircuitMotif:
+    """Return the generator-owned configurable DC supply motif."""
+
+    name = "dc_supply_source"
+
+    def build(ctx: MotifContext, port_bindings: Mapping[str, str]) -> InstantiatedMotif:
+        """Build the configured supply source into ``ctx``."""
+
+        unknown_ports = set(port_bindings) - {"ground_n_0", "source_vcc"}
+        if unknown_ports:
+            raise ValueError(f"unknown port for {name}: {tuple(sorted(unknown_ports))}")
+        ground_net = port_bindings.get("ground_n_0", "0")
+        if not ground_net:
+            raise ValueError(f"empty binding for {name}.ground_n_0")
+        vcc_net = port_bindings.get("source_vcc", "VCC")
+        if not vcc_net:
+            raise ValueError(f"empty binding for {name}.source_vcc")
+        supply_voltage_v = float(ctx.supply_voltage_v)
+        if not isfinite(supply_voltage_v):
+            raise ValueError("supply_voltage_v must be finite")
+        instance_id = ctx.motif_instance_id(name)
+        ref = ctx.add_part(
+            "V",
+            "voltage_source_dc",
+            _voltage_display(supply_voltage_v),
+            {"voltage_v": supply_voltage_v},
+            {
+                "role": "main_supply",
+                "motif": name,
+                "motif_instance": instance_id,
+                "source_ref": "VMAIN",
+            },
+        )
+        ctx.builder.connect(ref, "p", vcc_net)
+        ctx.builder.connect(ref, "n", ground_net)
+        return InstantiatedMotif(
+            motif_name=name,
+            instance_id=instance_id,
+            port_nets={"ground_n_0": ground_net, "source_vcc": vcc_net},
+            part_refs=(ref,),
+        )
+
+    return CircuitMotif(
+        name=name,
+        element_count=1,
+        default_weight=0.0,
+        ports=(
+            MotifPort(
+                name="ground_n_0",
+                net="0",
+                role=MotifPortRole.GROUND,
+                signal=MotifSignalKind.REFERENCE,
+                required=True,
+            ),
+            MotifPort(
+                name="source_vcc",
+                net="VCC",
+                role=MotifPortRole.SOURCE,
+                signal=MotifSignalKind.POWER,
+                required=False,
+            ),
+        ),
+        build=build,
+    )
+
+
+def _voltage_display(value: float) -> str:
+    """Return compact display text for a voltage value."""
+
+    return f"{value:.12g}V"
+
+
 def _build_default_motifs() -> Mapping[str, CircuitMotif]:
     """Build the immutable built-in motif catalog."""
 
-    motifs = {
-        spec.name: CircuitMotif(
+    motifs = {"dc_supply_source": _configured_supply_motif()}
+    for spec in _DEFAULT_MOTIF_SPECS:
+        motifs[spec.name] = CircuitMotif(
             spec.name,
             _element_count(spec),
             spec.default_weight,
             _motif_ports(spec),
             _build_netlist_motif(spec),
         )
-        for spec in _DEFAULT_MOTIF_SPECS
-    }
     return MappingProxyType(motifs)
 
 
@@ -617,6 +692,17 @@ def _safe_port_suffix(net: str) -> str:
     return suffix
 
 
+def _safe_generated_identifier(value: str, fallback: str) -> str:
+    """Return a generated identifier using letters, digits, and underscores."""
+
+    identifier = re.sub(r"\W+", "_", value).strip("_")
+    if not identifier:
+        identifier = fallback
+    if identifier[0].isdigit():
+        identifier = f"{fallback}_{identifier}"
+    return identifier
+
+
 def _signal_kind_for_net(
     net: str, digital_nets: set[str], source_nets: set[str]
 ) -> MotifSignalKind:
@@ -789,7 +875,8 @@ def _local_net(
     if normalized in {"0", "VCC"}:
         return normalized
     if normalized not in net_map:
-        net_map[normalized] = f"{normalized}_{ctx.node()}"
+        net_prefix = _safe_generated_identifier(normalized, "N")
+        net_map[normalized] = f"{net_prefix}_{ctx.node()}"
     return net_map[normalized]
 
 

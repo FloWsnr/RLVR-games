@@ -28,7 +28,35 @@ def test_export_spice_for_voltage_divider() -> None:
     assert "R1 VIN MID 1000" in netlist.text
     assert "R2 MID 0 2000" in netlist.text
     assert "V1 VIN 0 DC 12" in netlist.text
+    assert netlist.node_names["0"] == "0"
+    assert netlist.node_names["MID"] == "MID"
+    assert netlist.element_refs["V1"] == "V1"
     assert netlist.text.endswith(".op\n.end\n")
+
+
+def test_export_spice_keeps_legalized_net_and_ref_names_unique() -> None:
+    catalog = default_catalog()
+    builder = CircuitBuilder("name-collisions", catalog)
+    builder.add_part("V1", "voltage_source_dc", "5V", {"voltage_v": 5.0}, {})
+    builder.add_part("GND1", "ground", "0", {}, {})
+    builder.add_part("R-1", "resistor", "1k", {"resistance_ohm": 1000.0}, {})
+    builder.add_part("R_1", "resistor", "1k", {"resistance_ohm": 1000.0}, {})
+    builder.connect("V1", "p", "A-B")
+    builder.connect("V1", "n", "0")
+    builder.connect("GND1", "0", "0")
+    builder.connect("R-1", "1", "A-B")
+    builder.connect("R-1", "2", "A_B")
+    builder.connect("R_1", "1", "A_B")
+    builder.connect("R_1", "2", "0")
+
+    netlist = export_spice(builder.freeze(), catalog, operating_point_analysis())
+
+    assert netlist.node_names["A-B"] == "A_B"
+    assert netlist.node_names["A_B"] == "A_B_2"
+    assert netlist.element_refs["R-1"] == "R_1"
+    assert netlist.element_refs["R_1"] == "R_1_2"
+    assert "R_1 A_B A_B_2 1000" in netlist.text
+    assert "R_1_2 A_B_2 0 1000" in netlist.text
 
 
 def test_export_spice_supports_dc_sweep_and_transient_cards() -> None:
@@ -68,6 +96,35 @@ def test_export_spice_normalizes_dc_sweep_source_ref() -> None:
     assert "VSRC1 VIN 0 DC 5" in netlist.text
     assert ".dc VSRC1 0 5 1" in netlist.text
     assert ".dc SRC1 0 5 1" not in netlist.text
+
+
+def test_export_spice_dc_sweep_uses_unique_legalized_source_ref() -> None:
+    catalog = default_catalog()
+    builder = CircuitBuilder("source-ref-collisions", catalog)
+    builder.add_part("SRC-1", "voltage_source_dc", "0V", {"voltage_v": 0.0}, {})
+    builder.add_part("SRC_1", "voltage_source_dc", "5V", {"voltage_v": 5.0}, {})
+    builder.add_part("GND1", "ground", "0", {}, {})
+    builder.add_part("R1", "resistor", "1k", {"resistance_ohm": 1000.0}, {})
+    builder.add_part("R2", "resistor", "1k", {"resistance_ohm": 1000.0}, {})
+    builder.connect("SRC-1", "p", "A")
+    builder.connect("SRC-1", "n", "0")
+    builder.connect("SRC_1", "p", "B")
+    builder.connect("SRC_1", "n", "0")
+    builder.connect("GND1", "0", "0")
+    builder.connect("R1", "1", "A")
+    builder.connect("R1", "2", "0")
+    builder.connect("R2", "1", "B")
+    builder.connect("R2", "2", "0")
+
+    netlist = export_spice(
+        builder.freeze(),
+        catalog,
+        dc_sweep_analysis("SRC_1", 0.0, 5.0, 1.0),
+    )
+
+    assert netlist.element_refs["SRC-1"] == "VSRC_1"
+    assert netlist.element_refs["SRC_1"] == "VSRC_1_2"
+    assert ".dc VSRC_1_2 0 5 1" in netlist.text
 
 
 def test_export_spice_preserves_connector_as_noop_subcircuit() -> None:

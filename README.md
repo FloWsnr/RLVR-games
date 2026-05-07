@@ -12,8 +12,10 @@ explicitly safe source metadata for trainer-facing joins.
 
 The shared physics circuit backend builds canonical circuits from reusable
 motifs with typed source, sink, supply, ground, and probe ports. Procedural
-circuit generation composes 3-5 motifs into connected systems and keeps replay
-seeds out of public circuit metadata.
+circuit generation composes 3-5 motifs into connected systems with a default
+5V supply and an operating-point simulation spec that returns voltages for all
+canonical circuit nets, while keeping replay seeds out of public circuit
+metadata.
 
 ## Structure
 
@@ -52,7 +54,8 @@ rlvr_physics/
         motifs.py      # reusable circuit motifs and port contracts
         model.py       # canonical part/pin/net/connection graph
         erc.py         # structural electrical rule checks
-        spice.py       # deterministic SPICE export
+        spice_export.py # deterministic SPICE netlist export
+        spice_sim.py    # ngspice-backed simulation
 
 tests/
   core/

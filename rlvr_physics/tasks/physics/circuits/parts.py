@@ -203,15 +203,15 @@ def _transistor(
 
     pins = (
         (
-            PinSpec("e", PinKind.OPEN_EMITTER, PinSide.TOP),
+            PinSpec("e", PinKind.PASSIVE, PinSide.TOP),
             PinSpec("b", PinKind.INPUT, PinSide.LEFT),
-            PinSpec("c", PinKind.OPEN_COLLECTOR, PinSide.BOTTOM),
+            PinSpec("c", PinKind.PASSIVE, PinSide.BOTTOM),
         )
         if emitter_on_top
         else (
-            PinSpec("c", PinKind.OPEN_COLLECTOR, PinSide.TOP),
+            PinSpec("c", PinKind.PASSIVE, PinSide.TOP),
             PinSpec("b", PinKind.INPUT, PinSide.LEFT),
-            PinSpec("e", PinKind.OPEN_EMITTER, PinSide.BOTTOM),
+            PinSpec("e", PinKind.PASSIVE, PinSide.BOTTOM),
         )
     )
     return PartSpec(

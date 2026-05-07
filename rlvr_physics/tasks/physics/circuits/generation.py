@@ -1,7 +1,9 @@
 """Procedural circuit generation from composable motifs."""
 
 from dataclasses import dataclass
+from math import isfinite
 from random import Random
+import re
 from typing import Mapping
 
 from rlvr_physics.tasks.physics.circuits.erc import check_circuit
@@ -20,6 +22,8 @@ from rlvr_physics.tasks.physics.circuits.model import (
     PartSpec,
     is_ground_net,
 )
+from rlvr_physics.tasks.physics.circuits.spice_export import operating_point_analysis
+from rlvr_physics.tasks.physics.circuits.spice_sim import SpiceSimulationSpec
 
 _MAX_GENERATION_ATTEMPTS = 500
 _REJECTED_WARNING_CODES = {
@@ -28,6 +32,7 @@ _REJECTED_WARNING_CODES = {
     "pin_conflict",
     "single_pin_net",
 }
+_GENERATED_CIRCUIT_NAME = "generated_circuit"
 
 
 class CircuitGenerationError(ValueError):
@@ -42,6 +47,8 @@ class GeneratorConfig:
     ----------
     seed:
         Deterministic generator seed.
+    supply_voltage_v:
+        Main generated VCC supply voltage in volts.
     motif_count_min:
         Minimum number of motif instances to compose.
     motif_count_max:
@@ -51,6 +58,7 @@ class GeneratorConfig:
     """
 
     seed: int
+    supply_voltage_v: float
     motif_count_min: int
     motif_count_max: int
     motif_weights: Mapping[str, float]
@@ -63,6 +71,7 @@ class GeneratedCircuit:
     circuit: Circuit
     motif_names: tuple[str, ...]
     motif_instances: tuple[InstantiatedMotif, ...]
+    simulation_spec: SpiceSimulationSpec
     seed: int
 
 
@@ -112,11 +121,14 @@ def generate_circuit(
 class _GenerationContext:
     """Mutable generator context."""
 
-    def __init__(self, builder: CircuitBuilder, rng: Random) -> None:
+    def __init__(
+        self, builder: CircuitBuilder, rng: Random, supply_voltage_v: float
+    ) -> None:
         """Initialize context state."""
 
         self.builder = builder
         self.rng = rng
+        self.supply_voltage_v = supply_voltage_v
         self.counters: dict[str, int] = {}
         self.non_ground_count = 0
         self.node_counter = 0
@@ -133,6 +145,7 @@ class _GenerationContext:
     ) -> str:
         """Add a new numbered part and return its reference."""
 
+        prefix = _safe_identifier(prefix, "P")
         number = self.counters.get(prefix, 0) + 1
         self.counters[prefix] = number
         ref = f"{prefix}{number}"
@@ -152,7 +165,7 @@ class _GenerationContext:
 
         number = self.motif_counters.get(motif_name, 0) + 1
         self.motif_counters[motif_name] = number
-        return f"{motif_name}#{number}"
+        return f"{_safe_identifier(motif_name, 'motif')}_{number}"
 
     def add_negative_supply(
         self, net: str, motif_name: str, instance_id: str
@@ -187,6 +200,19 @@ def _validate_config(config: GeneratorConfig) -> None:
         raise ValueError("motif_count_max must be at most 5")
     if config.motif_count_max < config.motif_count_min:
         raise ValueError("motif_count_max must be greater than or equal to min")
+    if not isfinite(float(config.supply_voltage_v)) or config.supply_voltage_v <= 0.0:
+        raise ValueError("supply_voltage_v must be positive and finite")
+
+
+def _safe_identifier(value: str, fallback: str) -> str:
+    """Return a generated identifier using letters, digits, and underscores."""
+
+    identifier = re.sub(r"\W+", "_", value).strip("_")
+    if not identifier:
+        identifier = fallback
+    if identifier[0].isdigit():
+        identifier = f"{fallback}_{identifier}"
+    return identifier
 
 
 def _validate_weighted_motif_roles(
@@ -199,8 +225,6 @@ def _validate_weighted_motif_roles(
         raise ValueError(f"unknown motif weights: {tuple(sorted(unknown_names))}")
     if not any(weight > 0.0 for weight in config.motif_weights.values()):
         raise ValueError("motif_weights must enable at least one motif")
-    if not _supply_source_motifs(motif_catalog, config.motif_weights):
-        raise ValueError("motif_weights must enable at least one supply source motif")
     if not _signal_source_motifs(motif_catalog, config.motif_weights):
         raise ValueError("motif_weights must enable at least one signal source motif")
     if not any(
@@ -223,25 +247,15 @@ def _try_generate_candidate(
 ) -> GeneratedCircuit | None:
     """Try to compose one candidate circuit."""
 
-    ctx = _GenerationContext(CircuitBuilder("generated-circuit", catalog), rng)
+    ctx = _GenerationContext(
+        CircuitBuilder(_GENERATED_CIRCUIT_NAME, catalog), rng, config.supply_voltage_v
+    )
     used_names: set[str] = set()
     instances: list[InstantiatedMotif] = []
     live_signals: list[_LiveSignal] = []
 
-    supply = _choose_weighted(
-        rng,
-        _supply_source_motifs(motif_catalog, config.motif_weights),
-        config.motif_weights,
-        used_names,
-    )
-    if supply is None:
-        return None
-    supply_output = _choose_port(rng, _source_ports(supply, MotifSignalKind.POWER))
-    if supply_output is None:
-        return None
-    supply_bindings = _base_bindings(supply)
-    supply_bindings[supply_output.name] = "VCC"
-    supply_instance = supply.build(ctx, supply_bindings)
+    supply = motif_catalog["dc_supply_source"]
+    supply_instance = supply.build(ctx, {"source_vcc": "VCC"})
     instances.append(supply_instance)
     used_names.add(supply.name)
     live_power = _LiveSignal("VCC", MotifSignalKind.POWER)
@@ -314,10 +328,12 @@ def _try_generate_candidate(
         return None
     motif_names = tuple(instance.motif_name for instance in instances)
     circuit = _with_generation_metadata(circuit, motif_names, instances, motif_count)
+    simulation_spec = _default_simulation_spec()
     return GeneratedCircuit(
         circuit=circuit,
         motif_names=motif_names,
         motif_instances=tuple(instances),
+        simulation_spec=simulation_spec,
         seed=config.seed,
     )
 
@@ -352,6 +368,12 @@ def _with_generation_metadata(
     )
 
 
+def _default_simulation_spec() -> SpiceSimulationSpec:
+    """Return the default operating-point simulation spec for generation."""
+
+    return SpiceSimulationSpec(analysis=operating_point_analysis())
+
+
 def _choose_weighted(
     rng: Random,
     candidates: tuple[CircuitMotif, ...],
@@ -382,20 +404,6 @@ def _choose_port(rng: Random, ports: tuple[MotifPort, ...]) -> MotifPort | None:
     if not ports:
         return None
     return ports[rng.randrange(len(ports))]
-
-
-def _supply_source_motifs(
-    motif_catalog: Mapping[str, CircuitMotif], weights: Mapping[str, float]
-) -> tuple[CircuitMotif, ...]:
-    """Return weighted motifs that can source the shared supply rail."""
-
-    return tuple(
-        motif
-        for motif in motif_catalog.values()
-        if weights.get(motif.name, 0.0) > 0.0
-        and _source_ports(motif, MotifSignalKind.POWER)
-        and _all_required_sinks_are_supply_only(motif)
-    )
 
 
 def _signal_source_motifs(

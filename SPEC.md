@@ -147,7 +147,13 @@ For reusable circuit backends, procedural generation should compose declared
 motifs through typed port contracts over the canonical part/pin/net/connection
 graph. Motifs, not loose generator-added parts, are the unit of diversity.
 Generated circuits should contain a connected source-to-load or source-to-probe
-path with structural validation before they become task instances.
+path with structural validation before they become task instances. SPICE
+netlist export is a deterministic adapter over canonical circuit truth; ngspice
+simulation is a separate executable validation layer whose task-facing
+parameters should be explicit in task specs or generated circuit payloads. The
+initial shared simulation surface returns operating-point voltages for every
+canonical circuit net; task-specific measurement policies decide which of those
+values are public.
 
 ### Task Session
 

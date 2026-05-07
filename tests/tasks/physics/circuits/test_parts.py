@@ -86,6 +86,7 @@ def test_linear_dc_solver_public_surface_is_removed() -> None:
     assert (
         importlib.util.find_spec("rlvr_physics.tasks.physics.circuits.solver") is None
     )
+    assert importlib.util.find_spec("rlvr_physics.tasks.physics.circuits.spice") is None
 
 
 def test_spice_export_support_requires_spice_semantics() -> None:

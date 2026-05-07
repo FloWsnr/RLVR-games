@@ -9,6 +9,7 @@ from rlvr_physics.tasks.physics.circuits import (
     CircuitBuilder,
     CircuitMotif,
     InstantiatedMotif,
+    MotifPort,
     MotifPortRole,
     check_circuit,
     default_motif_weights,
@@ -31,6 +32,7 @@ class _MotifTestContext:
 
         self.builder = CircuitBuilder("motif", default_part_catalog())
         self.rng = Random(123)
+        self.supply_voltage_v = 5.0
         self.counters: dict[str, int] = {}
         self.non_ground_count = 0
         self.node_counter = 0
@@ -66,7 +68,7 @@ class _MotifTestContext:
 
         number = self.motif_counters.get(motif_name, 0) + 1
         self.motif_counters[motif_name] = number
-        return f"{motif_name}#{number}"
+        return f"{motif_name}_{number}"
 
     def add_negative_supply(
         self, net: str, motif_name: str, instance_id: str
@@ -93,6 +95,7 @@ class _MotifTestContext:
 
 
 EXPECTED_DEFAULT_MOTIFS = (
+    "dc_supply_source",
     "bridge_rectifier",
     "crc_power_filter",
     "zener_shunt_regulator",
@@ -261,6 +264,22 @@ def test_default_motifs_declare_valid_port_contracts() -> None:
         ) or any(port.role is MotifPortRole.SUPPLY for port in motif.ports), motif.name
 
 
+def test_default_motifs_accept_declared_required_port_bindings() -> None:
+    motifs = default_motifs()
+
+    for motif in motifs.values():
+        ctx = _MotifTestContext()
+        bindings = {
+            port.name: _default_port_binding(port)
+            for port in motif.ports
+            if port.required
+        }
+
+        instance = motif.build(ctx, bindings)
+
+        assert set(bindings) <= set(instance.port_nets), motif.name
+
+
 def test_required_sink_ports_have_compatible_sources() -> None:
     motifs = default_motifs()
     source_signals = {
@@ -398,7 +417,7 @@ def test_relay_driver_does_not_short_supply_through_default_contact() -> None:
 def _no_op_motif(_ctx: MotifContext, _bindings: Mapping[str, str]) -> InstantiatedMotif:
     """Return success without mutating a circuit."""
 
-    return InstantiatedMotif("noop", "noop#1", {}, ())
+    return InstantiatedMotif("noop", "noop_1", {}, ())
 
 
 def _add_reference_ground(ctx: _MotifTestContext) -> None:
@@ -427,3 +446,13 @@ def _chosen_motif_name(
     motif = choose_motif(rng, catalog, weights)
     assert motif is not None
     return motif.name
+
+
+def _default_port_binding(port: MotifPort) -> str:
+    """Return an external net for binding one declared motif port."""
+
+    if port.role is MotifPortRole.GROUND:
+        return "0"
+    if port.net in {"VCC", "VDD", "VEXC", "VBIAS"}:
+        return "VCC"
+    return port.net
