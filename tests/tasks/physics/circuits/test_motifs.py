@@ -4,7 +4,6 @@ from random import Random
 from typing import Mapping
 
 from rlvr_physics.tasks.physics.circuits import (
-    AnalysisSupport,
     Circuit,
     CircuitBuilder,
     CircuitMotif,
@@ -15,8 +14,6 @@ from rlvr_physics.tasks.physics.circuits import (
     default_motif_weights,
     default_motifs,
     default_part_catalog,
-    export_spice,
-    operating_point_analysis,
 )
 from rlvr_physics.tasks.physics.circuits.motifs import (
     MotifContext,
@@ -367,26 +364,9 @@ def test_default_motifs_pass_erc_without_errors() -> None:
         report = check_circuit(
             ctx.builder.freeze(),
             catalog,
-            AnalysisSupport.SPICE_EXPORT,
         )
 
         assert not report.errors, (motif.name, report.errors)
-
-
-def test_default_motifs_export_to_spice() -> None:
-    catalog = default_part_catalog()
-
-    for motif in default_motifs().values():
-        ctx = _MotifTestContext()
-        motif.build(ctx, {})
-        _add_reference_ground(ctx)
-        netlist = export_spice(
-            ctx.builder.freeze(),
-            catalog,
-            operating_point_analysis(),
-        )
-
-        assert netlist.text.endswith(".op\n.end\n"), motif.name
 
 
 def test_relay_driver_does_not_short_supply_through_default_contact() -> None:

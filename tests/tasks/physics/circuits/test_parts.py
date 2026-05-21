@@ -3,10 +3,7 @@
 import importlib.util
 
 import rlvr_physics.tasks.physics.circuits as circuits
-from rlvr_physics.tasks.physics.circuits import (
-    AnalysisSupport,
-    default_part_catalog,
-)
+from rlvr_physics.tasks.physics.circuits import default_part_catalog
 
 
 def test_part_catalog_covers_planned_common_component_classes() -> None:
@@ -63,29 +60,35 @@ def test_part_catalog_covers_planned_common_component_classes() -> None:
     }
 
     assert required_kinds <= set(catalog)
-    assert AnalysisSupport.TRANSIENT_EXPORT in catalog["vcvs"].analysis_support
-    assert AnalysisSupport.TRANSIENT_EXPORT in catalog["vccs"].analysis_support
-    assert AnalysisSupport.SPICE_EXPORT in catalog["jfet_n"].analysis_support
     assert catalog["bjt_npn"].ref_prefix == "Q"
     assert catalog["mosfet_n"].ref_prefix == "Q"
     assert catalog["jfet_n"].ref_prefix == "J"
-    assert AnalysisSupport.SPICE_EXPORT in catalog["connector_2"].analysis_support
 
 
-def test_linear_dc_solver_public_surface_is_removed() -> None:
-    """Verify the deleted local solver is not advertised through the public API."""
+def test_obsolete_circuit_backends_are_not_public() -> None:
+    """Verify deleted circuit backends are not advertised through the public API."""
 
-    assert tuple(item.value for item in AnalysisSupport) == (
-        "spice_export",
-        "transient_export",
-    )
+    assert not hasattr(circuits, "AnalysisSupport")
+    assert not hasattr(circuits, "SpiceSpec")
     assert not hasattr(circuits, "solve_dc_linear")
     assert not hasattr(circuits, "LinearDcResult")
     assert not hasattr(circuits, "UnsupportedCircuitError")
+    assert not hasattr(circuits, "export_spice")
+    assert not hasattr(circuits, "simulate_spice")
+    assert not hasattr(circuits, "default_spice_simulator_config")
+    assert not hasattr(circuits, "simulation_spec_with_supply_voltages")
     assert (
         importlib.util.find_spec("rlvr_physics.tasks.physics.circuits.solver") is None
     )
     assert importlib.util.find_spec("rlvr_physics.tasks.physics.circuits.spice") is None
+    assert (
+        importlib.util.find_spec("rlvr_physics.tasks.physics.circuits.spice_export")
+        is None
+    )
+    assert (
+        importlib.util.find_spec("rlvr_physics.tasks.physics.circuits.spice_sim")
+        is None
+    )
 
 
 def test_circuit_rendering_public_surface_is_removed() -> None:
@@ -113,13 +116,5 @@ def test_circuit_rendering_public_surface_is_removed() -> None:
     assert all(
         not hasattr(pin, "side") for spec in catalog.values() for pin in spec.pins
     )
-
-
-def test_spice_export_support_requires_spice_semantics() -> None:
-    catalog = default_part_catalog()
-
-    for spec in catalog.values():
-        if spec.kind == "ground":
-            continue
-        if AnalysisSupport.SPICE_EXPORT in spec.analysis_support:
-            assert spec.spice is not None, spec.kind
+    assert all(not hasattr(spec, "spice") for spec in catalog.values())
+    assert all(not hasattr(spec, "analysis_support") for spec in catalog.values())

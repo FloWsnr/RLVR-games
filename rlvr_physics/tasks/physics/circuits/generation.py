@@ -1,7 +1,6 @@
 """Procedural circuit generation from composable motifs."""
 
 from dataclasses import dataclass
-from math import isfinite
 from random import Random
 import re
 from typing import Mapping
@@ -16,16 +15,10 @@ from rlvr_physics.tasks.physics.circuits.motifs import (
     default_motifs,
 )
 from rlvr_physics.tasks.physics.circuits.model import (
-    AnalysisSupport,
     Circuit,
     CircuitBuilder,
     PartSpec,
     is_ground_net,
-)
-from rlvr_physics.tasks.physics.circuits.spice_export import operating_point_analysis
-from rlvr_physics.tasks.physics.circuits.spice_sim import (
-    SpiceSimulationSpec,
-    SpiceVoltageSource,
 )
 
 _MAX_GENERATION_ATTEMPTS = 500
@@ -92,7 +85,6 @@ class GeneratedCircuit:
     motif_names: tuple[str, ...]
     motif_instances: tuple[InstantiatedMotif, ...]
     supply_ports: tuple[CircuitSupplyPort, ...]
-    simulation_spec: SpiceSimulationSpec
     seed: int
 
 
@@ -136,51 +128,6 @@ def generate_circuit(
     raise CircuitGenerationError(
         "could not compose a connected motif-only circuit "
         f"after {_MAX_GENERATION_ATTEMPTS} attempts"
-    )
-
-
-def simulation_spec_with_supply_voltages(
-    generated: GeneratedCircuit,
-    supply_voltages: Mapping[str, float],
-) -> SpiceSimulationSpec:
-    """Return an operating-point simulation spec with explicit supply voltages.
-
-    Parameters
-    ----------
-    generated:
-        Generated circuit whose declared supply ports should be energized.
-    supply_voltages:
-        Voltage in volts keyed by declared supply port name.
-
-    Returns
-    -------
-    SpiceSimulationSpec
-        Simulation spec with external voltage sources for all declared supplies.
-    """
-
-    port_names = {port.name for port in generated.supply_ports}
-    missing = port_names - set(supply_voltages)
-    if missing:
-        raise ValueError(f"missing supply voltages: {tuple(sorted(missing))}")
-    unknown = set(supply_voltages) - port_names
-    if unknown:
-        raise ValueError(f"unknown supply voltages: {tuple(sorted(unknown))}")
-    voltage_sources: list[SpiceVoltageSource] = []
-    for port in generated.supply_ports:
-        voltage = float(supply_voltages[port.name])
-        if not isfinite(voltage):
-            raise ValueError(f"supply voltage must be finite: {port.name}")
-        voltage_sources.append(
-            SpiceVoltageSource(
-                name=port.name,
-                positive_net=port.positive_net,
-                negative_net=port.reference_net,
-                voltage_v=voltage,
-            )
-        )
-    return SpiceSimulationSpec(
-        analysis=generated.simulation_spec.analysis,
-        voltage_sources=tuple(voltage_sources),
     )
 
 
@@ -393,13 +340,11 @@ def _try_generate_candidate(
     circuit = _with_generation_metadata(
         circuit, motif_names, instances, motif_count, supply_ports
     )
-    simulation_spec = _default_simulation_spec()
     return GeneratedCircuit(
         circuit=circuit,
         motif_names=motif_names,
         motif_instances=tuple(instances),
         supply_ports=supply_ports,
-        simulation_spec=simulation_spec,
         seed=config.seed,
     )
 
@@ -441,12 +386,6 @@ def _with_generation_metadata(
             ),
         },
     )
-
-
-def _default_simulation_spec() -> SpiceSimulationSpec:
-    """Return the default operating-point simulation spec for generation."""
-
-    return SpiceSimulationSpec(analysis=operating_point_analysis(), voltage_sources=())
 
 
 def _choose_weighted(
@@ -662,7 +601,7 @@ def _candidate_is_valid(
 ) -> bool:
     """Return whether a generated circuit satisfies structural constraints."""
 
-    report = check_circuit(circuit, catalog, AnalysisSupport.SPICE_EXPORT)
+    report = check_circuit(circuit, catalog)
     if report.errors:
         return False
     supply_nets = {port.positive_net for port in supply_ports}

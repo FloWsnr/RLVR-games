@@ -854,8 +854,8 @@ def _local_net(
 
 
 # Motifs with default_weight=0 remain addressable through explicit weights, but
-# are excluded from the default operating-point generator because their intended
-# behavior needs transient/sweep analysis or an intentionally ideal source.
+# are excluded from the default generator because their intended behavior needs
+# a task-specific execution peripheral or an intentionally ideal source.
 _DEFAULT_MOTIF_SPECS = (
     _MotifSpec(
         "bridge_rectifier",

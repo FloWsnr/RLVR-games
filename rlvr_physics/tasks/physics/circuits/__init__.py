@@ -17,7 +17,6 @@ from rlvr_physics.tasks.physics.circuits.generation import (
     GeneratedCircuit,
     GeneratorConfig,
     generate_circuit,
-    simulation_spec_with_supply_voltages,
 )
 from rlvr_physics.tasks.physics.circuits.motifs import (
     CircuitMotif,
@@ -29,7 +28,6 @@ from rlvr_physics.tasks.physics.circuits.motifs import (
     default_motifs,
 )
 from rlvr_physics.tasks.physics.circuits.model import (
-    AnalysisSupport,
     Circuit,
     CircuitBuilder,
     CircuitTopologyError,
@@ -39,30 +37,10 @@ from rlvr_physics.tasks.physics.circuits.model import (
     PartSpec,
     PinKind,
     PinSpec,
-    SpiceSpec,
     is_ground_net,
-)
-from rlvr_physics.tasks.physics.circuits.spice_export import (
-    SpiceAnalysis,
-    SpiceAnalysisKind,
-    SpiceNetlist,
-    dc_sweep_analysis,
-    export_spice,
-    operating_point_analysis,
-    transient_analysis,
-)
-from rlvr_physics.tasks.physics.circuits.spice_sim import (
-    SpiceSimulationIssue,
-    SpiceSimulationResult,
-    SpiceSimulationSpec,
-    SpiceSimulatorConfig,
-    SpiceVoltageSource,
-    default_spice_simulator_config,
-    simulate_spice,
 )
 
 __all__ = [
-    "AnalysisSupport",
     "CheckIssue",
     "CheckReport",
     "CircuitGenerationError",
@@ -84,28 +62,12 @@ __all__ = [
     "PartSpec",
     "PinKind",
     "PinSpec",
-    "SpiceAnalysis",
-    "SpiceAnalysisKind",
-    "SpiceNetlist",
-    "SpiceSimulationIssue",
-    "SpiceSimulationResult",
-    "SpiceSimulationSpec",
-    "SpiceSimulatorConfig",
-    "SpiceSpec",
-    "SpiceVoltageSource",
     "check_circuit",
-    "dc_sweep_analysis",
-    "default_spice_simulator_config",
     "default_catalog",
     "default_motif_weights",
     "default_motifs",
     "default_part_catalog",
-    "export_spice",
     "generate_circuit",
     "is_ground_net",
-    "operating_point_analysis",
     "require_part_spec",
-    "simulate_spice",
-    "simulation_spec_with_supply_voltages",
-    "transient_analysis",
 ]

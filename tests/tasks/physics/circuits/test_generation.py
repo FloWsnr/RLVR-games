@@ -1,19 +1,14 @@
 """Tests for procedural circuit generation."""
 
-from pathlib import Path
 from random import Random
 import re
-import shutil
-import subprocess
 from typing import Any, Mapping
 
 import pytest
 
 from rlvr_physics.tasks.physics.circuits import (
-    AnalysisSupport,
     CheckIssue,
     CheckReport,
-    Circuit,
     CircuitBuilder,
     CircuitSupplyPort,
     GeneratedCircuit,
@@ -24,12 +19,7 @@ from rlvr_physics.tasks.physics.circuits import (
     default_catalog,
     default_motif_weights,
     default_motifs,
-    default_spice_simulator_config,
-    export_spice,
     generate_circuit,
-    operating_point_analysis,
-    simulate_spice,
-    simulation_spec_with_supply_voltages,
 )
 
 REJECTED_GENERATION_WARNING_CODES = {
@@ -83,10 +73,9 @@ def test_generated_circuit_plain_data_does_not_expose_seed() -> None:
     assert isinstance(metadata, dict)
     assert metadata["target_motif_count"] == len(generated.motif_names)
     assert "seed" not in metadata
-    assert "simulation_spec" not in metadata
 
 
-def test_generated_circuit_uses_spice_safe_canonical_identifiers() -> None:
+def test_generated_circuit_uses_safe_canonical_identifiers() -> None:
     generated = generate_circuit(
         GeneratorConfig(
             seed=123,
@@ -135,108 +124,7 @@ def test_generated_circuit_declares_supply_port_without_applied_voltage() -> Non
     assert metadata["supply_ports"] == (
         {"name": "VCC", "positive_net": "VCC", "reference_net": "0"},
     )
-    assert generated.simulation_spec.analysis == operating_point_analysis()
-    assert generated.simulation_spec.voltage_sources == ()
     assert applied_supplies == []
-
-
-def test_supply_voltage_simulation_spec_requires_declared_supply_names() -> None:
-    generated = generate_circuit(
-        GeneratorConfig(
-            seed=123,
-            motif_count_min=3,
-            motif_count_max=3,
-            motif_weights=default_motif_weights(),
-        ),
-        default_catalog(),
-    )
-
-    with pytest.raises(ValueError, match="missing supply voltages"):
-        simulation_spec_with_supply_voltages(generated, {})
-    with pytest.raises(ValueError, match="unknown supply voltages"):
-        simulation_spec_with_supply_voltages(generated, {"VCC": 5.0, "VDD": 3.3})
-
-
-def test_generated_circuit_runs_in_ngspice_with_explicit_supply_voltages() -> None:
-    if shutil.which("ngspice") is None:
-        pytest.skip("ngspice executable is not available")
-    generated = generate_circuit(
-        GeneratorConfig(
-            seed=0,
-            motif_count_min=3,
-            motif_count_max=3,
-            motif_weights=default_motif_weights(),
-        ),
-        default_catalog(),
-    )
-    result = simulate_spice(
-        generated.circuit,
-        default_catalog(),
-        simulation_spec_with_supply_voltages(generated, {"VCC": 5.0}),
-        default_spice_simulator_config(),
-    )
-
-    assert result.ok, result.issues
-    assert result.values["0"] == pytest.approx(0.0)
-    assert result.values["VCC"] == pytest.approx(5.0)
-    assert set(result.values) == set(generated.circuit.nets)
-
-
-def test_large_generated_circuit_runs_in_ngspice() -> None:
-    if shutil.which("ngspice") is None:
-        pytest.skip("ngspice executable is not available")
-    generated = generate_circuit(
-        GeneratorConfig(
-            seed=0,
-            motif_count_min=8,
-            motif_count_max=8,
-            motif_weights=default_motif_weights(),
-        ),
-        default_catalog(),
-    )
-    result = simulate_spice(
-        generated.circuit,
-        default_catalog(),
-        simulation_spec_with_supply_voltages(
-            generated,
-            _default_supply_voltages(generated),
-        ),
-        default_spice_simulator_config(),
-    )
-
-    assert len(generated.motif_names) == 8
-    assert result.ok, result.issues
-    assert set(result.values) == set(generated.circuit.nets)
-
-
-def test_default_generated_circuit_seed_sweep_runs_in_ngspice() -> None:
-    if shutil.which("ngspice") is None:
-        pytest.skip("ngspice executable is not available")
-    catalog = default_catalog()
-    weights = default_motif_weights()
-
-    for seed in range(30):
-        generated = generate_circuit(
-            GeneratorConfig(
-                seed=seed,
-                motif_count_min=3,
-                motif_count_max=8,
-                motif_weights=weights,
-            ),
-            catalog,
-        )
-        result = simulate_spice(
-            generated.circuit,
-            catalog,
-            simulation_spec_with_supply_voltages(
-                generated,
-                _default_supply_voltages(generated),
-            ),
-            default_spice_simulator_config(),
-        )
-
-        assert result.ok, (seed, generated.motif_names, result.issues)
-        assert set(result.values) == set(generated.circuit.nets)
 
 
 def test_generate_circuit_passes_structural_checks() -> None:
@@ -248,11 +136,7 @@ def test_generate_circuit_passes_structural_checks() -> None:
     )
     generated = generate_circuit(config, default_catalog())
 
-    report = check_circuit(
-        generated.circuit,
-        default_catalog(),
-        AnalysisSupport.SPICE_EXPORT,
-    )
+    report = check_circuit(generated.circuit, default_catalog())
 
     assert report.errors == ()
     assert _unexpected_generation_warnings(generated, report) == ()
@@ -321,59 +205,6 @@ def test_generate_circuit_rejects_incomplete_weight_role_sets() -> None:
             ),
             default_catalog(),
         )
-
-
-def test_default_generated_spice_refs_are_unique() -> None:
-    catalog = default_catalog()
-    weights = default_motif_weights()
-
-    for seed in range(50):
-        generated = generate_circuit(
-            GeneratorConfig(
-                seed=seed,
-                motif_count_min=3,
-                motif_count_max=5,
-                motif_weights=weights,
-            ),
-            catalog,
-        )
-        netlist = export_spice(
-            generated.circuit,
-            catalog,
-            operating_point_analysis(),
-        )
-        refs = _spice_element_refs(netlist.text)
-
-        assert len(refs) == len(set(refs)), (seed, generated.motif_names, refs)
-
-
-def test_controlled_source_motifs_run_in_ngspice(tmp_path: Path) -> None:
-    ngspice = shutil.which("ngspice")
-    if ngspice is None:
-        pytest.skip("ngspice executable is not available")
-    catalog = default_catalog()
-
-    for motif_name in (
-        "vccs_voltage_to_current_driver",
-        "vcvs_ideal_voltage_gain_block",
-    ):
-        circuit = _built_motif_circuit(motif_name)
-        netlist = export_spice(
-            circuit,
-            catalog,
-            operating_point_analysis(),
-        )
-        netlist_path = tmp_path / f"{motif_name}.cir"
-        netlist_path.write_text(netlist.text, encoding="utf-8")
-        completed = subprocess.run(
-            (ngspice, "-b", str(netlist_path)),
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=20.0,
-        )
-
-        assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
 def test_default_weighted_motifs_are_reachable() -> None:
@@ -471,11 +302,7 @@ def test_dual_rail_motifs_declare_one_negative_supply_port() -> None:
         ),
         default_catalog(),
     )
-    report = check_circuit(
-        generated.circuit,
-        default_catalog(),
-        AnalysisSupport.SPICE_EXPORT,
-    )
+    report = check_circuit(generated.circuit, default_catalog())
     negative_ports = [
         port for port in generated.supply_ports if port.positive_net == "VEE"
     ]
@@ -512,11 +339,7 @@ def test_generate_circuit_seed_sweep_passes_structural_checks() -> None:
             ),
             catalog,
         )
-        report = check_circuit(
-            generated.circuit,
-            catalog,
-            AnalysisSupport.SPICE_EXPORT,
-        )
+        report = check_circuit(generated.circuit, catalog)
 
         assert 3 <= len(generated.motif_names) <= 5
         assert report.errors == (), (seed, generated.motif_names, report.errors)
@@ -531,15 +354,6 @@ def test_generate_circuit_seed_sweep_passes_structural_checks() -> None:
         )
         assert _has_cross_motif_nonrail_net(generated)
         assert _has_ordered_signal_path(generated)
-
-
-def _default_supply_voltages(
-    generated: GeneratedCircuit,
-) -> Mapping[str, float]:
-    """Return test default voltages for generated supply ports."""
-
-    voltages = {"VCC": 5.0, "VEE": -5.0}
-    return {port.name: voltages[port.name] for port in generated.supply_ports}
 
 
 def _unexpected_generation_warnings(
@@ -614,29 +428,6 @@ class _MotifTestContext:
         return ()
 
 
-def _built_motif_circuit(motif_name: str) -> Circuit:
-    """Return a circuit built from one default motif."""
-
-    motif = default_motifs()[motif_name]
-    ctx = _MotifTestContext()
-    motif.build(ctx, {})
-    nets = ctx.builder._nets
-    if "VCC" in nets:
-        source = ctx.add_part("V", "voltage_source_dc", "5V", {"voltage_v": 5.0}, {})
-        ctx.builder.connect(source, "p", "VCC")
-        ctx.builder.connect(source, "n", "0")
-    if "VEE" in nets:
-        source = ctx.add_part(
-            "VEE", "voltage_source_dc", "-5V", {"voltage_v": -5.0}, {}
-        )
-        ctx.builder.connect(source, "p", "VEE")
-        ctx.builder.connect(source, "n", "0")
-    if "0" in nets:
-        ground = ctx.add_part("GND", "ground", "0", {}, {})
-        ctx.builder.connect(ground, "0", "0")
-    return ctx.builder.freeze()
-
-
 def _has_cross_motif_nonrail_net(generated: GeneratedCircuit) -> bool:
     """Return whether a generated circuit has a non-rail cross-motif net."""
 
@@ -700,21 +491,3 @@ def _has_ordered_signal_path(generated: GeneratedCircuit) -> bool:
         {MotifPortRole.SOURCE, MotifPortRole.PROBE},
     )
     return consumed_count > 0 and bool(final_nets)
-
-
-def _spice_element_refs(netlist: str) -> tuple[str, ...]:
-    """Return top-level SPICE element references from a netlist."""
-
-    refs: list[str] = []
-    in_subcircuit = False
-    for line in netlist.splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith(("*", ".")):
-            if stripped.lower().startswith(".subckt"):
-                in_subcircuit = True
-            elif stripped.lower().startswith(".ends"):
-                in_subcircuit = False
-            continue
-        if not in_subcircuit:
-            refs.append(stripped.split()[0])
-    return tuple(refs)

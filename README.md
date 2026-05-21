@@ -13,13 +13,11 @@ explicitly safe source metadata for trainer-facing joins.
 The shared physics circuit backend builds canonical circuits from reusable
 motifs with typed source, sink, supply, ground, and probe ports. Procedural
 circuit generation composes a config-controlled motif count into connected
-topologies with declared external supply ports and an operating-point
-simulation spec. Task-level operating conditions add applied source voltages
-during ngspice simulation, which returns voltages for all canonical circuit
-nets while keeping replay seeds out of public circuit metadata.
-Circuit-specific schematic, SVG, and PNG rendering are intentionally absent for
-now; future task views can add observation peripherals over the canonical
-circuit state when a task needs them.
+topologies with declared external supply ports while keeping replay seeds out of
+public circuit metadata. Circuit-specific schematic, SVG/PNG rendering, SPICE
+export, and ngspice simulation are intentionally absent for now; future task
+views can add observation or execution peripherals over the canonical circuit
+state when a task needs them.
 
 ## Structure
 

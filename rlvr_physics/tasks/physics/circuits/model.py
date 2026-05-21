@@ -28,7 +28,7 @@ class PinKind(Enum):
 
 
 class ComponentFamily(Enum):
-    """High-level component family for ERC, export, and generation."""
+    """High-level component family for ERC and generation."""
 
     PASSIVE = "passive"
     SOURCE = "source"
@@ -42,13 +42,6 @@ class ComponentFamily(Enum):
     POWER = "power"
     LOAD = "load"
     INTEGRATED = "integrated"
-
-
-class AnalysisSupport(Enum):
-    """Backend analysis capability advertised by a part specification."""
-
-    SPICE_EXPORT = "spice_export"
-    TRANSIENT_EXPORT = "transient_export"
 
 
 @dataclass(frozen=True)
@@ -68,34 +61,6 @@ class PinSpec:
 
 
 @dataclass(frozen=True)
-class SpiceSpec:
-    """SPICE emission metadata for a part kind.
-
-    Parameters
-    ----------
-    prefix:
-        SPICE element prefix, such as ``R`` or ``V``. Use ``X`` for subcircuits.
-    pin_order:
-        Pin names in SPICE node order.
-    value_parameter:
-        Parameter key used for primitive value emission.
-    default_value:
-        Value emitted when an instance does not provide ``value_parameter``.
-    model_name:
-        Optional model or subcircuit name emitted after node names.
-    model_definition:
-        Optional local ``.model`` or ``.subckt`` text.
-    """
-
-    prefix: str
-    pin_order: tuple[str, ...]
-    value_parameter: str | None
-    default_value: str
-    model_name: str | None
-    model_definition: str | None
-
-
-@dataclass(frozen=True)
 class PartSpec:
     """Catalog definition for one reusable component kind.
 
@@ -108,16 +73,11 @@ class PartSpec:
     ref_prefix:
         Conventional reference designator prefix.
     family:
-        Component family for ERC, export, and generation.
+        Component family for ERC and generation.
     pins:
         Pin definitions accepted by this component kind.
-    spice:
-        SPICE export metadata, or ``None`` for parts handled specially by
-        exporters.
     generation_tags:
         Tags used by the procedural generator.
-    analysis_support:
-        Supported backend analysis capabilities.
     """
 
     kind: str
@@ -125,9 +85,7 @@ class PartSpec:
     ref_prefix: str
     family: ComponentFamily
     pins: tuple[PinSpec, ...]
-    spice: SpiceSpec | None
     generation_tags: tuple[str, ...]
-    analysis_support: tuple[AnalysisSupport, ...]
 
     @property
     def pin_names(self) -> tuple[str, ...]:
@@ -177,9 +135,9 @@ class PartInstance:
     kind:
         Component kind from the catalog.
     value:
-        Display/SPICE value string.
+        Human-readable component value string.
     parameters:
-        Frozen structured parameters used by exporters and tasks.
+        Frozen structured parameters used by tasks.
     metadata:
         Frozen auxiliary metadata.
     """
@@ -386,7 +344,7 @@ class CircuitBuilder:
         kind:
             Component kind from the catalog.
         value:
-            Display/SPICE value string.
+            Human-readable component value string.
         parameters:
             Structured instance parameters.
         metadata:

@@ -5,7 +5,6 @@ from enum import Enum, IntEnum
 from typing import Mapping
 
 from rlvr_physics.tasks.physics.circuits.model import (
-    AnalysisSupport,
     Circuit,
     Connection,
     PartSpec,
@@ -175,7 +174,6 @@ PIN_INFO: Mapping[PinKind, PinElectricalInfo] = {
 def check_circuit(
     circuit: Circuit,
     catalog: Mapping[str, PartSpec],
-    analysis_support: AnalysisSupport,
 ) -> CheckReport:
     """Run electronic rule checks on a circuit.
 
@@ -185,8 +183,6 @@ def check_circuit(
         Circuit to check.
     catalog:
         Component catalog for part and pin metadata.
-    analysis_support:
-        Analysis mode expected by the caller.
 
     Returns
     -------
@@ -194,7 +190,7 @@ def check_circuit(
         Structured ERC report.
     """
 
-    checker = _CircuitChecker(circuit, catalog, analysis_support)
+    checker = _CircuitChecker(circuit, catalog)
     return checker.run()
 
 
@@ -205,13 +201,11 @@ class _CircuitChecker:
         self,
         circuit: Circuit,
         catalog: Mapping[str, PartSpec],
-        analysis_support: AnalysisSupport,
     ) -> None:
         """Initialize checker state."""
 
         self.circuit = circuit
         self.catalog = catalog
-        self.analysis_support = analysis_support
         self.issues: list[CheckIssue] = []
         self.parts = circuit.part_by_ref()
 
@@ -222,7 +216,6 @@ class _CircuitChecker:
         self._check_connections()
         self._check_nets()
         self._check_reference_node()
-        self._check_analysis_support()
         return CheckReport(tuple(self.issues))
 
     def _check_parts(self) -> None:
@@ -354,24 +347,6 @@ class _CircuitChecker:
                 "missing_reference_node",
                 "circuit has no ground/reference net",
             )
-
-    def _check_analysis_support(self) -> None:
-        """Check whether parts support the requested analysis mode."""
-
-        for part in self.circuit.parts:
-            spec = self.catalog.get(part.kind)
-            if spec is None:
-                continue
-            if self.analysis_support not in spec.analysis_support:
-                self._add(
-                    IssueSeverity.WARNING,
-                    "unsupported_analysis",
-                    (
-                        f"{part.ref} ({part.kind}) does not support "
-                        f"{self.analysis_support.value}"
-                    ),
-                    refs=(part.ref,),
-                )
 
     def _pin_kinds(
         self, connections: tuple[Connection, ...]
