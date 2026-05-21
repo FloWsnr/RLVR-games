@@ -5,7 +5,6 @@ import importlib.util
 import rlvr_physics.tasks.physics.circuits as circuits
 from rlvr_physics.tasks.physics.circuits import (
     AnalysisSupport,
-    PinSide,
     default_part_catalog,
 )
 
@@ -89,6 +88,33 @@ def test_linear_dc_solver_public_surface_is_removed() -> None:
     assert importlib.util.find_spec("rlvr_physics.tasks.physics.circuits.spice") is None
 
 
+def test_circuit_rendering_public_surface_is_removed() -> None:
+    """Verify circuit schematics are not part of the shared backend API."""
+
+    catalog = default_part_catalog()
+
+    assert not hasattr(circuits, "PinSide")
+    assert not hasattr(circuits, "plan_layout")
+    assert not hasattr(circuits, "draw_svg")
+    assert not hasattr(circuits, "draw_png")
+    assert not hasattr(circuits, "to_png")
+    assert (
+        importlib.util.find_spec("rlvr_physics.tasks.physics.circuits.layout") is None
+    )
+    assert importlib.util.find_spec("rlvr_physics.tasks.physics.circuits.svg") is None
+    assert (
+        importlib.util.find_spec("rlvr_physics.tasks.physics.circuits.symbol_assets")
+        is None
+    )
+    assert (
+        importlib.util.find_spec("rlvr_physics.tasks.physics.circuits.assets") is None
+    )
+    assert all(not hasattr(spec, "icon") for spec in catalog.values())
+    assert all(
+        not hasattr(pin, "side") for spec in catalog.values() for pin in spec.pins
+    )
+
+
 def test_spice_export_support_requires_spice_semantics() -> None:
     catalog = default_part_catalog()
 
@@ -97,12 +123,3 @@ def test_spice_export_support_requires_spice_semantics() -> None:
             continue
         if AnalysisSupport.SPICE_EXPORT in spec.analysis_support:
             assert spec.spice is not None, spec.kind
-
-
-def test_polarity_specific_device_pins_face_supply_rails() -> None:
-    catalog = default_part_catalog()
-
-    assert catalog["mosfet_p"].pin("s").side == PinSide.TOP
-    assert catalog["mosfet_p"].pin("d").side == PinSide.BOTTOM
-    assert catalog["jfet_p"].pin("s").side == PinSide.TOP
-    assert catalog["jfet_p"].pin("d").side == PinSide.BOTTOM

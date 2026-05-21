@@ -142,8 +142,8 @@ def test_export_spice_preserves_connector_as_noop_subcircuit() -> None:
     assert ".subckt RLVR_CONNECTOR_2 1 2\n.ends RLVR_CONNECTOR_2" in netlist.text
 
 
-def test_export_spice_handles_new_asset_backed_parts() -> None:
-    netlist_text = _asset_backed_parts_netlist_text()
+def test_export_spice_handles_helper_and_specialized_parts() -> None:
+    netlist_text = _helper_parts_netlist_text()
 
     assert "VBT1 VIN 0 DC 9" in netlist_text
     assert "RV1 VIN MID 5000" in netlist_text
@@ -158,12 +158,12 @@ def test_export_spice_handles_new_asset_backed_parts() -> None:
     assert "RLEAK" not in netlist_text
 
 
-def test_ngspice_accepts_noop_visual_helper_subcircuits(tmp_path: Path) -> None:
+def test_ngspice_accepts_noop_helper_subcircuits(tmp_path: Path) -> None:
     ngspice = shutil.which("ngspice")
     if ngspice is None:
         pytest.skip("ngspice executable is not available")
-    netlist_path = tmp_path / "asset_backed_parts.cir"
-    netlist_path.write_text(_asset_backed_parts_netlist_text(), encoding="utf-8")
+    netlist_path = tmp_path / "helper_parts.cir"
+    netlist_path.write_text(_helper_parts_netlist_text(), encoding="utf-8")
 
     completed = subprocess.run(
         (ngspice, "-b", str(netlist_path)),
@@ -176,11 +176,11 @@ def test_ngspice_accepts_noop_visual_helper_subcircuits(tmp_path: Path) -> None:
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
-def _asset_backed_parts_netlist_text() -> str:
-    """Return SPICE text for the asset-backed helper part smoke circuit."""
+def _helper_parts_netlist_text() -> str:
+    """Return SPICE text for helper and specialized part smoke coverage."""
 
     catalog = default_catalog()
-    builder = CircuitBuilder("asset-backed-parts", catalog)
+    builder = CircuitBuilder("helper-parts", catalog)
     builder.add_part("GND1", "ground", "0", {}, {})
     builder.add_part("BT1", "battery", "9V", {"voltage_v": 9.0}, {})
     builder.add_part("RV1", "variable_resistor", "5k", {"resistance_ohm": 5000.0}, {})

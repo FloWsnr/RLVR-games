@@ -17,6 +17,9 @@ topologies with declared external supply ports and an operating-point
 simulation spec. Task-level operating conditions add applied source voltages
 during ngspice simulation, which returns voltages for all canonical circuit
 nets while keeping replay seeds out of public circuit metadata.
+Circuit-specific schematic, SVG, and PNG rendering are intentionally absent for
+now; future task views can add observation peripherals over the canonical
+circuit state when a task needs them.
 
 ## Structure
 

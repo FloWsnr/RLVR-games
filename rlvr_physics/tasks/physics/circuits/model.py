@@ -9,7 +9,7 @@ from rlvr_physics.core.payloads import freeze_mapping, stable_hash, to_plain_dat
 
 
 class PinKind(Enum):
-    """Electrical role used by ERC and renderers."""
+    """Electrical role used by ERC and generation."""
 
     INPUT = "input"
     OUTPUT = "output"
@@ -28,7 +28,7 @@ class PinKind(Enum):
 
 
 class ComponentFamily(Enum):
-    """High-level component family for layout, ERC, and generation."""
+    """High-level component family for ERC, export, and generation."""
 
     PASSIVE = "passive"
     SOURCE = "source"
@@ -51,15 +51,6 @@ class AnalysisSupport(Enum):
     TRANSIENT_EXPORT = "transient_export"
 
 
-class PinSide(Enum):
-    """Preferred visual side for a part pin."""
-
-    LEFT = "left"
-    RIGHT = "right"
-    TOP = "top"
-    BOTTOM = "bottom"
-
-
 @dataclass(frozen=True)
 class PinSpec:
     """Static definition of one component pin.
@@ -70,13 +61,10 @@ class PinSpec:
         Stable pin name used in builder connections.
     kind:
         Electrical role used by ERC.
-    side:
-        Preferred side for schematic layout and SVG drawing.
     """
 
     name: str
     kind: PinKind
-    side: PinSide
 
 
 @dataclass(frozen=True)
@@ -120,13 +108,12 @@ class PartSpec:
     ref_prefix:
         Conventional reference designator prefix.
     family:
-        Component family for layout, ERC, and generation.
+        Component family for ERC, export, and generation.
     pins:
         Pin definitions accepted by this component kind.
-    icon:
-        Internal SVG icon identifier.
     spice:
-        SPICE export metadata, or ``None`` for drawing-only parts.
+        SPICE export metadata, or ``None`` for parts handled specially by
+        exporters.
     generation_tags:
         Tags used by the procedural generator.
     analysis_support:
@@ -138,7 +125,6 @@ class PartSpec:
     ref_prefix: str
     family: ComponentFamily
     pins: tuple[PinSpec, ...]
-    icon: str
     spice: SpiceSpec | None
     generation_tags: tuple[str, ...]
     analysis_support: tuple[AnalysisSupport, ...]

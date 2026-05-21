@@ -39,9 +39,9 @@ def test_erc_accepts_parallel_current_sources() -> None:
     assert not any(issue.code == "pin_conflict" for issue in report.errors)
 
 
-def test_erc_accepts_multiple_ground_symbols_on_ground_net() -> None:
+def test_erc_accepts_multiple_ground_parts_on_ground_net() -> None:
     catalog = default_catalog()
-    builder = CircuitBuilder("repeated-ground-symbols", catalog)
+    builder = CircuitBuilder("repeated-ground-parts", catalog)
     builder.add_part("V1", "voltage_source_dc", "5V", {"voltage_v": 5.0}, {})
     builder.add_part("GND1", "ground", "0", {}, {})
     builder.add_part("GND2", "ground", "0", {}, {})

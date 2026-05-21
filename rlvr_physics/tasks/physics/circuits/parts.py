@@ -8,7 +8,6 @@ from rlvr_physics.tasks.physics.circuits.model import (
     ComponentFamily,
     PartSpec,
     PinKind,
-    PinSide,
     PinSpec,
     SpiceSpec,
 )
@@ -69,7 +68,6 @@ def _two_pin_passive(
     kind: str,
     display_name: str,
     ref_prefix: str,
-    icon: str,
     spice_prefix: str,
     value_parameter: str,
     default_value: str,
@@ -83,7 +81,6 @@ def _two_pin_passive(
         ref_prefix=ref_prefix,
         family=ComponentFamily.PASSIVE,
         pins=_two_pin_passive_pins(),
-        icon=icon,
         spice=SpiceSpec(
             prefix=spice_prefix,
             pin_order=("1", "2"),
@@ -101,20 +98,20 @@ def _two_pin_passive(
 
 
 def _two_pin_passive_pins() -> tuple[PinSpec, PinSpec]:
-    """Return standard left/right passive pins."""
+    """Return standard two-terminal passive pins."""
 
     return (
-        PinSpec("1", PinKind.PASSIVE, PinSide.LEFT),
-        PinSpec("2", PinKind.PASSIVE, PinSide.RIGHT),
+        PinSpec("1", PinKind.PASSIVE),
+        PinSpec("2", PinKind.PASSIVE),
     )
 
 
 def _polarized_passive_pins() -> tuple[PinSpec, PinSpec]:
-    """Return left/right pins for a polarized passive component."""
+    """Return standard polarized passive pins."""
 
     return (
-        PinSpec("p", PinKind.PASSIVE, PinSide.LEFT),
-        PinSpec("n", PinKind.PASSIVE, PinSide.RIGHT),
+        PinSpec("p", PinKind.PASSIVE),
+        PinSpec("n", PinKind.PASSIVE),
     )
 
 
@@ -136,10 +133,9 @@ def _power_source(
         ref_prefix=ref_prefix,
         family=ComponentFamily.SOURCE,
         pins=(
-            PinSpec("p", positive_pin_kind, PinSide.TOP),
-            PinSpec("n", PinKind.PASSIVE, PinSide.BOTTOM),
+            PinSpec("p", positive_pin_kind),
+            PinSpec("n", PinKind.PASSIVE),
         ),
-        icon="source",
         spice=SpiceSpec(
             prefix=spice_prefix,
             pin_order=("p", "n"),
@@ -171,10 +167,9 @@ def _diode_like(
         ref_prefix="D",
         family=ComponentFamily.SEMICONDUCTOR,
         pins=(
-            PinSpec("a", PinKind.PASSIVE, PinSide.LEFT),
-            PinSpec("k", PinKind.PASSIVE, PinSide.RIGHT),
+            PinSpec("a", PinKind.PASSIVE),
+            PinSpec("k", PinKind.PASSIVE),
         ),
-        icon="diode",
         spice=SpiceSpec(
             prefix="D",
             pin_order=("a", "k"),
@@ -203,15 +198,15 @@ def _transistor(
 
     pins = (
         (
-            PinSpec("e", PinKind.PASSIVE, PinSide.TOP),
-            PinSpec("b", PinKind.INPUT, PinSide.LEFT),
-            PinSpec("c", PinKind.PASSIVE, PinSide.BOTTOM),
+            PinSpec("e", PinKind.PASSIVE),
+            PinSpec("b", PinKind.INPUT),
+            PinSpec("c", PinKind.PASSIVE),
         )
         if emitter_on_top
         else (
-            PinSpec("c", PinKind.PASSIVE, PinSide.TOP),
-            PinSpec("b", PinKind.INPUT, PinSide.LEFT),
-            PinSpec("e", PinKind.PASSIVE, PinSide.BOTTOM),
+            PinSpec("c", PinKind.PASSIVE),
+            PinSpec("b", PinKind.INPUT),
+            PinSpec("e", PinKind.PASSIVE),
         )
     )
     return PartSpec(
@@ -220,7 +215,6 @@ def _transistor(
         ref_prefix="Q",
         family=ComponentFamily.SEMICONDUCTOR,
         pins=pins,
-        icon="transistor",
         spice=SpiceSpec(
             prefix="Q",
             pin_order=("c", "b", "e"),
@@ -249,15 +243,15 @@ def _mosfet(
 
     pins = (
         (
-            PinSpec("s", PinKind.PASSIVE, PinSide.TOP),
-            PinSpec("g", PinKind.INPUT, PinSide.LEFT),
-            PinSpec("d", PinKind.PASSIVE, PinSide.BOTTOM),
+            PinSpec("s", PinKind.PASSIVE),
+            PinSpec("g", PinKind.INPUT),
+            PinSpec("d", PinKind.PASSIVE),
         )
         if source_on_top
         else (
-            PinSpec("d", PinKind.PASSIVE, PinSide.TOP),
-            PinSpec("g", PinKind.INPUT, PinSide.LEFT),
-            PinSpec("s", PinKind.PASSIVE, PinSide.BOTTOM),
+            PinSpec("d", PinKind.PASSIVE),
+            PinSpec("g", PinKind.INPUT),
+            PinSpec("s", PinKind.PASSIVE),
         )
     )
     return PartSpec(
@@ -266,7 +260,6 @@ def _mosfet(
         ref_prefix="Q",
         family=ComponentFamily.SEMICONDUCTOR,
         pins=pins,
-        icon="mosfet",
         spice=SpiceSpec(
             prefix="M",
             pin_order=("d", "g", "s", "s"),
@@ -295,15 +288,15 @@ def _jfet(
 
     pins = (
         (
-            PinSpec("s", PinKind.PASSIVE, PinSide.TOP),
-            PinSpec("g", PinKind.INPUT, PinSide.LEFT),
-            PinSpec("d", PinKind.PASSIVE, PinSide.BOTTOM),
+            PinSpec("s", PinKind.PASSIVE),
+            PinSpec("g", PinKind.INPUT),
+            PinSpec("d", PinKind.PASSIVE),
         )
         if source_on_top
         else (
-            PinSpec("d", PinKind.PASSIVE, PinSide.TOP),
-            PinSpec("g", PinKind.INPUT, PinSide.LEFT),
-            PinSpec("s", PinKind.PASSIVE, PinSide.BOTTOM),
+            PinSpec("d", PinKind.PASSIVE),
+            PinSpec("g", PinKind.INPUT),
+            PinSpec("s", PinKind.PASSIVE),
         )
     )
     return PartSpec(
@@ -312,7 +305,6 @@ def _jfet(
         ref_prefix="J",
         family=ComponentFamily.SEMICONDUCTOR,
         pins=pins,
-        icon="jfet",
         spice=SpiceSpec(
             prefix="J",
             pin_order=("d", "g", "s"),
@@ -343,12 +335,11 @@ def _controlled_source(
         ref_prefix=ref_prefix,
         family=ComponentFamily.CONTROLLED_SOURCE,
         pins=(
-            PinSpec("p", PinKind.OUTPUT, PinSide.RIGHT),
-            PinSpec("n", PinKind.PASSIVE, PinSide.RIGHT),
-            PinSpec("cp", PinKind.INPUT, PinSide.LEFT),
-            PinSpec("cn", PinKind.INPUT, PinSide.LEFT),
+            PinSpec("p", PinKind.OUTPUT),
+            PinSpec("n", PinKind.PASSIVE),
+            PinSpec("cp", PinKind.INPUT),
+            PinSpec("cn", PinKind.INPUT),
         ),
-        icon="controlled_source",
         spice=SpiceSpec(
             prefix=ref_prefix,
             pin_order=("p", "n", "cp", "cn"),
@@ -369,13 +360,12 @@ def _logic_gate(kind: str, display_name: str, pin_count: int) -> PartSpec:
     """Build a generic logic gate specification."""
 
     input_pins = tuple(
-        PinSpec(f"in{idx}", PinKind.INPUT, PinSide.LEFT)
-        for idx in range(1, pin_count + 1)
+        PinSpec(f"in{idx}", PinKind.INPUT) for idx in range(1, pin_count + 1)
     )
     pins = input_pins + (
-        PinSpec("out", PinKind.OUTPUT, PinSide.RIGHT),
-        PinSpec("vcc", PinKind.POWER_IN, PinSide.TOP),
-        PinSpec("gnd", PinKind.POWER_IN, PinSide.BOTTOM),
+        PinSpec("out", PinKind.OUTPUT),
+        PinSpec("vcc", PinKind.POWER_IN),
+        PinSpec("gnd", PinKind.POWER_IN),
     )
     model_name = f"RLVR_{kind.upper()}"
     input_names = tuple(pin.name for pin in input_pins)
@@ -385,7 +375,6 @@ def _logic_gate(kind: str, display_name: str, pin_count: int) -> PartSpec:
         ref_prefix="U",
         family=ComponentFamily.LOGIC,
         pins=pins,
-        icon="logic",
         spice=SpiceSpec(
             prefix="X",
             pin_order=tuple(pin.name for pin in pins),
@@ -444,7 +433,6 @@ def _subcircuit_part(
     display_name: str,
     ref_prefix: str,
     pins: tuple[PinSpec, ...],
-    icon: str,
     model_name: str,
     model_definition: str,
     tags: tuple[str, ...],
@@ -457,7 +445,6 @@ def _subcircuit_part(
         ref_prefix=ref_prefix,
         family=ComponentFamily.INTEGRATED,
         pins=pins,
-        icon=icon,
         spice=SpiceSpec(
             prefix="X",
             pin_order=tuple(pin.name for pin in pins),
@@ -472,7 +459,7 @@ def _subcircuit_part(
 
 
 def _empty_subcircuit_model(model_name: str, pins: tuple[PinSpec, ...]) -> str:
-    """Return a no-op SPICE subcircuit for visual helper parts."""
+    """Return a no-op SPICE subcircuit for topology helper parts."""
 
     pin_names = " ".join(pin.name for pin in pins)
     return f".subckt {model_name} {pin_names}\n.ends {model_name}"
@@ -492,8 +479,7 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             display_name="Ground",
             ref_prefix="GND",
             family=ComponentFamily.POWER,
-            pins=(PinSpec("0", PinKind.PASSIVE, PinSide.TOP),),
-            icon="ground",
+            pins=(PinSpec("0", PinKind.PASSIVE),),
             spice=None,
             generation_tags=("power", "reference"),
             analysis_support=(
@@ -502,7 +488,7 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ),
         )
     )
-    power_rail_pins = (PinSpec("net", PinKind.PASSIVE, PinSide.BOTTOM),)
+    power_rail_pins = (PinSpec("net", PinKind.PASSIVE),)
     add(
         PartSpec(
             kind="power_rail",
@@ -510,7 +496,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ref_prefix="PWR",
             family=ComponentFamily.POWER,
             pins=power_rail_pins,
-            icon="power_rail",
             spice=SpiceSpec(
                 prefix="X",
                 pin_order=("net",),
@@ -522,11 +507,11 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
                     power_rail_pins,
                 ),
             ),
-            generation_tags=("power", "reference", "visual"),
+            generation_tags=("power", "reference"),
             analysis_support=(AnalysisSupport.SPICE_EXPORT,),
         )
     )
-    test_point_pins = (PinSpec("net", PinKind.PASSIVE, PinSide.LEFT),)
+    test_point_pins = (PinSpec("net", PinKind.PASSIVE),)
     add(
         PartSpec(
             kind="test_point",
@@ -534,7 +519,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ref_prefix="TP",
             family=ComponentFamily.CONNECTOR,
             pins=test_point_pins,
-            icon="junction_dot",
             spice=SpiceSpec(
                 prefix="X",
                 pin_order=("net",),
@@ -555,7 +539,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "resistor",
             "Resistor",
             "R",
-            "resistor",
             "R",
             "resistance_ohm",
             "1k",
@@ -567,7 +550,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "variable_resistor",
             "Variable Resistor",
             "RV",
-            "variable_resistor",
             "R",
             "resistance_ohm",
             "1k",
@@ -579,7 +561,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "capacitor",
             "Capacitor",
             "C",
-            "capacitor",
             "C",
             "capacitance_f",
             "1u",
@@ -593,7 +574,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ref_prefix="C",
             family=ComponentFamily.PASSIVE,
             pins=_polarized_passive_pins(),
-            icon="polarized_capacitor",
             spice=SpiceSpec(
                 prefix="C",
                 pin_order=("p", "n"),
@@ -620,7 +600,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "inductor",
             "Inductor",
             "L",
-            "inductor",
             "L",
             "inductance_h",
             "1m",
@@ -632,7 +611,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "inductor_looped",
             "Looped Inductor",
             "L",
-            "inductor_looped",
             "L",
             "inductance_h",
             "1m",
@@ -646,7 +624,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ref_prefix="XTAL",
             family=ComponentFamily.PASSIVE,
             pins=_two_pin_passive_pins(),
-            icon="crystal",
             spice=SpiceSpec(
                 prefix="X",
                 pin_order=("1", "2"),
@@ -671,7 +648,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "lamp",
             "Lamp",
             "LA",
-            "lamp",
             "R",
             "resistance_ohm",
             "100",
@@ -683,7 +659,6 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "motor",
             "Motor",
             "M",
-            "motor",
             "R",
             "resistance_ohm",
             "25",
@@ -721,10 +696,9 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ref_prefix="VAC",
             family=ComponentFamily.SOURCE,
             pins=(
-                PinSpec("p", PinKind.POWER_OUT, PinSide.TOP),
-                PinSpec("n", PinKind.PASSIVE, PinSide.BOTTOM),
+                PinSpec("p", PinKind.POWER_OUT),
+                PinSpec("n", PinKind.PASSIVE),
             ),
-            icon="source",
             spice=SpiceSpec(
                 prefix="V",
                 pin_order=("p", "n"),
@@ -861,10 +835,9 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ref_prefix="RPU",
             family=ComponentFamily.PASSIVE,
             pins=(
-                PinSpec("net", PinKind.PULLUP, PinSide.LEFT),
-                PinSpec("rail", PinKind.POWER_IN, PinSide.TOP),
+                PinSpec("net", PinKind.PULLUP),
+                PinSpec("rail", PinKind.POWER_IN),
             ),
-            icon="resistor",
             spice=SpiceSpec(
                 prefix="R",
                 pin_order=("net", "rail"),
@@ -887,10 +860,9 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ref_prefix="RPD",
             family=ComponentFamily.PASSIVE,
             pins=(
-                PinSpec("net", PinKind.PULLDOWN, PinSide.LEFT),
-                PinSpec("rail", PinKind.POWER_IN, PinSide.BOTTOM),
+                PinSpec("net", PinKind.PULLDOWN),
+                PinSpec("rail", PinKind.POWER_IN),
             ),
-            icon="resistor",
             spice=SpiceSpec(
                 prefix="R",
                 pin_order=("net", "rail"),
@@ -913,10 +885,9 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ref_prefix="S",
             family=ComponentFamily.SWITCH,
             pins=(
-                PinSpec("1", PinKind.PASSIVE, PinSide.LEFT),
-                PinSpec("2", PinKind.PASSIVE, PinSide.RIGHT),
+                PinSpec("1", PinKind.PASSIVE),
+                PinSpec("2", PinKind.PASSIVE),
             ),
-            icon="switch",
             spice=SpiceSpec(
                 prefix="R",
                 pin_order=("1", "2"),
@@ -939,10 +910,9 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ref_prefix="S",
             family=ComponentFamily.SWITCH,
             pins=(
-                PinSpec("1", PinKind.PASSIVE, PinSide.LEFT),
-                PinSpec("2", PinKind.PASSIVE, PinSide.RIGHT),
+                PinSpec("1", PinKind.PASSIVE),
+                PinSpec("2", PinKind.PASSIVE),
             ),
-            icon="pushbutton_switch",
             spice=SpiceSpec(
                 prefix="R",
                 pin_order=("1", "2"),
@@ -964,11 +934,10 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "Controlled Switch",
             "S",
             (
-                PinSpec("in", PinKind.PASSIVE, PinSide.LEFT),
-                PinSpec("out", PinKind.PASSIVE, PinSide.RIGHT),
-                PinSpec("ctrl", PinKind.INPUT, PinSide.TOP),
+                PinSpec("in", PinKind.PASSIVE),
+                PinSpec("out", PinKind.PASSIVE),
+                PinSpec("ctrl", PinKind.INPUT),
             ),
-            "switch",
             "RLVR_CONTROLLED_SWITCH",
             (
                 ".subckt RLVR_CONTROLLED_SWITCH in out ctrl\n"
@@ -987,13 +956,12 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ref_prefix="K",
             family=ComponentFamily.ELECTROMECHANICAL,
             pins=(
-                PinSpec("coil_p", PinKind.PASSIVE, PinSide.LEFT),
-                PinSpec("coil_n", PinKind.PASSIVE, PinSide.LEFT),
-                PinSpec("com", PinKind.PASSIVE, PinSide.BOTTOM),
-                PinSpec("no", PinKind.PASSIVE, PinSide.RIGHT),
-                PinSpec("nc", PinKind.PASSIVE, PinSide.RIGHT),
+                PinSpec("coil_p", PinKind.PASSIVE),
+                PinSpec("coil_n", PinKind.PASSIVE),
+                PinSpec("com", PinKind.PASSIVE),
+                PinSpec("no", PinKind.PASSIVE),
+                PinSpec("nc", PinKind.PASSIVE),
             ),
-            icon="relay",
             spice=SpiceSpec(
                 prefix="X",
                 pin_order=("coil_p", "coil_n", "com", "no", "nc"),
@@ -1021,13 +989,12 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ref_prefix="U",
             family=ComponentFamily.INTEGRATED,
             pins=(
-                PinSpec("noninv", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("inv", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("vpos", PinKind.POWER_IN, PinSide.TOP),
-                PinSpec("vneg", PinKind.POWER_IN, PinSide.BOTTOM),
-                PinSpec("out", PinKind.OUTPUT, PinSide.RIGHT),
+                PinSpec("noninv", PinKind.INPUT),
+                PinSpec("inv", PinKind.INPUT),
+                PinSpec("vpos", PinKind.POWER_IN),
+                PinSpec("vneg", PinKind.POWER_IN),
+                PinSpec("out", PinKind.OUTPUT),
             ),
-            icon="opamp",
             spice=SpiceSpec(
                 prefix="X",
                 pin_order=("noninv", "inv", "vpos", "vneg", "out"),
@@ -1055,13 +1022,12 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ref_prefix="U",
             family=ComponentFamily.INTEGRATED,
             pins=(
-                PinSpec("noninv", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("inv", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("vpos", PinKind.POWER_IN, PinSide.TOP),
-                PinSpec("vneg", PinKind.POWER_IN, PinSide.BOTTOM),
-                PinSpec("out", PinKind.OUTPUT, PinSide.RIGHT),
+                PinSpec("noninv", PinKind.INPUT),
+                PinSpec("inv", PinKind.INPUT),
+                PinSpec("vpos", PinKind.POWER_IN),
+                PinSpec("vneg", PinKind.POWER_IN),
+                PinSpec("out", PinKind.OUTPUT),
             ),
-            icon="opamp",
             spice=SpiceSpec(
                 prefix="X",
                 pin_order=("noninv", "inv", "vpos", "vneg", "out"),
@@ -1088,16 +1054,15 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "Instrumentation Amplifier",
             "UINA",
             (
-                PinSpec("inp", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("inn", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("ref", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("rg1", PinKind.PASSIVE, PinSide.BOTTOM),
-                PinSpec("rg2", PinKind.PASSIVE, PinSide.BOTTOM),
-                PinSpec("vpos", PinKind.POWER_IN, PinSide.TOP),
-                PinSpec("vneg", PinKind.POWER_IN, PinSide.BOTTOM),
-                PinSpec("out", PinKind.OUTPUT, PinSide.RIGHT),
+                PinSpec("inp", PinKind.INPUT),
+                PinSpec("inn", PinKind.INPUT),
+                PinSpec("ref", PinKind.INPUT),
+                PinSpec("rg1", PinKind.PASSIVE),
+                PinSpec("rg2", PinKind.PASSIVE),
+                PinSpec("vpos", PinKind.POWER_IN),
+                PinSpec("vneg", PinKind.POWER_IN),
+                PinSpec("out", PinKind.OUTPUT),
             ),
-            "ic",
             "RLVR_INSTRUMENTATION_AMP",
             (
                 ".subckt RLVR_INSTRUMENTATION_AMP inp inn ref rg1 rg2 vpos vneg out\n"
@@ -1118,16 +1083,15 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "555 Timer",
             "U",
             (
-                PinSpec("gnd", PinKind.POWER_IN, PinSide.BOTTOM),
-                PinSpec("vcc", PinKind.POWER_IN, PinSide.TOP),
-                PinSpec("reset", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("ctrl", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("disch", PinKind.OPEN_COLLECTOR, PinSide.RIGHT),
-                PinSpec("thresh", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("trig", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("out", PinKind.OUTPUT, PinSide.RIGHT),
+                PinSpec("gnd", PinKind.POWER_IN),
+                PinSpec("vcc", PinKind.POWER_IN),
+                PinSpec("reset", PinKind.INPUT),
+                PinSpec("ctrl", PinKind.INPUT),
+                PinSpec("disch", PinKind.OPEN_COLLECTOR),
+                PinSpec("thresh", PinKind.INPUT),
+                PinSpec("trig", PinKind.INPUT),
+                PinSpec("out", PinKind.OUTPUT),
             ),
-            "ic",
             "RLVR_TIMER_555",
             (
                 ".subckt RLVR_TIMER_555 gnd vcc reset ctrl disch thresh trig out\n"
@@ -1149,13 +1113,12 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ref_prefix="U",
             family=ComponentFamily.INTEGRATED,
             pins=(
-                PinSpec("in1", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("in2", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("out1", PinKind.OUTPUT, PinSide.RIGHT),
-                PinSpec("vcc", PinKind.POWER_IN, PinSide.TOP),
-                PinSpec("gnd", PinKind.POWER_IN, PinSide.BOTTOM),
+                PinSpec("in1", PinKind.INPUT),
+                PinSpec("in2", PinKind.INPUT),
+                PinSpec("out1", PinKind.OUTPUT),
+                PinSpec("vcc", PinKind.POWER_IN),
+                PinSpec("gnd", PinKind.POWER_IN),
             ),
-            icon="ic",
             spice=SpiceSpec(
                 prefix="X",
                 pin_order=("in1", "in2", "out1", "vcc", "gnd"),
@@ -1182,24 +1145,23 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             "4-bit Synchronous Counter",
             "U",
             (
-                PinSpec("clk", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("clr_n", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("load_n", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("enp", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("ent", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("a", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("b", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("c", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("d", PinKind.INPUT, PinSide.LEFT),
-                PinSpec("vcc", PinKind.POWER_IN, PinSide.TOP),
-                PinSpec("gnd", PinKind.POWER_IN, PinSide.BOTTOM),
-                PinSpec("qa", PinKind.OUTPUT, PinSide.RIGHT),
-                PinSpec("qb", PinKind.OUTPUT, PinSide.RIGHT),
-                PinSpec("qc", PinKind.OUTPUT, PinSide.RIGHT),
-                PinSpec("qd", PinKind.OUTPUT, PinSide.RIGHT),
-                PinSpec("rco", PinKind.OUTPUT, PinSide.RIGHT),
+                PinSpec("clk", PinKind.INPUT),
+                PinSpec("clr_n", PinKind.INPUT),
+                PinSpec("load_n", PinKind.INPUT),
+                PinSpec("enp", PinKind.INPUT),
+                PinSpec("ent", PinKind.INPUT),
+                PinSpec("a", PinKind.INPUT),
+                PinSpec("b", PinKind.INPUT),
+                PinSpec("c", PinKind.INPUT),
+                PinSpec("d", PinKind.INPUT),
+                PinSpec("vcc", PinKind.POWER_IN),
+                PinSpec("gnd", PinKind.POWER_IN),
+                PinSpec("qa", PinKind.OUTPUT),
+                PinSpec("qb", PinKind.OUTPUT),
+                PinSpec("qc", PinKind.OUTPUT),
+                PinSpec("qd", PinKind.OUTPUT),
+                PinSpec("rco", PinKind.OUTPUT),
             ),
-            "ic",
             "RLVR_COUNTER_4BIT",
             (
                 ".subckt RLVR_COUNTER_4BIT clk clr_n load_n enp ent a b c d vcc gnd qa qb qc qd rco\n"
@@ -1229,12 +1191,11 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ref_prefix="T",
             family=ComponentFamily.ELECTROMECHANICAL,
             pins=(
-                PinSpec("p1", PinKind.PASSIVE, PinSide.LEFT),
-                PinSpec("p2", PinKind.PASSIVE, PinSide.LEFT),
-                PinSpec("s1", PinKind.PASSIVE, PinSide.RIGHT),
-                PinSpec("s2", PinKind.PASSIVE, PinSide.RIGHT),
+                PinSpec("p1", PinKind.PASSIVE),
+                PinSpec("p2", PinKind.PASSIVE),
+                PinSpec("s1", PinKind.PASSIVE),
+                PinSpec("s2", PinKind.PASSIVE),
             ),
-            icon="transformer",
             spice=SpiceSpec(
                 prefix="X",
                 pin_order=("p1", "p2", "s1", "s2"),
@@ -1260,10 +1221,9 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ref_prefix="J",
             family=ComponentFamily.CONNECTOR,
             pins=(
-                PinSpec("1", PinKind.PASSIVE, PinSide.LEFT),
-                PinSpec("2", PinKind.PASSIVE, PinSide.LEFT),
+                PinSpec("1", PinKind.PASSIVE),
+                PinSpec("2", PinKind.PASSIVE),
             ),
-            icon="connector",
             spice=SpiceSpec(
                 prefix="X",
                 pin_order=("1", "2"),
@@ -1283,10 +1243,9 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ref_prefix="VM",
             family=ComponentFamily.MEASUREMENT,
             pins=(
-                PinSpec("p", PinKind.INPUT, PinSide.TOP),
-                PinSpec("n", PinKind.INPUT, PinSide.BOTTOM),
+                PinSpec("p", PinKind.INPUT),
+                PinSpec("n", PinKind.INPUT),
             ),
-            icon="meter",
             spice=SpiceSpec(
                 prefix="R",
                 pin_order=("p", "n"),
@@ -1306,10 +1265,9 @@ def _build_default_part_catalog() -> Mapping[str, PartSpec]:
             ref_prefix="AM",
             family=ComponentFamily.MEASUREMENT,
             pins=(
-                PinSpec("p", PinKind.PASSIVE, PinSide.LEFT),
-                PinSpec("n", PinKind.PASSIVE, PinSide.RIGHT),
+                PinSpec("p", PinKind.PASSIVE),
+                PinSpec("n", PinKind.PASSIVE),
             ),
-            icon="meter",
             spice=SpiceSpec(
                 prefix="V",
                 pin_order=("p", "n"),
